@@ -129,7 +129,7 @@ describe('ADR-330 (48): the stop goes with the move, the app offers a new one on
     answers[`POST ${ORDERS_URL}`] = () => Promise.reject(REFUSED)
     const w = await reviewDialog()
     await confirm(w)
-    expect(t(w, 'paper-error').text()).toBe('That strike is not listed.')
+    expect(t(w, 'paper-error').text()).toBe('That strike is not listed. i b n') // Lane FJ r3 (F6): every part of the refusal
     expect(t(w, 'stop-offer').exists()).toBe(false)
     expect(stopsNow[0].state).toBe('armed')
   })

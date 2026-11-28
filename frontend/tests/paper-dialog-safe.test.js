@@ -139,7 +139,7 @@ describe('CORE: a stored paper order is never offered again (the live case, buil
     const w = await exitDialog()
     answers[`POST ${ORDERS_URL}`] = () => Promise.reject(REFUSED)
     await click(w)
-    expect(t(w, 'paper-error').text()).toBe('Enter a price in steps of 0.05.')
+    expect(t(w, 'paper-error').text()).toBe('Enter a price in steps of 0.05. i b n') // Lane FJ r3 (F6): every part of the refusal, as sent
     expect(confirmBtn(w).attributes('disabled')).toBeDefined()
     await click(w)
     expect(posts()).toHaveLength(1)

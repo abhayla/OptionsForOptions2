@@ -371,7 +371,7 @@ describe('Positions: Exit (n) posts through addToPaper', () => {
     strategy_id: 48, name: '"GCBP P3 IC"', underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE',
     pause_reason: null, as_of: null, total: '71.50', booked: '0.00', unbooked: '71.50', legs: [leg(0), leg(1), leg(2), leg(3)],
   })
-  it('the POST is addToPaper(client, 48, orders) and its body is exactly { orders } (no suggestion ids)', async () => {
+  it('the POST is addToPaper(client, 48, orders) and its body is exactly { orders, client_request_id } (no suggestion ids; the key is the order path, R2 FC2)', async () => {
     calls.length = 0
     answers = { 'GET /tracking': () => Promise.resolve({ data: { strategies: [item()], answered_at: '2026-10-28T06:00:00Z' } }), 'POST /paper/strategies/48/orders': { id: 48 } }
     const r = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
@@ -388,8 +388,8 @@ describe('Positions: Exit (n) posts through addToPaper', () => {
     const posted = calls.filter((c) => c.method === 'POST')
     expect(posted).toHaveLength(1)
     expect(posted[0].url).toBe('/paper/strategies/48/orders')
-    expect(posted[0].body).toEqual({ orders: expect.any(Array) })
-    expect(Object.keys(posted[0].body)).toEqual(['orders'])
+    expect(posted[0].body).toEqual({ orders: expect.any(Array), client_request_id: expect.stringMatching(/\S{8,}/) })
+    expect(Object.keys(posted[0].body).sort()).toEqual(['client_request_id', 'orders'])
     expect(spy.addToPaper).toHaveBeenCalledTimes(1)
     expect(spy.addToPaper.mock.calls[0][1]).toBe(48)
     expect(spy.addToPaper.mock.calls[0][2]).toEqual(posted[0].body.orders)

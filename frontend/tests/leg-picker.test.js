@@ -399,7 +399,7 @@ describe('legs added quickly in sequence are all kept', () => {
       expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(i + 1)
     }
     // the race is real: a shape read went out after the 2nd, 3rd and 4th adds, and an outcome after every add
-    expect(calls.filter((c) => c.url === '/strategies/leg-edit').map((c) => c.body.legs.length)).toEqual([2, 2, 3, 3, 4, 4]) // Lane FB2: one read when the leg shows, one when its entry is in
+    expect(calls.filter((c) => c.url === '/strategies/leg-edit').map((c) => c.body.legs.length)).toEqual([2, 3, 4]) // Lane FJ r3 (FB2 deferred): the shape is read once per added leg, when its entry is in (not also when it shows with no entry)
     expect(calls.filter((c) => c.url === '/strategies/outcome').length).toBeGreaterThanOrEqual(4)
     while (held.length) held.pop()() // the stale replies land newest first, the oldest last
     await flushPromises()

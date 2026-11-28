@@ -6,7 +6,7 @@
 // | read_failed (the last read failed while a list or book is on screen: the old figures stay, marked old).
 // Wording here is the wording each screen already showed; no sentence is new.
 import { computed, toValue } from 'vue'
-import { TIME_UNAVAILABLE, isoMillis, istClock, istTime } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, isoMillis, istClock, istStamp, istTime } from '@/lib/displayFormat'
 import { marketClosedText } from '@/lib/sharedStateText'
 
 export const PAUSED_TEXT = 'Paper P&L paused - prices not live'
@@ -22,6 +22,15 @@ export const asOfClause = (asOf) => {
 }
 /** REQ-109 AC-5's paused text, with the time of the last price when it is known. */
 export const pausedText = (asOf) => `${PAUSED_TEXT}${asOfClause(asOf)}`
+
+/** D-11 (R2 FC2): of several lines that each say the book is paused, print one (the longest, which carries the "as of" time). */
+export const pausedOnce = (lines) => {
+  const kept = (lines ?? []).filter((l) => typeof l === 'string' && l !== '')
+  const paused = kept.filter((l) => l.includes(PAUSED_TEXT))
+  if (paused.length < 2) return kept
+  const best = [...paused].sort((a, b) => b.length - a.length)[0]
+  return kept.filter((l) => !l.includes(PAUSED_TEXT) || l === best).filter((l, i, a) => a.indexOf(l) === i)
+}
 
 /** ADR-330 (56): the ONE not-live notice of a screen, "Prices are not live. Figures are as of <HH:MM:SS> IST." The time is the last
  *  captured price's; with none readable the clause is left out, never a load time or a made-up one. */
@@ -41,6 +50,15 @@ export function priceScope(rows, isAffected, idOf = (r) => r.id) {
   const ids = new Set((Array.isArray(rows) ? rows : []).filter((r) => isAffected(r)).map(idOf))
   const count = ids.size
   return { count, scope: count === 0 ? 'none' : count === 1 ? 'one' : 'many', ids }
+}
+/** Does the page's PriceNotice (components/states/PriceNotice.vue) show anything for this index answer and affected count? The same rule
+ *  as that component (closed banner always; not-live line only when 2+ strategies are affected or the count is unknown), so a list
+ *  can stay quiet exactly when the notice speaks. */
+export function priceNoticeUp(answer, affected = null, { reply = null, pageState = 'loading', reconnecting = false } = {}) {
+  const now = priceNow({ reply, answer, pageState: reply ? pageState : 'loading', reconnecting })
+  if (now.kind === 'last_close') return true
+  const down = now.kind === 'stale' || (!!answer && answer.state !== 'LIVE')
+  return down && !(affected !== null && affected < 2)
 }
 /** What one tile shows under a scope: greyed when it is affected, the sentence only when it is the one affected tile. */
 export const tileNotLive = (scope, id) => {
@@ -128,4 +146,39 @@ export function usePriceFreshness({ readFailed, held, serverState, closedText, r
     readOk,
     exitReason: computed(() => (readOk.value ? null : NOT_LIVE_EXIT)),
   }
+}
+
+/** Lane FA r2 (I-17; ADR-330 (60), REQ-109 AC-5): the ONE as-of formatter of an Exit dialog. `rows`: the dialog's orders
+ *  ({kind, price, price_at}); only exit rows count. {state, text}: one plain line, the first of these that holds:
+ *  no_price (an exit row has no price) | no_time (a price with no quote time) | unreadable (a quote time that does not parse) |
+ *  not_live (`notLive`: "Prices are not live. Last price as of ...") | fresh (under a minute) | stale (minutes, hours, days).
+ *  The age is told for the OLDEST quote; a quote dated after `nowMs` is never "ago". No exit row: {state:'', text:''}.
+ *  Wording is new, pending owner read. Times only; no money here (ADR-008). */
+export function priceAgeLine(rows, { nowMs = Date.now(), notLive = false } = {}) {
+  const exits = (Array.isArray(rows) ? rows : []).filter((r) => r?.kind === 'exit')
+  if (!exits.length) return { state: '', text: '' }
+  const noPrice = exits.filter((r) => !String(r.price ?? '').trim()).length
+  if (noPrice) return { state: 'no_price', text: `No price for ${noPrice} of ${exits.length} legs; the server prices the exit when you confirm.` }
+  const times = exits.map((r) => r.price_at)
+  if (times.some((t) => t === null || t === undefined || t === '')) return { state: 'no_time', text: 'The time of the price is not available.' }
+  const ms = times.map((t) => (typeof t === 'string' ? isoMillis(t) : null))
+  if (ms.some((m) => m === null)) return { state: 'unreadable', text: 'The time of the price could not be read.' }
+  let at = 0 // index of the oldest quote
+  for (let i = 1; i < ms.length; i += 1) if (ms[i] < ms[at]) at = i
+  const oldest = times[at]
+  const stamp = istStamp(oldest, new Date(nowMs).toISOString())
+  const whole = (n) => n - (n % 1) // whole units of TIME (never money, ADR-008); no Math/Number: the screen guards ban those
+  const secs = whole((nowMs - ms[at]) / 1000)
+  const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'} ago`
+  const ago = secs < 0 ? '' : secs < 60 ? unit(secs, 'second') : secs < 3600 ? unit(whole(secs / 60), 'minute') : secs < 86400 ? unit(whole(secs / 3600), 'hour') : unit(whole(secs / 86400), 'day')
+  const asOf = `${stamp}${ago ? `, ${ago}` : ''}`
+  if (notLive) return { state: 'not_live', text: `Prices are not live. Last price as of ${asOf}.` }
+  return { state: secs < 0 ? 'ahead' : secs < 60 ? 'fresh' : 'stale', text: `Price as of ${asOf}.` }
+}
+
+/** The clock the price age is told against: the server's reading plus the time the browser has measured since that answer (`clock` = { serverMs, localMs }); the browser's own reading when there is none. */
+export function clockReadingMs(clock, browserMs) {
+  if (!clock) return browserMs
+  const since = browserMs - clock.localMs
+  return clock.serverMs + since
 }

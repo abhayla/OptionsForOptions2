@@ -18,6 +18,7 @@ vi.mock('@/services/api', async (importActual) => {
     calls.push({ method, url, body })
     if (method === 'GET') getConfigs.push({ url, config })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60) on Add to Paper (FA2 item A)
     if (a === undefined) return Promise.reject({ message: 'no answer', parts: null, status: 404 })
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }

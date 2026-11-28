@@ -7,17 +7,11 @@
      re-captured here. Every refusal shows the API's catalogue message (an empty name: "Give the strategy a name.", from the API,
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
 <script>
-// Opus review F5: the add-unknown lock outlives this component (leaving the page and coming back remounts the bar): a store for this tab,
-// kept in sessionStorage so a reload keeps it too. A read of the strategy's Paper book alone ends it (checkAddUnknown).
-import { reactive } from 'vue'
-const LOCK_KEY = 'ofo.addUnknown'
-function loadLocks() {
-  try { return JSON.parse(globalThis.sessionStorage?.getItem(LOCK_KEY) ?? '{}') || {} } catch { return {} }
-}
-export const addUnknownStore = reactive(loadLocks())
-export function saveAddUnknown() {
-  try { globalThis.sessionStorage?.setItem(LOCK_KEY, JSON.stringify(addUnknownStore)) } catch { /* private mode: the lock still holds in memory */ }
-}
+// Opus review F5 / Lane FJ round 2 (F3, F5): the add-unknown lock outlives this component (leaving the page and coming back remounts the bar) and lives in
+// lib/unknownLocks.js (the ONE writer and the ONE decision, this BROWSER: localStorage + the `storage` event). It is written BEFORE the post goes out and
+// dropped on a definite answer, so a reload or remount while the post is out keeps Add blocked. A read of the strategy's Paper book alone ends it (checkAddUnknown).
+// The ids of the posts that are out in THIS page (a module set: a remounted bar shares it): their locks are not this bar's to decide.
+const inflightAdds = new Set()
 </script>
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
@@ -36,13 +30,15 @@ import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
 import { readPaperBook } from '@/lib/paperDrafts'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
-import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, newRequestId, paperPostOutcome } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
+import { addLockFor, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, onAddLocksChanged, orderKeyFor, saveAddLock } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
-import { ADD_UNKNOWN_TEXT, RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE, UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
+import { ADD_UNKNOWN_TEXT, RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE } from '@/lib/sharedStateText'
+import { refusalText } from '@/lib/usePaperExit'
 import {
   STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, noMatchText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
@@ -149,6 +145,8 @@ const hasLegs = computed(() => !props.paperMode && canSaveLegs(props.legs)) // S
 // The "..." button is disabled only when the menu would be empty (nothing to save, no saved strategy); each item shows by its own condition.
 const hasMenu = computed(() => hasLegs.value || !!props.current)
 const canSave = computed(() => !props.paperMode && !busy.value && canSaveLegs(props.legs))
+// FB2 F9: Save As of a strategy whose add has no answer would give an unlocked copy of the same legs (a second add of what may be stored): off while the lock stands
+const canSaveAs = computed(() => canSave.value && !addLocked.value)
 // GC-ICFIX P3 u502 (REQ-134 AC-2): Save is on only when there is something to save. The comparison is against the legs the SERVER holds
 // for the open strategy (current.serverLegs: set by the page only from a successful load and from the legs a successful Save SENT).
 // FAIL-SAFE: when the page cannot tell whether the legs differ (no server legs, an unreadable value, a comparison error) Save is ON:
@@ -239,7 +237,7 @@ async function undoSave() {
 }
 
 function saveAs() {
-  if (!canSave.value) return
+  if (!canSaveAs.value) return
   asking.value = 'save-as'
   nameText.value = saveAsName(props.current?.name) // an unsaved strategy has no name: the default plus the suffix (ADR-192)
 }
@@ -369,41 +367,45 @@ watch(() => props.current?.id, () => { paperRecorded.value = false })
 // Lane FB2 (ADR-016..019, Opus review F2 of Lane FB item 4): a per-strategy lock after an add of UNKNOWN outcome (no answer, 5xx, a cancelled post).
 // It is not reset by Cancel, by reopening the dialog or by another strategy: it names its strategy and ends only on a read of THAT strategy's
 // Paper book: orders there = the add was stored; no orders = not stored, believed only after the server's longest commit window.
-const addUnknown = addUnknownStore // strategy id -> { at, id } (ms when the client gave up); shared by every bar and kept for this tab (Opus review F5)
+const addTick = ref(0) // the lock store is not reactive: every write and every storage event of another tab bumps this
+const lockedAdd = (id) => { addTick.value; return id != null && !!addLockFor(id) } // also true for a lock that cannot be read: it blocks (fail closed)
 let unknownTimer = null
 let checking = false
-const addLocked = computed(() => props.current?.id != null && !!addUnknown[props.current.id])
+const addLocked = computed(() => lockedAdd(props.current?.id))
 async function checkAddUnknown() {
   if (checking) return // one read at a time (Opus review F4)
   checking = true
   try {
-    for (const [id, u] of Object.entries(addUnknown)) {
+    for (const id of addLockIds()) {
+      if (inflightAdds.has(String(id))) continue // its post is still out: only its answer ends it
+      const stored0 = addLockFor(id)
+      if (stored0 && typeof stored0.before === 'string' && stored0.before.startsWith('#')) continue // R5 N1: the builder's add lock (before '#<book>') is decided ONLY by the builder's own read (it holds the add in memory and rebases its legs); the bar never ends it
+      const mine = adoptedAddLock(id, Date.now()) // a lock written before a post whose tab closed: the 130 s rule counts from this first sight
+      if (!mine) continue // a malformed lock is read too: a good read sent more than 130 s after its first sight decides it (decideLock)
       const sentAt = Date.now() // the window is judged by when the read was SENT, not when its answer came (Opus review F3)
       let read
       try { read = await readPaperBook(api, id) } catch { continue } // a failed read decides nothing (the one door: paperDrafts.readPaperBook)
-      if (addUnknown[id] !== u) continue // the lock was replaced while the read was out: this answer is not about it
-      if (read?.kind === 'paper' || read?.kind === 'unpriced') { // orders in the book: stored, this plan never records again
-        dropAddUnknown(id)
-        if (String(props.current?.id) === id) { paperRecorded.value = true; emit('paper-added', u.id) }
-      } else if (read?.kind === 'plan' && sentAt - u.at > UNKNOWN_EXIT_WINDOW_MS + 10000) dropAddUnknown(id) // no orders in a read sent past the window (+10 s margin): not stored
+      const now = addLockFor(id) && adoptedAddLock(id, Date.now()) // the lock that is STORED now (another tab may have replaced it)
+      if (!now || inflightAdds.has(String(id))) continue // the lock ended or was replaced while the read was out: this answer is not about it
+      const d = decideLock(now, bookOfRead(read), sentAt) // the ONE decision (lib/unknownLocks.js)
+      if (d.verdict === 'stored') { // orders in the book: stored, this plan never records again
+        if (!dropAddLock(id, now)) continue // another tab's newer lock stays
+        dropOrderKey(id, 'add')
+        addTick.value++
+        if (String(props.current?.id) === String(id)) { paperRecorded.value = true; emit('paper-added', props.current.id) }
+      } else if (d.verdict === 'not_stored') { dropAddLock(id, now); addTick.value++ } // no orders in a read sent past the window: not stored (the key stays for a resend)
+      else if (d.verdict === 'changed') { if (dropAddLock(id, now)) dropOrderKey(id, 'add'); addTick.value++ } // a malformed lock, or the added legs moved some other way, decided by a read sent past the window
     }
   } finally { checking = false }
-  if (Object.keys(addUnknown).length === 0) { clearInterval(unknownTimer); unknownTimer = null }
+  if (addLockIds().length === 0) { clearInterval(unknownTimer); unknownTimer = null }
 }
-function dropAddUnknown(id) {
-  delete addUnknown[id]
-  saveAddUnknown()
-}
-function startUnknownTimer() { if (!unknownTimer && Object.keys(addUnknown).length) unknownTimer = setInterval(checkAddUnknown, 5000) }
-function lockAddUnknown(id) {
-  addUnknown[id] = { at: Date.now(), id }
-  saveAddUnknown()
-  startUnknownTimer()
-}
-onMounted(startUnknownTimer)
-onBeforeUnmount(() => { clearInterval(unknownTimer); unknownTimer = null })
+function startUnknownTimer() { if (!unknownTimer && addLockIds().length) unknownTimer = setInterval(checkAddUnknown, 5000) }
+let offLocks = null
+onMounted(() => { startUnknownTimer(); offLocks = onAddLocksChanged(() => { addTick.value++; startUnknownTimer() }) })
+onBeforeUnmount(() => { clearInterval(unknownTimer); unknownTimer = null; offLocks?.() })
 // REQ-163 / Opus review F4: the refused request is remembered per strategy, so Cancel and reopen still ask for an edit
-let refusedFor = null // { id, sig, edited, error }
+const refusedLists = new Map() // FJ r3 (FB2 F6): `${id}|${sig}` -> the refusal sentence, for EVERY refused list that was sent unedited (not only the last one)
+const refusalKey = (id, rows) => `${id}|${rowSig(rows)}`
 const rowSig = (rows) => JSON.stringify(rows.map((r) => [r.contract_id, r.side, String(r.lots)]))
 const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !addLocked.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
@@ -428,11 +430,10 @@ function openPaperDialog(id) {
     key: l.id ?? `leg-${i}`, contract_id: l.contract_id, side: l.action, text: contractName(l), lots: l.lots, lot_size: l.lot_size,
     kind: 'open', ...entryPriceFor(l, props.livePriceById), // the live price the page holds, else the planned entry (noted)
   }))
-  const same = refusedFor && refusedFor.id === id && !refusedFor.edited && refusedFor.sig === rowSig(paperOrders.value)
+  const same = refusedLists.has(refusalKey(id, paperOrders.value))
   paperState.value = same ? PAPER_STATE.REFUSED : PAPER_STATE.READY // F4: the same refused request is not offered again without an edit
-  paperError.value = same ? refusedFor.error : ''
-  if (!same) refusedFor = null
-  serverNotLive.value = false
+  paperError.value = same ? refusedLists.get(refusalKey(id, paperOrders.value)) : ''
+  if (!same) serverNotLive.value = false // FB2 F8: a refused list comes back with the "prices not live" tick offer its refusal asked for
   paperOpen.value = true
 }
 
@@ -442,29 +443,44 @@ const INDEX_AGE_REFUSAL = 'STRATEGY_VALIDATION_511'
 const serverNotLive = ref(false)
 const notLiveLine = computed(() => (!props.marketClosed && (!props.pricesLive || serverNotLive.value)
   ? notLiveEntryLine(oldestCapture(tickedLegs.value) ?? (props.priceAsOf || null)) : ''))
-async function confirmPaper(orders, held = null, notLiveTicked = false) {
+async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKey = null) {
   if (paperBusy.value) return
-  if (addUnknown[paperTarget.value]) return // Opus review F1: an add of unknown outcome is not sent again, whichever button asks
+  const target = paperTarget.value
+  if (lockedAdd(target)) return // Opus review F1: an add of unknown outcome (or one whose post is out, or a lock that cannot be read) is not sent again, whichever button asks
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
+  const sig = JSON.stringify(orders)
+  const key = orderKeyFor(target, sig, dialogKey, 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
+  const outAt = Date.now() // R5 N5: this write's own identity: a definite answer drops this lock, never another tab's
+  saveAddLock(target, { at: outAt, out: true, before: '', key, sig }) // F3: written BEFORE the post goes out; a definite answer removes it (`out`: at = when it went out)
+  inflightAdds.add(String(target))
+  addTick.value++
   try {
     // ADR-330 (28): the flag is the dialog's own tick state (line shown AND ticked), not the page's price state
-    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true, newRequestId())
+    await addToPaper(api, target, orders, [], null, held, null, notLiveTicked === true, key)
   } catch (e) {
+    inflightAdds.delete(String(target))
     const outcome = paperPostOutcome(e)
-    if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
+    if (outcome === PAPER_STATE.REFUSED) paperError.value = refusalText(e?.parts, NEUTRAL_PARTS.what_happened) // 4xx: nothing stored; F6: every part of the reply
     if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
-    if (outcome === PAPER_STATE.UNKNOWN) lockAddUnknown(paperTarget.value)
+    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value, 'add') // a definite refusal (580 / 581 / 583 too): nothing stored, the key is free
+    if (outcome === PAPER_STATE.UNKNOWN) { saveAddLock(target, { at: Date.now(), out: false, before: '', key, sig }); startUnknownTimer() } // `at` is now when the client gave up
+    else dropAddLock(target, { key, at: outAt }) // a definite refusal: nothing stored, the lock ends with the answer
+    addTick.value++
     if (outcome === PAPER_STATE.REFUSED) {
       const edited = orders.some((o, i) => { const p = paperOrders.value[i]; return !p || String(o.quantity) !== String(p.lots * p.lot_size) || String(o.price).trim() !== String(p.price ?? '').trim() })
-      refusedFor = { id: paperTarget.value, sig: rowSig(paperOrders.value), edited, error: paperError.value }
-    } else refusedFor = null
+      if (!edited) refusedLists.set(refusalKey(paperTarget.value, paperOrders.value), paperError.value)
+    } else refusedLists.clear()
     paperBusy.value = false
     return
   }
-  refusedFor = null
+  refusedLists.clear()
+  inflightAdds.delete(String(target))
+  dropAddLock(target, { key, at: outAt })
+  addTick.value++
+  dropOrderKey(paperTarget.value, 'add') // stored: the action is over
   // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"
   paperRecorded.value = true
   try {
@@ -523,7 +539,7 @@ v-if="hasLegs" type="button" role="menuitem" data-testid="menu-save"
                   :disabled="!canSaveNow" @click="menuDo(save)">Save</button>
           <button
 v-if="hasLegs" type="button" role="menuitem" data-testid="save-as"
-                  :disabled="!canSave" @click="menuDo(saveAs)">Save As</button>
+                  :disabled="!canSaveAs" @click="menuDo(saveAs)">Save As</button>
           <button
 v-if="current" type="button" role="menuitem" data-testid="rename-open"
                   :disabled="busy" @click="menuDo(renameOpen)">Rename</button>
@@ -552,7 +568,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" d
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
-    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :locked="paperTarget !== null && !!addUnknown[paperTarget]" :error="paperError" :state="paperState" :not-live-line="notLiveLine" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
+    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :locked="paperTarget !== null && lockedAdd(paperTarget)" :error="paperError" :state="paperState" :not-live-line="notLiveLine" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
     <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path

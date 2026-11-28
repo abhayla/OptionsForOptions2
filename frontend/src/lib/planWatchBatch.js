@@ -12,6 +12,8 @@ export const PLAN_WATCH_BATCH_MAX_ROWS = 20
 /** The one request's own timeout: the rows run one after another on the server, so it is the single read's 20 s. */
 export const PLAN_WATCH_BATCH_TIMEOUT_MS = 20000
 
+/** fd2: the third item state: the server holds no watch and no refusal for this trade (nothing was read). Plain line, not an error. */
+export const PLAN_WATCH_NOT_READ = 'The plan watch has not been read for this trade.' // new wording, pending owner read (28 Nov 2026)
 const isText = (v) => typeof v === 'string' && v.trim() !== ''
 const failedView = (state, text) => ({
   state, text, planState: null, noPlanText: null, armedHeading: null, pausedText: null, asOfText: null,
@@ -20,6 +22,7 @@ const failedView = (state, text) => ({
 
 function viewOfItem(item, id) {
   if (item.state === 'ok') return parsePlanWatch(item.watch, id) ?? failedView('unavailable', PLAN_WATCH_UNAVAILABLE)
+  if (item.state === 'not_read') return failedView('not_read', PLAN_WATCH_NOT_READ)
   if (item.status === 404) return failedView('not_found', PLAN_WATCH_NOT_FOUND)
   const said = item.refusal && isText(item.refusal.what_happened) ? item.refusal.what_happened : PLAN_WATCH_UNAVAILABLE
   return failedView('failed', said)

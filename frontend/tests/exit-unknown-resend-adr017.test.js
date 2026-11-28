@@ -6,7 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import REAL from './fixtures/paper-book-63.json'
 import { legacy } from './_paperList'
-import { UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
+import { UNKNOWN_EXIT_READ_AFTER_MS as UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText' // Lane FJ: a read SENT more than 130 s after the client gave up decides unchanged
 
 const calls = []
 let answers = {}
@@ -65,7 +65,7 @@ afterEach(() => {
   document.body.innerHTML = ''
 })
 
-const CHECKING = 'The first exit\'s outcome is being checked; no second exit is sent until the book has been read.'
+const CHECKING = 'The first exit\'s outcome is not known yet; no second exit is sent until the server\'s answer is known.'
 const orderbookGone = () => new Promise(() => {}) // the re-read never answers: the outcome stays unknown, no failed read to hide the bug
 const exit1 = async (w, id) => { S(w).exitPaper(id, 1); await flushPromises(); await t(w, 'paper-confirm-button').trigger('click'); await flushPromises() }
 const unknownThen = async (readAnswer) => {

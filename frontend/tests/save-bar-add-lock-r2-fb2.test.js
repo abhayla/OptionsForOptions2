@@ -4,8 +4,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
-import SaveDraftBar, { addUnknownStore } from '@/components/strategy/SaveDraftBar.vue'
+import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import { ADD_UNKNOWN_TEXT, UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
+import { resetExitLocks } from '@/lib/unknownLocks'
 
 const calls = []
 let postMode = 'unknown' // 'unknown' | 'refused' | 'ok'
@@ -15,7 +16,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     if (method === 'GET' && url === '/strategies') return Promise.resolve({ data: { strategies: [] } })
-    if (method === 'GET' && url.startsWith('/market/exit-state')) return Promise.resolve({ data: { state: 'no' } })
+    if (method === 'GET' && url.startsWith('/market/exit-state')) return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // R3 join: FA2's market gate (ADR-330 (60)) wants closed:false
     if (method === 'POST' && /^\/paper\/strategies\/\d+\/orders$/.test(url)) {
       if (postMode === 'unknown') return Promise.reject(Object.assign(new Error('timeout'), { status: 504, parts: { what_happened: 'No answer.' } }))
       if (postMode === 'refused') return Promise.reject(Object.assign(new Error('refused'), { status: 422, parts: { what_happened: 'Lots too high.' } }))
@@ -54,7 +55,7 @@ async function cancel() {
   dom('paper-cancel').click()
   await flushPromises()
 }
-beforeEach(() => { for (const k of Object.keys(addUnknownStore)) delete addUnknownStore[k]; globalThis.sessionStorage?.clear(); calls.length = 0; document.body.innerHTML = ''; postMode = 'unknown'; bookMode = 'plan'; vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] }) })
+beforeEach(() => { globalThis.sessionStorage?.clear(); globalThis.localStorage?.clear(); resetExitLocks(); calls.length = 0; document.body.innerHTML = ''; postMode = 'unknown'; bookMode = 'plan'; vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] }) })
 afterEach(() => { vi.useRealTimers() })
 
 describe('item 1: unknown add, Cancel, reopen', () => {

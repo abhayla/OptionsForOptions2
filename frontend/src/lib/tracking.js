@@ -19,7 +19,9 @@ import { NOT_CONNECTED_TEXT, bookNotLive, pausedText } from '@/lib/priceState'
 export const ADD_TO_PAPER_LABEL = 'Add to Paper'
 export const PAPER_NOT_REAL_TEXT = 'This is not a real trade. Paper orders use no real money.'
 export const PAPER_EXIT_CHECKING_TEXT = 'Checking whether this exit leaves a sold option without protection...'
-export const PAPER_EXIT_UNCHECKED_TEXT = 'The app could not check whether this exit leaves a sold option without protection. You can still confirm.'
+// FA2 item 6 (D-12): "You can still confirm." is said only while Confirm is enabled (the dialog picks the full or the short form)
+export const PAPER_EXIT_UNCHECKED_SHORT_TEXT = 'The app could not check whether this exit leaves a sold option without protection.'
+export const PAPER_EXIT_UNCHECKED_TEXT = `${PAPER_EXIT_UNCHECKED_SHORT_TEXT} You can still confirm.`
 export const PAPER_PRICE_REASON = 'Enter a price in steps of 0.05'
 export const PAPER_PRICE_ZERO_REASON = 'A price of 0 cannot be used. Enter 0.05 or more' // pending owner read (D-58): a zero is not a step problem
 export const PAPER_LOTS_REASON = 'Enter whole lots, 1 or more'
@@ -49,15 +51,44 @@ export const PAPER_OPEN_ORDERBOOK_LABEL = 'Open Orderbook'
 export const PAPER_EXIT_PRICED_BY_SERVER_TEXT = 'the server sets the exit price when you confirm'
 export const PAPER_PLANNED_PRICE_NOTE = 'planned price, no live quote'
 /** How long Confirm stays locked after an answer of unknown outcome (the user checks the Orderbook first). */
+// FA2 item B (test lane TD O-6): a typed level printed as the list prints it ("24000" -> "24,000.00"): the one grouping of displayFormat, on the text
+export function levelShown(text) {
+  const raw = typeof text === 'string' ? text.trim() : ''
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(raw)
+  if (!m) return raw
+  const frac = m[2] === undefined ? '00' : m[2].length === 1 ? `${m[2]}0` : m[2]
+  return `${groupedIndian(String(BigInt(m[1])))}.${frac}`
+}
+// Lane FA2 #870 (ADR-017): the server's longest commit window; after it, with the lock still on, the dialog says plainly that the outcome is not known (new wording, pending owner read)
+export const EXIT_UNKNOWN_WINDOW_MS = 120000
+export const EXIT_UNKNOWN_AFTER_WINDOW_TEXT = 'Two minutes have passed and the outcome of the first exit is still not known. Open the Orderbook to see whether it was placed; no second exit is sent until the answer is known.'
+// Lane FA2 item 1 (review F3, ADR-330 (48), ADR-017): the order reply's `cancelled_stops` [{leg, contract, level}] says which stops a move cancelled.
+// New wording, pending owner read: one past-tense line per entry (the reply alone, no follow-up read), and one for a reply that cannot be read.
+export const STOP_CANCELLED_LINE = (e) => `The stop on ${e.leg}${e.level ? ` (level ${e.level})` : ''} was removed with the move; set a new one on the new leg.`
+export const STOP_REPLY_UNREADABLE_TEXT = 'The stop on the old leg may have been cancelled, and the new leg has no stop until you set one.'
+export function cancelledStopLines(list) {
+  if (!Array.isArray(list)) return [] // absent on an old reply: nothing is claimed
+  const text = (v) => (typeof v === 'string' ? v.trim() : '')
+  return list.map((e) => {
+    const leg = text(e?.leg) || text(e?.contract_text) || text(e?.contract) || 'a leg' // an entry with no readable name is still printed (never dropped silently)
+    return STOP_CANCELLED_LINE({ leg, level: text(e?.level) })
+  })
+}
 export const PAPER_UNKNOWN_HOLD_MS = 5000
 /** The dialog states after Confirm: '' (ready), 'refused', 'unknown', 'placed'. */
 export const PAPER_STATE = Object.freeze({ READY: '', REFUSED: 'refused', UNKNOWN: 'unknown', PLACED: 'placed' })
+export const KEY_IN_PROGRESS_CODE = 'STRATEGY_VALIDATION_582'
+export const KEY_UNCHECKED_CODE = 'STRATEGY_VALIDATION_583'
 /** Classify a FAILED paper-order POST (the mapped client error). Hotfix 27 Nov (ADR-016..019): 'refused' = the server itself
  *  answered 4xx (not the proxy's 408/429), so it stored nothing (one transaction or none); EVERYTHING else is 'unknown': no answer (timeout, dropped
  *  connection), a 5xx (a gateway timeout can follow a commit), a proxy 408/429, and a POST the page cancelled (superseded): the order
  *  may be stored, so Confirm is never re-armed as if it were not (a second order, ADR-017). */
 export function paperPostOutcome(e) {
   const status = Number.isInteger(e?.status) ? e.status : null
+  // Lane FJ item 1e (the server's answers of fd2): 582 = the first request with this key is still being placed: NOT a refusal (keep the lock and the key, read the book);
+  // 583 = the app could not check whether these orders were already placed: refused, nothing stored (read the book before another try); 580 / 581 are plain 409s: refused.
+  if (e?.error_code === KEY_IN_PROGRESS_CODE) return PAPER_STATE.UNKNOWN
+  if (e?.error_code === KEY_UNCHECKED_CODE) return PAPER_STATE.REFUSED
   if (status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429) return PAPER_STATE.REFUSED // 408/429 are the proxy's: not proof that nothing was stored
   return PAPER_STATE.UNKNOWN
 }
@@ -69,19 +100,6 @@ export function entryPriceFor(leg, livePriceById = {}) {
   // GC-ICLIVE-B D-15 (c): a live price that is not the plan's says so ("plan 36.45"): no re-quote is hidden
   if (typeof live === 'string' && live.trim() !== '') return { price: live.trim(), price_note: planned && planned !== live.trim() ? `plan ${planned}` : '' }
   return { price: planned, price_note: planned ? PAPER_PLANNED_PRICE_NOTE : '' }
-}
-
-/** One request key per Confirm (Lane FB2, ADR-017; the server answers a repeat of the same key with the first result and places nothing).
- *  The page never re-sends on its own: a new Confirm makes a new key, so the same key is re-sent only for the same Confirm. */
-export function newRequestId() {
-  const c = globalThis.crypto
-  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
-  if (!c || typeof c.getRandomValues !== 'function') return null // no key can be made: none is sent (the page's lock still holds)
-  const b = c.getRandomValues(new Uint8Array(16))
-  b[6] = (b[6] & 0x0f) | 0x40
-  b[8] = (b[8] & 0x3f) | 0x80
-  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
-  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
 }
 
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */

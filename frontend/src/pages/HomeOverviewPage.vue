@@ -5,8 +5,8 @@
 <script setup>
 import { builderLinkOf } from '@/lib/strategyLinks'
 import { computed, onMounted, ref } from 'vue'
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import IndexStrip from '@/components/layout/IndexStrip.vue'
 import Card from '@/components/common/Card.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -65,8 +65,8 @@ const figures = computed(() => [
   { id: 'unread', label: HOME_UNREAD_LABEL, ...unreadCell.value },
   { id: 'pnl', label: HOME_PNL_LABEL, ...pnlCell.value },
 ])
-onMounted(async () => {
-  readActive().then(takeActive, dropActive)
+async function loadHome() {
+  errorParts.value = null
   try {
     const list = noteShownDate((await api.get('/strategies')).data)?.strategies
     if (!Array.isArray(list)) throw new Error('unreadable answer') // fail closed: no state is guessed
@@ -74,7 +74,8 @@ onMounted(async () => {
   } catch (e) {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
   }
-})
+}
+onMounted(() => { readActive().then(takeActive, dropActive); loadHome() })
 </script>
 
 <template>
@@ -92,7 +93,7 @@ onMounted(async () => {
       </div>
     </dl>
 
-    <ErrorMessage v-if="state === 'error'" class="mt-4" :parts="errorParts" prefix="home-error" data-testid="home-error" />
+    <ListLoadFailed v-if="state === 'error'" class="mt-4" :parts="errorParts" prefix="home-error" data-testid="home-error" @retry="loadHome" />
 
     <Card v-else-if="state === 'new'" class="mt-4" data-testid="home-new">
       <!-- HOME-NEW leaves this slot empty: `Welcome, [Name]` and the Pro-trial line need the signed-in user (row #433, stage 5). -->

@@ -21,6 +21,8 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { fetchSavedDraft, plainName } from '@/lib/saveDraft'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { LIVE_WAIT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
+import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
+import { dropOrderKey, newRequestKey, orderKeyFor } from '@/lib/unknownLocks'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
@@ -117,13 +119,19 @@ async function prepare(action) {
   phase.value = 'executing'
   errorParts.value = null
   const mine = guard.next('execute')
+  // Group A R3: ONE key per user action (this press of this button for this saved revision): the same press repeated after an unknown outcome (also after a reload) sends the SAME key;
+  // a decided answer (a reply, or a 4xx refusal) frees it, so the next press is a new action with a new key. Same rule as every order page (lib/unknownLocks.js orderKeyFor).
+  const keyId = `execute:${strategyId.value}`
+  const key = orderKeyFor(keyId, JSON.stringify({ action, revision }), newRequestKey())
   try {
-    const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action, revision, seq: mine.seq }, { signal: mine.signal })).data
+    const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action, revision, seq: mine.seq, ...(key ? { client_request_id: key } : {}) }, { signal: mine.signal })).data
+    dropOrderKey(keyId) // the server answered: the action is over
     if (!guard.claim('execute', data, mine)) return // an older reply is dropped and logged, never shown
     if (!basketFields(data)) throw new Error('unreadable basket') // fail closed: no form for a reply we cannot read
     reply.value = data
     phase.value = 'prepared'
   } catch (e) {
+    if (!isSuperseded(e) && paperPostOutcome(e) === PAPER_STATE.REFUSED) dropOrderKey(keyId) // a 4xx the server itself answered (a cancelled or lost request keeps its key: it may have been prepared)
     if (isSuperseded(e) || !guard.isNewest('execute', mine)) return // cancelled or older: no error text, no state change
     reply.value = null // a refusal (e.g. 409 "Your plan changed") keeps no plan on screen
     errorParts.value = e?.parts ?? NEUTRAL_PARTS

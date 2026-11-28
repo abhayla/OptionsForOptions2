@@ -35,6 +35,7 @@ beforeEach(() => {
   release = null
   answers = {
     'GET /strategies': { strategies: [] },
+    'GET /market/exit-state': { closed: false, sentence: null, next_open_at: null }, // R3 join: FA2's market gate (ADR-330 (60)) asks this when the dialog opens
     'POST /strategies': { id: 70, revision: 1, name: '"Iron"' },
     'POST /paper/strategies/70/orders': () => new Promise((res) => { release = () => res({ data: BOOK_70 }) }), // a slow post
     'GET /paper/strategies/70': BOOK_70,

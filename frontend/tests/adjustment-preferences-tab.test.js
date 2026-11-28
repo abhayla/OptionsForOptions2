@@ -251,3 +251,27 @@ describe('Change plan values (plan-save-1127)', () => {
     expect(w.get('[data-testid=plan-stop]').text()).toContain('77')
   })
 })
+
+// Lane FC2 (R2, 28 Nov) D-TD-2 remainder / I-86: the Adjustments page, after a failed first load, says the shared sentence and has a Retry
+// that loads again (no server message = the shared line; with the server's own text its line stays and Retry sits beside it).
+describe('D-TD-2: the Adjustments page after a failed load', () => {
+  const page = async () => {
+    const w = mount(AdjustmentsPage, { global: { provide: { [routeLocationKey]: { query: {} } } } })
+    await flushPromises()
+    return w
+  }
+  it('no message from the server: the shared sentence and Retry; Retry loads the page', async () => {
+    answers['GET /playbooks/labels'] = {}
+    answers['GET /playbooks/types'] = new Error('Network Error') // an Error with no server text
+    const w = await page()
+    expect(w.get('[data-testid="pb-load-error"]').text()).toBe('Could not load this list. Nothing was changed.')
+    expect(w.find('[data-testid="pb-refusal"]').exists()).toBe(false) // never the raw "Network Error"
+    const before = calls.filter((c) => c[1] === '/playbooks/types').length
+    answers['GET /playbooks/types'] = { types: [{ key: 'iron_condor', label: 'Iron condor' }] }
+    answers['GET /playbooks'] = { playbooks: [] }
+    await w.get('[data-testid="pb-load-retry"]').trigger('click')
+    await flushPromises()
+    expect(calls.filter((c) => c[1] === '/playbooks/types').length).toBe(before + 1)
+    expect(w.find('[data-testid="pb-load-error"]').exists()).toBe(false)
+  })
+})

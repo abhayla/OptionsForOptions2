@@ -151,6 +151,9 @@ export const ADD_UNKNOWN_TEXT = 'The last paper order got no answer and may be s
 // longer than this after the client gave up (90 s worst case + 30 s margin). A browser timer is still a guess: the real fix is an idempotency key or a
 // server deadline (For the owner lane in RESULTS-lane-fb.md). A book that MOVED decides at once.
 export const UNKNOWN_EXIT_WINDOW_MS = 120000
+// Lane FJ (R3, item 1): the one rule of every page: a book read that shows the trade UNCHANGED decides "not stored" only when that read was SENT more than this after the
+// client gave up (the server's window plus 10 s, so no read that left inside the window can decide it, however late its answer comes). A book that MOVED decides at once.
+export const UNKNOWN_EXIT_READ_AFTER_MS = 130000
 
 // UX-AF1 (27 Nov PC test, B-P3): during "Updating the numbers..." the closed-market banner read "Prices are from ... 15:35:41" (the index's last tick) and
 // 10 s later "... 15:30:00" (the server's close sentence). Two sources, two times. While an answer is out the banner keeps the last SETTLED one; with none

@@ -140,7 +140,7 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     expect(posts()).toEqual([]) // live alone calls nothing
     await w.get('[data-testid="prepare-entry"]').trigger('click')
     await flushPromises()
-    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY', revision: REVISION, seq: 1 }]])
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY', revision: REVISION, seq: 1, client_request_id: expect.any(String) }]])
     const row = w.get('[data-testid="execute-order"]').findAll('td').map((c) => c.text())
     expect(row).toEqual(['BUY', '65', 'NIFTY26O1923650CE', 'LIMIT', '3.35', 'OFS1V1L0'])
     expect(text(w, 'cost-net-premium')).toBe('-217.75')
@@ -178,7 +178,7 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     await flushPromises()
     await w.get('[data-testid="prepare-exit"]').trigger('click')
     await flushPromises()
-    expect(posts()).toEqual([['/strategies/1/execute', { action: 'EXIT', revision: REVISION, seq: 1 }]])
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'EXIT', revision: REVISION, seq: 1, client_request_id: expect.any(String) }]])
     expect(text(w, 'execute-error-what')).toBe(REFUSAL.what_happened)
     expect(text(w, 'execute-error-next')).toBe(REFUSAL.next_action)
     expect(w.find('[data-testid="basket-form"]').exists()).toBe(false)
@@ -191,7 +191,7 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     await flushPromises()
     await w.get('[data-testid="prepare-entry"]').trigger('click')
     await flushPromises()
-    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY', revision: REVISION, seq: 1 }]])
+    expect(posts()).toEqual([['/strategies/1/execute', { action: 'ENTRY', revision: REVISION, seq: 1, client_request_id: expect.any(String) }]])
     expect(calls.filter(([m, u]) => m === 'GET' && u === '/strategies/1')).toHaveLength(2) // the one re-read after the 409
     expect(text(w, 'execute-error-what')).toBe(PLAN_CHANGED.what_happened)
     expect(text(w, 'execute-error-impact')).toBe(PLAN_CHANGED.impact)
@@ -215,7 +215,7 @@ describe('AC-1: live first, then the exact orders and cost, then Kite only on th
     expect(w.find('[data-testid="execute-orders"]').exists()).toBe(false)
     await w.get('[data-testid="prepare-entry"]').trigger('click')
     await flushPromises()
-    expect(posts().map(([, b]) => b)).toEqual([{ action: 'ENTRY', revision: REVISION, seq: 1 }, { action: 'ENTRY', revision: REVISION + 1, seq: 2 }])
+    expect(posts().map(([, b]) => b)).toEqual([{ action: 'ENTRY', revision: REVISION, seq: 1, client_request_id: expect.any(String) }, { action: 'ENTRY', revision: REVISION + 1, seq: 2, client_request_id: expect.any(String) }])
     expect(w.find('[data-testid="execute-orders"]').exists()).toBe(true)
   })
 

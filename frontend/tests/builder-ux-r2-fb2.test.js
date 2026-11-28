@@ -3,6 +3,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
+import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import { UPDATING_NUMBERS_TEXT } from '@/lib/sharedStateText'
 import SummaryCards from '@/components/strategy/SummaryCards.vue'
@@ -95,7 +96,8 @@ describe('UX-C3 (Open in Builder): the Plan watch line waits until the outcome i
     expect(t(w, 'state-loading').exists()).toBe(true)
     expect(w.text()).toContain('Working out the outcome...')
     expect(w.text()).not.toContain('Loading the rule check...')
-    expect(t(w, 'plan-watch-host').attributes('data-outcome-loading')).toBe('true') // the host hides the box's own loading line (style) until the outcome is in
+    expect(w.findComponent(PlanWatch).props('outcomeLoading')).toBe(true) // Lane FJ r3: the box is told (no CSS rule); it prints no loading line until the outcome is in
+    expect(t(w, 'plan-watch-loading').exists()).toBe(false)
   })
 })
 

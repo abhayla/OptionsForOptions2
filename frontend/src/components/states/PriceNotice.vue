@@ -6,7 +6,7 @@
 <script setup>
 import { computed } from 'vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
-import { notLiveNotice, priceNow } from '@/lib/priceState'
+import { notLiveNotice, priceNoticeUp, priceNow } from '@/lib/priceState'
 
 const props = defineProps({
   answer: { type: Object, default: null }, // the page's index answer (GET /market/indices or its socket)
@@ -17,12 +17,9 @@ const props = defineProps({
   affected: { type: Number, default: null },
 })
 const now = computed(() => priceNow({ reply: props.reply, answer: props.answer, pageState: props.reply ? props.pageState : 'loading', reconnecting: props.reconnecting }))
-const notLive = computed(() => {
-  if (now.value.kind === 'last_close') return null
-  const down = now.value.kind === 'stale' || (!!props.answer && props.answer.state !== 'LIVE')
-  if (!down || (props.affected !== null && props.affected < 2)) return null
-  return { text: notLiveNotice(now.value.at ?? props.answer?.last_price_at ?? null) }
-})
+// the ONE rule (lib/priceState priceNoticeUp) decides whether the notice speaks; this component only words it
+const up = computed(() => priceNoticeUp(props.answer, props.affected, { reply: props.reply, pageState: props.pageState, reconnecting: props.reconnecting }))
+const notLive = computed(() => (up.value && now.value.kind !== 'last_close' ? { text: notLiveNotice(now.value.at ?? props.answer?.last_price_at ?? null) } : null))
 </script>
 
 <template>

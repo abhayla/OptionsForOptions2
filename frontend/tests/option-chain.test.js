@@ -591,3 +591,45 @@ describe('Option Chain limits come from GET /api/settings (REQ-167 AC-5)', () =>
     }
   })
 })
+
+// Lane FC2 (R2, 28 Nov) ADR-330 (61): the contract-list line the server sends on the expiries answer (`list_notice`) is shown on the chain too.
+describe('ADR-330 (61): the contract-list line on the Option Chain', () => {
+  const LINE = "Contract list of 27 Nov 2026. Today's list loads at about 08:35."
+  const withNotice = (value) => {
+    restAnswer = (url) => {
+      if (url === '/settings') return Promise.resolve(settingsAnswer())
+      if (url.startsWith('/catalogue/')) return Promise.resolve({ data: { underlying: 'NIFTY', expiries: [EXPIRY], ...(value === undefined ? {} : { list_notice: value }) } })
+      return Promise.reject(new Error('down'))
+    }
+  }
+  it('shows the server line as sent while yesterday\'s list is in use', async () => {
+    withNotice(LINE)
+    const w = await mountPage()
+    expect(w.get('[data-testid="contract-list-notice"]').text()).toBe(LINE)
+  })
+  it.each([[null], [undefined], [''], [42]])('shows nothing when the field is %s', async (v) => {
+    withNotice(v)
+    const w = await mountPage()
+    expect(w.find('[data-testid="contract-list-notice"]').exists()).toBe(false)
+  })
+})
+
+// Lane FC2 (R2, 28 Nov) D-TD-2 / I-86: a failed expiries read has a Retry that asks again (the chain's own sentence stays).
+describe('D-TD-2: the Option Chain after a failed expiries read', () => {
+  it('shows its sentence and a Retry; Retry asks again and the expiry list comes back', async () => {
+    let down = true
+    restAnswer = (url) => {
+      if (url === '/settings') return Promise.resolve(settingsAnswer())
+      if (url.startsWith('/catalogue/')) return down ? Promise.reject(new Error('down')) : Promise.resolve({ data: { underlying: 'NIFTY', expiries: [EXPIRY] } })
+      return Promise.reject(new Error('down'))
+    }
+    const w = await mountPage()
+    expect(w.get('[data-testid="catalogue-unreadable"]').text()).toBe('The expiries could not be read, so no chain is shown.')
+    const before = reads.filter((r) => r.url.startsWith('/catalogue/')).length
+    down = false
+    await w.get('[data-testid="catalogue-retry"]').trigger('click')
+    await flushPromises()
+    expect(reads.filter((r) => r.url.startsWith('/catalogue/')).length).toBe(before + 1)
+    expect(w.find('[data-testid="catalogue-unreadable"]').exists()).toBe(false)
+  })
+})

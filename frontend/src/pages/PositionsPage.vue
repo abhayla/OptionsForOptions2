@@ -8,10 +8,10 @@
      to the strategy's Execute screen where Check is. Both Positions menu items show this same strategy-grouped page.
      New file, copy from: none. -->
 <script setup>
-import { computed, onMounted, ref, watch } from 'vue'
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS, hasShape } from '@/services/api'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import PriceNotice from '@/components/states/PriceNotice.vue'
 import { readAnswer } from '@/composables/useIndexLive'
@@ -20,6 +20,7 @@ import PositionsTotals from '@/components/positions/PositionsTotals.vue'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PlanDoor from '@/components/strategy/PlanDoor.vue'
 import { istTime } from '@/lib/displayFormat'
+import { priceNoticeUp } from '@/lib/priceState'
 import { PAPER_NO_FIGURE as NO_FIGURE } from '@/lib/paperList'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 import { useOrderPath } from '@/lib/orderPath'
@@ -61,11 +62,17 @@ const realEmpty = computed(() => !!result.value && !result.value.strategies.leng
 const realState = computed(() => {
   if (loading.value) return 'loading'
   if (errorParts.value) return notConnected.value ? 'not_connected' : 'read_failed'
+  if (brokerOff.value) return 'not_connected'
   return realEmpty.value ? 'empty' : 'connected'
 })
+// fd2: no Zerodha session is a 200 with broker_connected:false (real_pnl.state "not_connected" and its reason); only exactly false counts, so an old reply is unchanged
+const brokerOff = computed(() => result.value?.broker_connected === false)
+const NOT_CONNECTED_LINE = 'No broker is connected, so no real positions are shown.' // new wording, pending owner read (28 Nov 2026): used only when the server sent no reason
+const brokerOffLine = computed(() => { const r = result.value?.real_pnl?.reason; return typeof r === 'string' && r.trim() !== '' ? r : NOT_CONNECTED_LINE })
 // ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
 // shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.
 const realTotals = computed(() => {
+  if (figureOld.value && !errorParts.value) return { text: null, reason: OLD_FIGURE_TEXT, caption: null, note: null }
   if (errorParts.value) return { text: null, reason: errorParts.value.what_happened ?? null, caption: null, note: null }
   const r = result.value?.real_pnl
   if (result.value && !r) return { text: typeof result.value.pnl_text === 'string' ? result.value.pnl_text : null, legacy: true }
@@ -74,19 +81,56 @@ const realTotals = computed(() => {
 })
 // ADR-330 (56): the page's one price notice reads the index answer (market closed: the banner with the close time; feed down: the not-live line)
 const marketAnswer = ref(null)
+const noticeUp = computed(() => priceNoticeUp(marketAnswer.value, paperSummary.value?.affected || null)) // UX-A09: the list stays quiet exactly when the page notice speaks
 onMounted(async () => { marketAnswer.value = await readAnswer(false) })
-onMounted(async () => {
+// D-13 (R2 FC2): the Real part is re-read every REREAD_MS and at once when the browser loses or regains its connection. A figure
+// older than STALE_AFTER_MS (the server's own STALE_AFTER_SECONDS = 90, routes/positions.py) is hidden, so a hung read or a gone
+// session never leaves an old number on the page. Age is counted from the page's receipt of the read; no timer outlives the page.
+const REREAD_MS = 30_000
+const STALE_AFTER_MS = 90_000
+const CHECK_MS = 10_000
+const OLD_FIGURE_TEXT = 'The real P&L figure is more than 90 seconds old and is hidden until the next read.' // pending owner read
+const figureOld = ref(false)
+let lastGoodAt = 0
+let seq = 0
+async function loadReal() {
+  const mine = ++seq
   try {
     const body = (await api.get('/positions')).data
     if (!hasShape(body, ['strategies']) || !Array.isArray(body.strategies)) throw { unreadable: true } // ADR-008: an answer with no strategies list is a failed read, never an empty one
+    if (mine !== seq) return
     result.value = body
+    errorParts.value = null
+    notConnected.value = false
+    lastGoodAt = Date.now()
+    figureOld.value = false
   } catch (e) {
+    if (mine !== seq) return
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
     // fail closed: only a connection read that succeeded and says not connected is "not connected"; an unreadable one is a failed read
-    try { notConnected.value = !brokerIsConnected((await api.get('/broker/status')).data) } catch { notConnected.value = false }
+    let nc = false
+    try { nc = !brokerIsConnected((await api.get('/broker/status')).data) } catch { nc = false }
+    if (mine === seq) notConnected.value = nc
   } finally {
-    loading.value = false
+    if (mine === seq) loading.value = false
   }
+}
+let rereadTimer = null
+let checkTimer = null
+const onLinkChange = () => { loadReal() }
+onMounted(() => {
+  loadReal()
+  rereadTimer = setInterval(loadReal, REREAD_MS)
+  checkTimer = setInterval(() => { if (result.value && !errorParts.value && Date.now() - lastGoodAt > STALE_AFTER_MS) figureOld.value = true }, CHECK_MS)
+  window.addEventListener('offline', onLinkChange)
+  window.addEventListener('online', onLinkChange)
+})
+onBeforeUnmount(() => {
+  clearInterval(rereadTimer)
+  clearInterval(checkTimer)
+  window.removeEventListener('offline', onLinkChange)
+  window.removeEventListener('online', onLinkChange)
+  seq++ // an answer that arrives after the page is left is dropped
 })
 </script>
 
@@ -105,7 +149,8 @@ onMounted(async () => {
     </div>
     <div v-if="filter !== 'paper'" :data-state="realState" data-testid="real-state">
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
-    <ErrorMessage v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" />
+    <ListLoadFailed v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" @retry="loadReal" />
+    <p v-else-if="brokerOff" class="text-sm text-ink-muted" data-testid="positions-not-connected">{{ brokerOffLine }}</p>
     <div v-else-if="result" class="grid gap-4 text-sm">
       <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3">
         <p class="text-ink-muted">Read from Zerodha at <span class="num font-medium text-ink" data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>
@@ -165,7 +210,7 @@ onMounted(async () => {
       </section>
     </div>
     </div>
-    <PaperStrategies v-show="filter !== 'real'" headline-above data-testid="positions-paper" @summary="paperSummary = $event" />
+    <PaperStrategies v-show="filter !== 'real'" headline-above :notice-up="noticeUp" data-testid="positions-paper" @summary="paperSummary = $event" />
     </div>
   </section>
 </template>

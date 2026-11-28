@@ -4,6 +4,7 @@
      answer. The alert only informs and asks: it never exits by itself. History = the answered rows (GET /alerts/answered) plus D-22 /
      D-71 every fired stop and every expiry settlement (GET /paper/alerts/records). Notification settings stays an honest empty state. -->
 <script setup>
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import { KIND_UNREAD_LINE, isPaperKind } from '@/lib/positionKind'
 import PageHeader from '@/components/common/PageHeader.vue'
 import EmptyState from '@/components/states/EmptyState.vue'
@@ -85,7 +86,7 @@ async function answer(a, code) {
   if (code === exitCode && isPaperKind(a)) { exitFor.value = null; await nextTick(); exitFor.value = String(a.strategy_id) }
 }
 
-onMounted(async () => {
+async function loadTab() {
   if (isRecords.value) { await Promise.all([loadAlertHistory(), loadPaperRecords()]); return }
   if (!isActive.value) return
   try {
@@ -93,7 +94,8 @@ onMounted(async () => {
   } catch (e) {
     dropActive(e)
   }
-})
+}
+onMounted(loadTab)
 </script>
 
 <template>
@@ -102,7 +104,7 @@ onMounted(async () => {
     <PageHeader parent="Alerts" :title="route.meta.title" />
     <template v-if="isRecords">
       <h2 class="mb-2 text-sm font-semibold text-ink-muted" data-testid="alerts-answered-heading">Answered alerts</h2>
-      <ErrorMessage v-if="alertHistory.parts" :parts="alertHistory.parts" compact prefix="answered-error" />
+      <ListLoadFailed v-if="alertHistory.parts" :parts="alertHistory.parts" compact prefix="answered-error" @retry="loadTab" />
       <p v-else-if="alertHistory.loaded && !alertHistory.items.length && paperRecords.records.length" class="mb-4 text-sm text-ink-muted" data-testid="answered-none">No answered alerts yet.</p>
       <ul v-else-if="alertHistory.items.length" class="mb-4 divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-answered">
         <li v-for="h in alertHistory.items" :key="`h${h.id}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="answered-row">
@@ -113,7 +115,7 @@ onMounted(async () => {
         </li>
       </ul>
       <h2 class="mb-2 text-sm font-semibold text-ink-muted" data-testid="alerts-records-heading">Stops and expiry settlements</h2>
-      <ErrorMessage v-if="paperRecords.parts" :parts="paperRecords.parts" compact prefix="records-error" />
+      <ListLoadFailed v-if="paperRecords.parts" :parts="paperRecords.parts" compact prefix="records-error" @retry="loadTab" />
       <ul v-else-if="paperRecords.records.length" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-records">
         <li v-for="(r, n) in paperRecords.records" :key="`${r.kind}${n}`" class="px-4 py-3 hover:bg-surface-muted" data-testid="record-row">
           <p class="font-medium" data-testid="record-title">{{ r.title }}</p>
@@ -121,10 +123,11 @@ onMounted(async () => {
           <p class="mt-1 text-sm" data-testid="record-body">{{ alertBody({ title: r.title, body: r.body }) }}</p>
         </li>
       </ul>
-      <EmptyState v-if="!alertHistory.items.length && !alertHistory.parts && !paperRecords.records.length && !paperRecords.parts" :message="line" icon="bell" data-testid="alerts-empty" />
+      <p v-if="!alertHistory.loaded || !paperRecords.loaded" class="text-sm text-ink-muted" data-testid="alerts-loading">Loading...</p>
+      <EmptyState v-else-if="!alertHistory.items.length && !alertHistory.parts && !paperRecords.records.length && !paperRecords.parts" :message="line" icon="bell" data-testid="alerts-empty" />
     </template>
     <template v-else-if="isActive && activeAlerts.parts">
-      <ErrorMessage :parts="activeAlerts.parts" compact prefix="alerts-error" />
+      <ListLoadFailed :parts="activeAlerts.parts" compact prefix="alerts-error" @retry="loadTab" />
     </template>
     <ul v-else-if="isActive && activeAlerts.alerts.length" class="divide-y divide-line overflow-hidden rounded-lg border border-line bg-surface" data-testid="alerts-attention">
       <li v-for="a in activeAlerts.alerts" :key="a.id" class="px-4 py-3 hover:bg-surface-muted" data-testid="alert-row">

@@ -63,14 +63,14 @@ describe('I-76 Alerts > Active while the read is pending', () => {
     await flushPromises()
     expect(w.find('[data-testid="alerts-empty"]').exists()).toBe(false)
     expect(w.find('[data-testid="alerts-loading"]').exists()).toBe(false)
-    expect(w.find('[data-testid="alerts-error-what"]').exists()).toBe(true)
+    expect(w.find('[data-testid="alerts-error-error"]').exists()).toBe(true)
   })
 })
 
 // Same class on the History tab (found while reading AlertsPage.vue; not in the item list). It.fails = the test body describes
 // the right behaviour and currently FAILS in the app, so the gate stays green and flips red-to-fix when the page is repaired.
 describe('I-76 (same class) Alerts > History while its reads are pending', () => {
-  it.fails('History says loading, never "No stops or expiry settlements yet", while both reads wait', async () => {
+  it('History says loading, never "No stops or expiry settlements yet", while both reads wait', async () => {
     answers['GET /alerts/answered'] = later(6000, { items: [] })
     answers['GET /paper/alerts/records'] = later(6000, { records: [] })
     const w = await mountAt('/alerts/history')
