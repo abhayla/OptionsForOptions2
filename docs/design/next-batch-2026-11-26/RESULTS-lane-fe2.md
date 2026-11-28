@@ -1,4 +1,4 @@
-STATUS 07:00 | 1 monitor reports: Passed in cloud (core red on base, then green) | 2 nearest-leg expiry: Passed in cloud | 3 saved stop crossed in the same minute: Passed in cloud (test, no code change; mutation-checked) | 4 pause survives restart: Passed in cloud | 5 unknown-kind style: Passed in cloud (test, mutation-checked) | 6 _checked_body: Passed in cloud | 7 kind record (worker half): Passed in cloud; reader half Blocked (not my file) | 8 #878 and #879: Passed in cloud (heartbeat half of #879 Blocked: not my file) | 9 #861/#866 code: Passed in cloud; #860 Blocked (not my file); F7 decided, pinned | next push: none | blocker: none
+STATUS 07:25 | 1 monitor reports: Passed in cloud (core red on base, then green) | 2 nearest-leg expiry: Passed in cloud | 3 saved stop crossed in the same minute: Passed in cloud (test, no code change; mutation-checked) | 4 pause survives restart: Passed in cloud | 5 unknown-kind style: Passed in cloud (test, mutation-checked) | 6 _checked_body: Passed in cloud | 7 kind record (worker half): Passed in cloud; reader half Blocked (not my file) | 8 #878 and #879: Passed in cloud (heartbeat half of #879 Blocked: not my file) | 9 #861/#866 code: Passed in cloud; #860 Blocked (not my file); F7 decided, pinned | next push: none | blocker: none
 
 # Lane FE2: the stop worker's open issues, on top of Lane FE's index-exit fix
 
@@ -31,13 +31,33 @@ GREEN after the fix: trade 1 active (monitor B judges it), trade 2 `paused` / `s
 | 9 | #860, #861, #866, F7 | #861/#866: `stop_lines.EXPIRY_KIND_UNKNOWN` ("stop_expiry_kind_unknown"), mapped to the existing "days left not available" sentence (fail closed) until Lane FC3 gives it its own; the producer is `playbook_eval` / `settings_in_force` (not mine): "For the owner lane". #860: `playbook_eval.py:_t10b` (not mine): "For the owner lane". F7: pinned, not changed (see Decided). |
 
 ## Evidence
-EVIDENCE_TABLE
+| Claim | Evidence (command run this turn + result line) |
+|---|---|
+| Item 1 core red on the base, then green | `tests_app/test_monitor_reports_fe2_1128.py::test_core_two_monitors_...` on `dc25e9f`: `assert ('active', '') == ('paused', 'stale')`; after the fix: passed |
+| Every affected suite on PostgreSQL 16 + Redis 7, fresh database (`python -m pytest -c pytest-app.ini` over 23 files: the 8 new files, Lane FE's three, `test_plan_stop_worker_chain` (Lane Q3's worker cases), `test_worker_j3`, `test_paper_monitor`, `test_monitoring_state`, `test_background_cycle`, `test_background_wire_want`, `test_background_worker`, `test_spot_either_source`, `test_paper_order_door`, `test_monitoring_status_route`, `test_monitoring_pause_route`, `test_stops_choke_point`) | `296 passed, 1 failed in 592.98s`; the one failure was my own new test of the review's F3 (its second step legitimately reloaded); corrected, re-run: `tests_app/test_monitor_reports_fe2_1128.py` 13 passed. Total of the corrected set: 297 passed. |
+| Item 3 test can fail | mutation: `_plan_changed` returns False and the `_last_check` pop removed -> `assert 1 == 2`; restored -> 2 passed |
+| Item 5 test can fail | mutation `UNKNOWN_KIND_TIMING_STYLE = "monthly"` -> 1 failed; restored -> 2 passed |
+| Items 2, 4, 6, 8 red before the fix | item 2: forward asked for 28 Dec; item 4: `active` before the first check; item 6: the entry stayed; item 8: ACTIVE kept and a stamp 100 s ahead read fresh (4 failed before, all pass after) |
+| Item 9 and the stop-line pins | `python -m pytest tests/adjustment/test_stop_lines_fe2_1128.py tests_app/test_stops_choke_point.py`: 16 passed |
+| Lint ratchet | `python scripts/ruff_ratchet.py`: OK, no rule rose |
+| Pre-push check on the pushed head | `python scripts/orchestrator/prepush.py --jobs 2` on the pushed head: the TOTAL line is in the head commit's message (a result written into the file would change the commit it describes) |
 
 ## Opus review (one, whole diff, read-only; Why Opus: stop and exit paths)
-REVIEW_TABLE
+One Opus review of the whole diff against `origin/fix/r2-index-exit-watch-1128` (read-only, 7 minutes). Verdict REVISE; round 1 used; every finding dispositioned:
+| # | Finding | Disposition |
+|---|---|---|
+| F1 major (new) | a dead monitor's "watching" claim beat the live monitor's "not run" for up to 120 s after an API restart | Fixed: a claim counts only while its slot is at most `WATCH_FRESH_S` = 30 s old (monitors renew every 10 s); an older claim reads `index_exits_not_run`. Tests `test_review_f1_*` |
+| F2 major (older, kept by item 8) | a strategy whose re-list read failed stayed published ACTIVE while no longer checked | Fixed structurally: only strategies in `Worker.monitors` are published; the rest read `not_listed`. Test in `test_dropped_and_skew_fe2_1128.py` |
+| F3 major (older) | a monitor whose first load failed published an empty "watching" slot | Fixed: a monitor that has loaded nothing makes no claim (`_ever_loaded`) and retries after 5 s. Test `test_review_f3_*` |
+| F4 minor | the merged write is read-merge-write: a lost update stands up to 10 s | Not changed: Decided 1 and "To file"; a hash field per monitor removes it |
+| F5 minor | one bad slot poisoned the whole report | Fixed: a bad slot is skipped; a report with no readable slot is unreadable (`test_review_f5_*`) |
+| F6 minor | a failed restart write leaves the old answers standing until the snapshot ages out (120 s) | Not changed: the store is then down for the worker's own writes too; listed |
+| F7 minor | worker and screen read different expiries for a far-first calendar trade | Not changed (the screen is not this lane's file); the docstring that claimed otherwise is corrected; "For the owner lane" 1: land with this branch |
+| F8 minor | the 24 h key expiry turns "stopped" into "never wrote" | Not changed: the monitor starts with the API; after-hours slots are empty anyway |
+| also | the live lister was not given the kind record (only the scenario one) | Fixed: both wirings share the record |
 
 ## Decided for the owner (spec-conformant choices; the owner is asleep until 08:00 IST 28 Nov)
-1. **Item 1: merged, not "one writer".** Each monitor writes its own slot; a trade is "watched" if any fresh monitor judges it. Why: every monitor judges every armed exit, and a process without the live feed (or one that has not reloaded) must not turn a covered trade paused, nor hide a trade nobody covers. Residuals: (a) the write is read-merge-write, not atomic: two writes in the same millisecond can drop one slot; it is rewritten at the next due write (at most 10 s) and a missing slot only makes a trade read as covered by the others, never a stale "watched" for a trade nobody judges for longer than that. (b) When no monitor has EVER written a report the worker's answer stands (Lane FE's decision 3): the existing tests `test_monitoring_state.py` and the status-route tests pin "no report = worker's answer", and they are not this lane's files. Reading "no report" as not watched needs those tests changed: "For the owner lane".
+1. **Item 1: merged, not "one writer".** Each monitor writes its own slot; a trade is "watched" if a monitor that renewed its claim in the last 30 s judges it. Why: every monitor judges every armed exit, and a process without the live feed (or one that has not reloaded) must not turn a covered trade paused, nor hide a trade nobody covers. Residuals: (a) the write is read-merge-write, not atomic: two writes in the same millisecond can drop one slot; it is rewritten at the next due write (at most 10 s) and a missing slot only makes a trade read as covered by the others, never a stale "watched" for a trade nobody judges for longer than that. (b) When no monitor has EVER written a report the worker's answer stands (Lane FE's decision 3): the existing tests `test_monitoring_state.py` and the status-route tests pin "no report = worker's answer", and they are not this lane's files. Reading "no report" as not watched needs those tests changed: "For the owner lane".
 2. **Item 2: the worker uses the nearest leg; the screen still reads `legs[0]`** until the owner lane makes the screen half (below). For a trade whose legs share one expiry nothing differs. For a calendar trade listed far-leg-first the worker's forward, ATM IV and rows are now of the nearer expiry (the one the kind and the plan's stage are read for); the screen's are of the far one until the one-line change. Spec basis: ADR-330 (44), (58) (one rule for paper and real, one expiry per trade); chosen because the worker's own kind already read the nearest leg (two expiries inside one state was the defect).
 3. **Item 3: no code change.** Lane J3's fix already closes the gap; a stop saved already crossed alerts at the next cycle after the re-read (at most 10 s + 1 cycle).
 4. **Item 4: Redis, not a table.** REQ-165 AC-6 asks that a late or restarted worker never reads as current. A restart writes an empty snapshot first. No table is needed (no migration, nothing for Lane FD).
@@ -67,10 +87,10 @@ REVIEW_TABLE
 | task | model | minutes |
 |---|---|---|
 | items 1 to 9: tests first, fixes, mutation checks, RESULTS | Sonnet (this lane) | about 60 |
-| review of the whole diff (Tier A: stop and exit paths) | Opus (reviewer, read-only) | REVIEW_MIN |
+| review of the whole diff (Tier A: stop and exit paths) | Opus (reviewer, read-only) | 7 |
 
 ## PC steps (paper only)
 Market closed: pull the branch; one file at a time through `scripts/orchestrator/db_run.py` (the PC's database also serves production): `tests_app/test_monitor_reports_fe2_1128.py`, `test_worker_expiry_fe2_1128.py`, `test_worker_saved_plan_fe2_1128.py`, `test_pause_restart_fe2_1128.py`, `test_unknown_kind_style_fe2_1128.py`, `test_checked_body_fe2_1128.py`, `test_kind_cache_fe2_1128.py`, `test_dropped_and_skew_fe2_1128.py`, plus Lane FE's three files and `test_monitoring_state.py`; and `python -m pytest tests/adjustment/test_stop_lines_fe2_1128.py`; expect all pass.
 Live (market open, the API started with TWO worker processes, one paper trade with an index exit): (1) in Redis the key `ofo:feed:background:index_exits` holds two `owners` slots, both rewritten at least every 10 s; stop one API process: its slot ages out and the trade stays watched while the other judges it; stop both: the trade reads "Monitoring paused" within 2 minutes. (2) Restart the worker with a paused trade: right after the start every trade reads "Monitoring paused" (not listed), the paused one keeps its original since time, and the others read watched after their first check. (3) Exit a trade (all legs): its entry leaves `ofo:feed:background:monitoring` at the next re-read (10 s).
 
-SAFE TO CLOSE (head HEAD_SHA, what is left: the "For the owner lane" list above)
+SAFE TO CLOSE (code head 811b0ff plus this RESULTS commit; what is left: the "For the owner lane" list above)
