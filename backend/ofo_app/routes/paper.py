@@ -2141,6 +2141,25 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
         for r in rows]})
 
 
+async def _answer_after_commit(db: Any, strategy_id: int, **kwargs: Any) -> TriggersOut:
+    """Lane RA2 (Opus F-3 of Lane RA): the answer of a trigger route is built AFTER its commit. A read that fails then
+    (the list, the contracts, the book) must never report a stop that WAS stored as failed: the answer is built once more
+    on a clean transaction; if that fails too the route answers the success it is, with an empty list (the page reloads
+    the list). Nothing is stored twice either way: a repeat press is answered ``already_set``."""
+    for attempt in (1, 2):
+        try:
+            return await _triggers_out(db, strategy_id, **kwargs)
+        except Exception:  # noqa: BLE001 - the change is committed; only the reading of it failed (CancelledError is not caught)
+            _LOG.error("triggers answer of strategy %s after the commit failed (try %s)", strategy_id, attempt,
+                       exc_info=True)
+            try:
+                await db.rollback()
+            except Exception:  # noqa: BLE001 - nothing is pending after the commit; a failed rollback changes nothing
+                _LOG.error("rollback after a failed triggers answer failed", exc_info=True)
+    return TriggersOut.model_validate({"already_set": kwargs.get("already_set", False),
+                                       "already_armed": list(kwargs.get("already_armed", ())), "triggers": []})
+
+
 @router.get("/paper/strategies/{strategy_id}/triggers", response_model=TriggersOut)
 async def list_paper_triggers(strategy_id: int, db: Annotated[Any, Depends(get_db)],
                               user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
@@ -2264,7 +2283,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
         await db.rollback()
         raise
     paper_monitor.notify()
-    return await _triggers_out(db, strategy_id, already_set=not fresh, already_armed=duplicate, kind=kind)
+    return await _answer_after_commit(db, strategy_id, already_set=not fresh, already_armed=duplicate, kind=kind)
 
 
 @router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
@@ -2288,7 +2307,7 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
         await db.rollback()
         raise
     paper_monitor.notify()
-    return await _triggers_out(db, strategy_id, kind=kind)
+    return await _answer_after_commit(db, strategy_id, kind=kind)
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep", response_model=TriggersOut,
@@ -2331,7 +2350,7 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
         await db.rollback()
         raise
     paper_monitor.notify()
-    return await _triggers_out(db, strategy_id, kind=kind)
+    return await _answer_after_commit(db, strategy_id, kind=kind)
 
 
 async def _alerts_out(db: Any, user_ref: str) -> AlertsOut:
