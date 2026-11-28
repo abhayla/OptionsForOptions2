@@ -56,14 +56,14 @@ describe('#872: Confirm re-asks the market state', () => {
     await press(w)
     expect(w.emitted('confirm')).toBeUndefined()
   })
-  it('an entry-only dialog never asks and still confirms at once', async () => {
+  it('an entry-only dialog asks too (FA2 item A, ADR-330 (60) on Add to Paper): closed -> nothing is sent', async () => {
     marketAnswers = [CLOSED]
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ ...ROW, kind: 'open', price: '42.55' }] }, attachTo: document.body })
     mounted.push(w)
     await flushPromises()
     await press(w)
-    expect(asked).not.toHaveBeenCalled()
-    expect(w.emitted('confirm')).toHaveLength(1)
+    expect(asked).toHaveBeenCalled()
+    expect(w.emitted('confirm')).toBeUndefined()
   })
 
   // review F1 (Opus): a re-ask of opening A that ends after the dialog was cancelled and reopened for B must send nothing

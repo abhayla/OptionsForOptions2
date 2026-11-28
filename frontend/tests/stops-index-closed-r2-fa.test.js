@@ -52,7 +52,7 @@ describe.each([['NIFTY'], ['SENSEX']])('%s exit rule with the market closed', (u
     await t(w, 'ce-save').trigger('click')
     await flushPromises()
     expect(posts).toEqual([{ url: '/paper/strategies/48/triggers', body: { kind: 'conditional_exit', above: '26000' } }])
-    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 26000')
+    expect(t(w, 'stops-saved').text()).toBe('Saved: exit above 26,000.00')
   })
   it('a closed market with no value says the close is not available, with no digits', async () => {
     const w = await open(u, answer('NOT_CONNECTED', null))

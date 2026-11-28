@@ -6,7 +6,7 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
-import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
+import { levelShown, paperPriceOk, paperPriceReason } from '@/lib/tracking'
 import { expiryText, istClock } from '@/lib/displayFormat'
 import { PAPER_STOP_RISK_LOADING_TEXT } from '@/lib/sharedStateText'
 import { CLOSED_REFERENCE_TEXT, NOT_LIVE_LABEL, lastCloseUnavailableText, useIndexAnswer } from '@/composables/useIndexLive'
@@ -193,7 +193,7 @@ async function saveExit() {
     // D-05 r3: the line is built only from the server's answer: already_armed names the submitted levels it did NOT store
     const dupDirs = data.already_set ? ['above', 'below'] : (data.already_armed ?? [])
     const lv = [['above', body.above], ['below', body.below]].filter(([, v]) => v).map(([d, v]) => ({ d, v, dup: dupDirs.includes(d) }))
-    const line = (list) => `exit ${list.map((x) => `${x.d} ${x.v}`).join(' and ')}`
+    const line = (list) => `exit ${list.map((x) => `${x.d} ${levelShown(x.v)}`).join(' and ')}`
     const fresh = lv.filter((x) => !x.dup)
     const dups = lv.filter((x) => x.dup)
     saved.value = !dups.length ? `Saved: ${line(fresh)}` : !fresh.length ? `Already set: ${line(dups)}` : `Saved: ${line(fresh)}. Already set: ${line(dups)}`
@@ -207,7 +207,7 @@ async function saveStop(leg) {
   const s = stopOf(leg.index)
   const data = await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }), true, true)
   if (data) {
-    saved.value = `${data.already_set || data.already_armed?.length ? 'Already set' : 'Saved'}: stop ${s.direction} ${typed(s.level)}`
+    saved.value = `${data.already_set || data.already_armed?.length ? 'Already set' : 'Saved'}: stop ${s.direction} ${levelShown(typed(s.level))}`
     setStop(leg.index, { level: '' })
     showSaved((x) => x.kind === 'leg_stop' && String(x.contract_id) === String(leg.contractId) && x.direction === s.direction)
   }

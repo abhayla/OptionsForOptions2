@@ -9,6 +9,7 @@ let armed = { lines: [] }
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: { get: (url, cfg) => {
+    if (url === '/market/exit-state') return Promise.resolve({ data: { closed: false } }) // ADR-330 (60) on Add to Paper (FA2 item A)
     calls.push({ url, orders: JSON.parse(cfg.params.orders) })
     if (url.endsWith('/armed-exits')) return armed instanceof Error ? Promise.reject(armed) : Promise.resolve({ data: armed })
     return Promise.resolve({ data: { state: 'no', warning_text: null } })

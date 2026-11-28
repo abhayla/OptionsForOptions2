@@ -112,6 +112,7 @@ const props = defineProps({
   state: { type: String, default: '' },
   holdMs: { type: Number, default: PAPER_UNKNOWN_HOLD_MS },
   locked: { type: Boolean, default: false }, // Lane U r1 (ADR-016/017/019): an unknown outcome is unresolved: Confirm stays off until the page's re-read decides (never a timer)
+  lockedAtMs: { type: Number, default: 0 }, // #870 page half: when the unknown reply came (ms); the 120 s window counts from then, not from this opening. 0 = from when the lock is first seen
   firstBasket: { type: Boolean, default: false }, // GC-TRACK1 k10: offer "Held at my broker" (the strategy's first basket only)
   strategyId: { type: [Number, String], default: '' }, // GC-ICFIX Issue 10: with it, exit rows ask the server whether the exit widens the maximum loss
   note: { type: String, default: '' }, // ADR-330 (59): the page's one line about a staged change an Exit all will discard (pending owner read)
@@ -155,7 +156,7 @@ const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: un
 
 // GC-ICFIX Issue 10 (ADR-256): the screen compares nothing; it shows the server's line when `widens` is true. Fail closed: a read that fails or answers
 // something unusable shows "could not check" (exitState 'unchecked'); while it runs, 'checking'; no exit row: '' (nothing).
-// ADR-330 (60) (owner 27 Nov evening; the same dialog for the builder, Positions and Exit all; pending owner read): an Exit dialog asks the
+// ADR-330 (60) (owner 27 Nov evening; the same dialog for the builder, Positions and Exit all; pending owner read; FA2 item A: applied to Add to Paper too): the dialog asks the
 // server's ONE market-state answer when it opens. Closed: the server's sentence is shown and Confirm is off (it wins over the not-live line).
 // The answer cannot be read: Confirm stays off with MARKET_UNREADABLE_TEXT (fail closed; the server still refuses a closed-market exit, ADR-212).
 const MARKET_UNREADABLE_TEXT = 'The market status could not be read. Try again in a moment.'
@@ -169,7 +170,7 @@ const marketLine = computed(() => (marketState.value === 'closed' ? marketSenten
 const MARKET_REASK_MS = 15000
 async function askMarket(background = false) {
   const seq = ++marketSeq
-  if (!props.open || !rows.value.some((r) => r.kind === 'exit')) { marketState.value = ''; marketSentence.value = ''; return }
+  if (!props.open || !rows.value.length) { marketState.value = ''; marketSentence.value = ''; return }
   if (!background) { marketState.value = 'checking'; marketSentence.value = '' }
   try {
     const { data } = await api.get('/market/exit-state')
@@ -181,7 +182,7 @@ async function askMarket(background = false) {
 }
 let marketTimer = null
 const stopMarketTimer = () => { clearInterval(marketTimer); marketTimer = null }
-watch(() => props.open && rows.value.some((r) => r.kind === 'exit'), (on) => {
+watch(() => props.open && rows.value.length > 0, (on) => {
   stopMarketTimer()
   if (on) marketTimer = setInterval(() => { openedAtMs.value = Date.now(); askMarket(true) }, MARKET_REASK_MS) // the age line is told against the latest tick
 }, { immediate: true })
@@ -248,7 +249,10 @@ let windowTimer = null
 watch(() => props.locked, (on) => {
   clearTimeout(windowTimer)
   lockWindowOver.value = false
-  if (on) windowTimer = setTimeout(() => { lockWindowOver.value = true }, EXIT_UNKNOWN_WINDOW_MS)
+  if (!on) return
+  const left = props.lockedAtMs > 0 ? EXIT_UNKNOWN_WINDOW_MS - (Date.now() - props.lockedAtMs) : EXIT_UNKNOWN_WINDOW_MS
+  if (left <= 0) lockWindowOver.value = true
+  else windowTimer = setTimeout(() => { lockWindowOver.value = true }, left)
 }, { immediate: true })
 onBeforeUnmount(() => { clearTimeout(holdTimer); clearTimeout(windowTimer) })
 // I-18: the result line (done, refused, unknown, the page's re-read note) arrives in the pinned status slot; bring it into view
@@ -269,7 +273,7 @@ const newRequestKey = () => globalThis.crypto.randomUUID?.() ?? ([1e7] + -1e3 + 
 async function confirm() {
   if (!canConfirm.value) return
   // #872 (ADR-330 (60), ADR-212): the market may have closed while this dialog sat open: ask the server's one answer again and send only on 'open'
-  if (rows.value.some((r) => r.kind === 'exit')) {
+  if (rows.value.length > 0) {
     const mine = openSeq // review F1: the opening this press belongs to; a cancel / reopen / new list in between makes the answer late
     openedAtMs.value = Date.now() // review F3: the age line is told against the time of the press
     await askMarket()

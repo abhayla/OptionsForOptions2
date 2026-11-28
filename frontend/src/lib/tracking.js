@@ -51,6 +51,14 @@ export const PAPER_OPEN_ORDERBOOK_LABEL = 'Open Orderbook'
 export const PAPER_EXIT_PRICED_BY_SERVER_TEXT = 'the server sets the exit price when you confirm'
 export const PAPER_PLANNED_PRICE_NOTE = 'planned price, no live quote'
 /** How long Confirm stays locked after an answer of unknown outcome (the user checks the Orderbook first). */
+// FA2 item B (test lane TD O-6): a typed level printed as the list prints it ("24000" -> "24,000.00"): the one grouping of displayFormat, on the text
+export function levelShown(text) {
+  const raw = typeof text === 'string' ? text.trim() : ''
+  const m = /^(\d+)(?:\.(\d+))?$/.exec(raw)
+  if (!m) return raw
+  const frac = m[2] === undefined ? '00' : m[2].length === 1 ? `${m[2]}0` : m[2]
+  return `${groupedIndian(String(BigInt(m[1])))}.${frac}`
+}
 // Lane FA2 #870 (ADR-017): the server's longest commit window; after it, with the lock still on, the dialog says plainly that the outcome is not known (new wording, pending owner read)
 export const EXIT_UNKNOWN_WINDOW_MS = 120000
 export const EXIT_UNKNOWN_AFTER_WINDOW_TEXT = 'Two minutes have passed and the outcome of the first exit is still not known. Open the Orderbook to see whether it was placed; no second exit is sent until the answer is known.'

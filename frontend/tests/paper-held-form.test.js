@@ -10,6 +10,7 @@ vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
+    if (url === '/market/exit-state') return Promise.resolve({ data: { closed: false } }) // ADR-330 (60) on Add to Paper (FA2 item A)
     if (url === '/strategies') return Promise.resolve({ data: { strategies: [] } })
     if (url === '/paper/strategies/7/orders') return Promise.resolve({ data: { strategy_id: 7, orders: [] } })
     return Promise.reject(new Error(`unmocked ${method} ${url}`))

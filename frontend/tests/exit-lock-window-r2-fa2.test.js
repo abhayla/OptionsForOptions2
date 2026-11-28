@@ -43,4 +43,19 @@ describe('#870', () => {
     expect(w.get('[data-testid="paper-unknown"]').text()).toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
     w.unmount()
   })
+  it('page half: with `lockedAtMs` (when the unknown reply came) the window counts from then, also for a dialog opened later', async () => {
+    vi.setSystemTime(new Date('2026-11-27T10:00:00Z'))
+    const at = Date.now() - 100000 // the reply came 100 s ago; the dialog is opened now
+    const w = mountIt({ lockedAtMs: at })
+    await flushPromises()
+    await adv(19000)
+    expect(w.get('[data-testid="paper-unknown"]').text()).not.toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
+    await adv(1000)
+    expect(w.get('[data-testid="paper-unknown"]').text()).toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
+    w.unmount()
+    const old = mountIt({ lockedAtMs: Date.now() - 500000 }) // already past the window: shown at once
+    await flushPromises()
+    expect(old.get('[data-testid="paper-unknown"]').text()).toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
+    old.unmount()
+  })
 })
