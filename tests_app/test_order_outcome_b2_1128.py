@@ -1,5 +1,5 @@
 # ruff: noqa: F811 - the imported fixtures are used as test arguments
-"""Lane B2 (ADR-016 to ADR-019, ADR-330 (58); migration 0063): while a strategy has an order request whose outcome is
+"""Lane B2 (ADR-016 to ADR-019, ADR-330 (58); migration 0064): while a strategy has an order request whose outcome is
 not known, EVERY further order request for it is refused by the server, whatever its key or body; released when the
 outcome is known. Real case (Lane FJ2's Opus review, 28 Nov 18:45): the request key de-duplicated only the same key and
 body; a retry with another body (`prices_not_live_confirmed` changed) or another key (an add priced from the live tick)

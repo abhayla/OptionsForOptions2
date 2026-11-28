@@ -5328,11 +5328,11 @@
     "reviewed": "pending owner read"
   },
   "explanation:exit_market_closed_entries": {
-    "sha256": "cb620c093430045d56b59bd892087ba1be84a557fa3174f80145285a43a53fd0",
+    "sha256": "bf21caa77572fd81d2c5eec1a1a815b60d32890fec9c43586f7ca589868cc62e",
     "reviewed": "pending owner read"
   },
   "explanation:exit_market_closed_entries_no_day": {
-    "sha256": "44290e5aca386b2808968e867e4c7294571c620ff7cfdcc5e238baa63533e58a",
+    "sha256": "119daecf957d603dad7f404387cc3d31f4d57329469e362c77c29061683f26bd",
     "reviewed": "pending owner read"
   },
   "explanation:monitoring_why_exits_not_checked_yet": {
@@ -5361,6 +5361,18 @@
   },
   "explanation:paper_leg_stop_fired_unknown": {
     "sha256": "0c958480648021df01dabc602333b0fbe3eb961723abf2d035d251df27acd9d8",
+    "reviewed": "pending owner read"
+  },
+  "execution_return_changed": {
+    "sha256": "b522ed3f87786ab57d84f905b6ca4287c4f59edb034317773116b528bbac17fa",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_exit_fired_loss": {
+    "sha256": "32efced9909f2bab0edf6fb09d70144d3babf1e38797bdec1ca190154aaaad57",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_exit_fired_less_protected": {
+    "sha256": "da2aa92a23a0bbe56668ecef57b2bb0dc11c5e8c7fcc0135fb0e4c7f6f046a02",
     "reviewed": "pending owner read"
   }
 }

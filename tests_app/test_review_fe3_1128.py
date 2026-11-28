@@ -73,18 +73,22 @@ async def test_f2_a_first_load_that_fails_is_tried_again_after_five_seconds_not_
     assert len(calls) <= MOST_TRIES, len(calls)  # at 0, 5 and (at most) 10 s
 
 
-# ---- F3 (monitor half): a kinds read that swallowed its error answers "unknown" for every id -----------------------
-async def test_f3_every_kind_unknown_after_a_known_list_is_a_failed_read_not_a_new_fact(db, monkeypatch):  # noqa: F811
+# ---- F3 (monitor half), reworded by Lane RA2 item 8 ---------------------------------------------------------------
+async def test_f3_every_kind_unknown_is_a_missing_row_not_a_failed_read(db, monkeypatch):  # noqa: F811
+    """Before RA2 item 8 an answer of "unknown" for EVERY id after a first load was guessed to be a failed read. Since
+    Lane FD4 a failed read raises from ``kinds_of`` (test_kinds_unread_fe3_1128 pins that: the last watch is kept);
+    "unknown" for every id is what a missing strategy row looks like and must not blind the monitor for ever."""
     market, _stored, tid, monitor, _client, _clock = await _loaded(db, monkeypatch)
 
-    async def swallowed(_conn, ids):  # what ``kinds_of`` does today on a database error
+    async def missing(_conn, ids):
         return dict.fromkeys(ids, "unknown")
-    fail_next_read(monkeypatch, swallowed)
+    fail_next_read(monkeypatch, missing)
     monitor.notify()
     await monitor.step()
-    assert monitor.read_failures == 1 and len(monitor._exits) == 1
+    assert monitor.read_failures == 0 and monitor.book_unread_since is None
+    assert monitor.not_applicable == {tid: "unknown"} and monitor._exits == []
     market.tick(INDEX, CROSSED)
-    assert await monitor.step() == 1 and await _trigger_state(db, tid) == (True, False)
+    assert await monitor.step() == 0 and await _trigger_state(db, tid) == (False, False)
 
 
 async def test_f5_b_a_kind_that_cannot_be_read_at_the_fire_leaves_the_exit_armed(db, monkeypatch):  # noqa: F811

@@ -1,4 +1,4 @@
-"""The unknown-outcome block: ONE durable guard every order door passes (Lane B2, weekend round 3; migration 0063).
+"""The unknown-outcome block: ONE durable guard every order door passes (Lane B2, weekend round 3; migration 0064).
 
 Spec basis: ADR-016 to ADR-019 (submitted is not executed; no automatic retry; an unresolved outcome blocks the next
 execution), ADR-330 (58) (paper and real alike: the same rule, the door tag only), ADR-017 (the request key).

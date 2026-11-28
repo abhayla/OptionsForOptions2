@@ -24,7 +24,10 @@ ALERT_BODY_TEMPLATES = ("paper_alert_body_one", "paper_alert_body_one_named", "p
 STOP_LINE_TEMPLATES = (
     "paper_leg_stop_widens_loss", "paper_leg_stop_unlimited_loss", "paper_leg_stop_from_profit",
     "paper_leg_stop_unlimited_from_profit", "paper_leg_stop_to_profit", "paper_leg_stop_still_profit",
-    "paper_exit_widens_loss", "paper_exit_less_protected", "paper_exit_warning_join")
+    "paper_exit_widens_loss", "paper_exit_less_protected", "paper_exit_warning_join",
+    # Lane RA2 item 9: the lines a FIRED leg stop stores (Lane FE3 ids; the monitor passed them itself until now)
+    "paper_leg_stop_fired", "paper_leg_stop_fired_unlimited", "paper_leg_stop_fired_unknown",
+    "paper_exit_fired_loss", "paper_exit_fired_less_protected")
 
 
 def restore_alert_body(stored: str) -> ExplanationText:

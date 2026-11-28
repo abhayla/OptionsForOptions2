@@ -187,8 +187,8 @@ async def test_a_repeat_names_the_stops_the_first_request_cancelled(db, notified
 async def test_an_unknown_outcome_leaves_a_hint_and_the_durable_table_decides_the_repeat(
         db, notified, keys, monkeypatch):
     """FD2 review F7 route test, changed by B2 item 2: a request whose commit outcome is unknown never frees the Redis
-    hint, but the hint no longer refuses: the table has no row (nothing stored). The outcome block refuses a repeat inside
-    the window (590); after it the repeat places once, and a third press replays it."""
+    hint, but the hint no longer refuses: the table has no row (nothing stored). The outcome block refuses a repeat
+    inside the window (590); after it the repeat places once, and a third press replays it."""
     from ofo_app.routes import paper as route  # noqa: PLC0415
     app, stored, *_ = await _setup(db)
     _use(app, keys)

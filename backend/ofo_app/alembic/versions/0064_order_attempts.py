@@ -21,8 +21,8 @@ Changes (owner-run, one transaction; ADDITIVE: ONE new table, nothing existing c
 Old-code compatibility: additive; old code never reads or writes the table and keeps working. New code on an
 un-migrated database refuses every order request (fail closed) until the migration runs.
 
-Revision ID: 0063_order_attempts
-Revises: 0062_order_request_keys_expiry
+Revision ID: 0064_order_attempts
+Revises: 0063_basket_facts_spot_at
 """
 from __future__ import annotations
 
@@ -31,8 +31,8 @@ from pathlib import Path
 
 from alembic import op
 
-revision = "0063_order_attempts"
-down_revision = "0062_order_request_keys_expiry"
+revision = "0064_order_attempts"
+down_revision = "0063_basket_facts_spot_at"
 branch_labels = None
 depends_on = None
 
@@ -47,7 +47,7 @@ def _load(filename: str, name: str):
     return module
 
 
-_BASE = _load("0009_minute_history.py", "ofo_migration_0009_for_0063")._BASE
+_BASE = _load("0009_minute_history.py", "ofo_migration_0009_for_0064")._BASE
 
 TABLE = "public.order_attempts"
 INSERT_COLUMNS = ("user_ref", "strategy_id", "door", "state")
