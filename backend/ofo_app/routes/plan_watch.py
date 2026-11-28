@@ -112,10 +112,12 @@ async def prefetch(db: Any, strategy_ids: list[int], user_ref: str) -> BatchRead
         from ofo_app import (  # noqa: PLC0415
             plan_watch_prefetch,
         )
-        restore = plan_watch_prefetch.install(db, await plan_watch_prefetch.read_all(db, strategy_ids, user_ref))
-        orders = await paper_book.load_owned_many(db, user_ref, strategy_ids)
+        pre = await plan_watch_prefetch.read_all(db, strategy_ids, user_ref)
+        restore = plan_watch_prefetch.install(db, pre)
+        mine = [sid for sid in strategy_ids if sid in pre.data["strategies"]]  # another's id reads for itself
+        orders = await paper_book.load_owned_many(db, user_ref, mine)  # answered from memory by the installed execute
         triggers = {}
-        for sid in strategy_ids:  # answered from memory by the installed ``execute``: no query
+        for sid in mine:  # answered from memory too: no query
             rows = await paper_trigger_store.list_for(db, sid)
             triggers[sid] = [r for r in reversed(rows) if r.cancelled_at is None]
         ids = sorted({r.trigger.contract_id for rows in triggers.values() for r in rows
@@ -234,7 +236,9 @@ def _plan_lines_all(run: CheckRun, live: bool) -> list[dict]:
             continue
         fires = _fires_at(kind, lim, state)
         if lim.state == "not_checked" or fires is None:
-            lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees", "not_computable",
+            # W-30: a row that is not checked still carries its level when the evaluator has one (never a guess); the
+            # reason it is not checked travels beside it
+            lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees", "not_computable", fires=fires,
                                reason=shown.reason))
             continue
         if not live or pnl is None:
@@ -341,7 +345,7 @@ async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool,
                 identity = identity_of(found[t.contract_id])
             except (KeyError, RuntimeError):
                 lines.append(_line(f"trigger-{t.id}", "leg_stop", "armed", render_explanation(
-                    "adjust_condition_line_id", label="leg stop"), "option_price", "not_computable"))
+                    "adjust_condition_line_id", label="leg stop"), "option_price", "not_computable", fires=t.level))
                 continue
             leg = display_contract(identity)  # the app's one contract style: "NIFTY 3 Nov 22650 PE", never an ISO date
             unit, price = "option_price", marks.get((identity[1].value, identity[2]))

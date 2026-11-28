@@ -81,16 +81,17 @@ async def _batch_and_singles(ids: list[int], single_for: list[int] | None = None
 #: before any batch read; 162 with shared trigger, contract and kind reads; 136 with orders and traded contracts
 #: read once;
 #: 12 with every table of the check path read for all rows in ONE statement and the per-row statements answered from
-#: memory (``plan_watch_prefetch``): 3 request settings, 1 combined read, orders 1, contracts 2, kinds 1, the expiry
-#: kind of the first row 3 (savepoint, catalogue, release), the ADR-247 time 1. Lowered with each fix, never raised.
-BATCH_QUERY_CEILING = 12
+#: memory (``plan_watch_prefetch``), 10 with the rows' orders and position kinds in that statement too: 3 request
+#: settings, 1 combined read, contracts 2, the expiry kind of the first row 3 (savepoint, catalogue, release), the
+#: ADR-247 time 1. Lowered with each fix, never raised.
+BATCH_QUERY_CEILING = 10
 #: The owner's PC, real database link, 28 Nov (PC round 2, W-02): the API log said 11.8 s of database time over 88
 #: queries, so a query costs about 134 ms of link. A test proves cost by COUNTING work
 #: (tests/test_no_wall_clock_asserts.py): the
 #: link is modelled as this constant per query, no sleep and no clock.
 LINK_S_PER_QUERY = Decimal("0.134")
 PAGE_BUDGET_S = Decimal(2)  # the plan's target for one answer of nine strategies
-MISSING_ID_EXTRA = 5  # queries the row of one id that is not the user's may cost on its own (its refusal), measured
+MISSING_ID_EXTRA = 4  # queries the row of one id that is not the user's may cost on its own (its refusal), measured
 WRITE_AND_REREAD = 2
 
 
@@ -249,10 +250,12 @@ def test_every_statement_copy_equals_the_stores_own():
     here, so the saving is never silently lost (and never applied to a different statement)."""
     from ofo_app import (  # noqa: PLC0415
         entry_facts_store,
+        paper_book,
         paper_trigger_store,
         playbook_store,
         scenario_guard,
         strategy_pause_store,
+        strategy_store,
     )
     from ofo_app import plan_watch_prefetch as pf  # noqa: PLC0415
     from sqlalchemy import text  # noqa: PLC0415
@@ -262,7 +265,8 @@ def test_every_statement_copy_equals_the_stores_own():
         "baskets": entry_facts_store._SELECT_BASKETS, "rule_state": playbook_store._SELECT_STATE,
         "plan": playbook_store._SELECT_PLAN, "open": playbook_store._OPEN_OF_STRATEGY,
         "dismissed": playbook_store._LATEST_DISMISSED, "triggers": paper_trigger_store._FOR,
-        "adr247": playbook_store._ADR247_SAVED_AT,
+        "adr247": playbook_store._ADR247_SAVED_AT, "orders": paper_book._SELECT_OWNED_MANY,
+        "kinds": strategy_store._KINDS,
     }
     assert set(stores) == set(pf.ORIGINAL)
     for name, statement in stores.items():

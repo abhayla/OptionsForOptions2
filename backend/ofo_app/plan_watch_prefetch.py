@@ -58,6 +58,15 @@ ORIGINAL: dict[str, str] = {
                  "jsonb_array_elements(g.timeline) e WHERE e ->> 'event' = 'condition_cleared')",
     "triggers": "SELECT t.id, t.strategy_id, t.kind, t.direction, t.level, t.contract_id, t.underlying, t.created_at, "
                 "t.fired_at, t.cancelled_at FROM public.paper_triggers AS t WHERE t.strategy_id = :sid ORDER BY t.id",
+    "orders": "SELECT o.id, o.strategy_id, o.contract_id, o.side, o.quantity, o.price, o.kind, o.placed_at, "
+              "o.created_at, o.reason, o.trigger_id FROM public.paper_orders AS o "
+              "JOIN public.strategies AS s ON s.id = o.strategy_id WHERE o.strategy_id = ANY(CAST(:ids AS BIGINT[])) "
+              "AND s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY o.id",
+    "kinds": "SELECT s.id AS id, (EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) OR EXISTS "
+             "(SELECT 1 FROM public.execution_plans xp WHERE xp.strategy_id = s.id)) AS has_order, EXISTS (SELECT 1 "
+             "FROM public.paper_orders o WHERE o.strategy_id = s.id) AS has_paper_order, EXISTS (SELECT 1 FROM "
+             "public.strategy_held_entries hh WHERE hh.strategy_id = s.id) AS held FROM public.strategies AS s "
+             "WHERE s.id = ANY(:ids)",
     "adr247": "SELECT min(saved_at) FROM public.system_playbook_versions "
               "WHERE strategy_type = 'ic' AND reason = :reason",
 }
@@ -152,6 +161,19 @@ _TABLES: dict[str, Table] = {
                        "WHERE m.strategy_id = g.strategy_id AND m.rule_id = g.rule_id) AND NOT EXISTS (SELECT 1 FROM "
                        "jsonb_array_elements(g.timeline) e WHERE e ->> 'event' = 'condition_cleared')",
                        _SUGGESTION_COLS, f"{SID}, id"),
+    "orders": Table(f"o.id, o.strategy_id, o.contract_id, o.side, o.quantity, o.price, o.kind, o.placed_at, "
+                    f"o.created_at, o.reason, o.trigger_id, o.strategy_id AS {SID}",
+                    "FROM public.paper_orders AS o JOIN public.strategies AS s ON s.id = o.strategy_id "
+                    f"WHERE o.strategy_id {_ANY} AND s.user_ref = :user_ref AND s.deleted_at IS NULL",
+                    ("id", "strategy_id", "contract_id", "side", "quantity", "price", "kind", "placed_at", "created_at",
+                     "reason", "trigger_id", SID), f"{SID}, id"),
+    "kinds": Table("s.id AS id, (EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) OR EXISTS "  # noqa: S608 constant SQL
+                   "(SELECT 1 FROM public.execution_plans xp WHERE xp.strategy_id = s.id)) AS has_order, EXISTS "
+                   "(SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) AS has_paper_order, EXISTS "
+                   f"(SELECT 1 FROM public.strategy_held_entries hh WHERE hh.strategy_id = s.id) AS held, "
+                   f"s.id AS {SID}",
+                   f"FROM public.strategies AS s WHERE s.id {_ANY}",
+                   ("id", "has_order", "has_paper_order", "held", SID), SID),
     "triggers": Table("t.id, t.strategy_id, t.kind, t.direction, t.level, t.contract_id, t.underlying, t.created_at, "
                       f"t.fired_at, t.cancelled_at, t.strategy_id AS {SID}",
                       f"FROM public.paper_triggers AS t WHERE t.strategy_id {_ANY}",
@@ -176,6 +198,10 @@ def _same(rows: list[Any]) -> list[Any]:
     return rows
 
 
+def _by_id(row: Any) -> int:
+    return row.id
+
+
 @dataclass(frozen=True)
 class Match:
     """A per-row statement that can be answered: which table, its id and user parameters, how it reads the table."""
@@ -184,6 +210,8 @@ class Match:
     id_param: str
     user_param: str | None
     view: Callable[[list[Any]], list[Any]] = _same
+    many: bool = False  # ``id_param`` holds a LIST of strategy ids; the answer is their rows together
+    order_key: Callable[[Any], Any] | None = None  # the statement's ORDER BY, for the rows of several strategies
 
 
 _MATCH: dict[str, Match] = {
@@ -197,6 +225,8 @@ _MATCH: dict[str, Match] = {
     norm(ORIGINAL["open"]): Match("open", "strategy_id", "user_ref"),
     norm(ORIGINAL["dismissed"]): Match("dismissed", "strategy_id", "user_ref"),
     norm(ORIGINAL["triggers"]): Match("triggers", "sid", None),
+    norm(ORIGINAL["orders"]): Match("orders", "ids", "user_ref", many=True, order_key=_by_id),
+    norm(ORIGINAL["kinds"]): Match("kinds", "ids", None, many=True),
 }
 #: statements with no id that every row repeats: the first row's read answers the rest (the ADR-247 cut-off time)
 _ONCE = {norm(ORIGINAL["adr247"])}
@@ -258,30 +288,45 @@ async def read_all(conn: Any, ids: list[int], user_ref: str) -> Prefetch:
     return Prefetch(user_ref, data, learned=await _learn_owns())
 
 
+def _serve_many(per: dict[int, list[Any]], asked: Any, match: Match) -> Rows | None:
+    """The rows of a statement that asks for a LIST of strategies: only when every one of them was read (an id the
+    batch dropped, because it is not the user's, sends the whole statement to the database)."""
+    if not isinstance(asked, (list, tuple)) or not all(isinstance(sid, int) and sid in per for sid in asked):
+        return None
+    rows = [row for sid in asked for row in per[sid]]
+    if match.order_key is not None:
+        rows.sort(key=match.order_key)
+    return Rows(rows)
+
+
 def _once_key(key: str, params: Any) -> str:
     """The memo key of a statement with no id: its text and its parameters (another ``reason`` is another question)."""
     return f"{key}|{sorted(params.items()) if isinstance(params, dict) else params}"
+
+
+def serve_statement(pre: Prefetch, statement: Any, params: Any) -> Rows | None:
+    """The rows of ``statement`` from memory, or None when the statement, the user or an id is not one it holds."""
+    key = norm(statement)
+    if _once_key(key, params) in pre.once:
+        return Rows(pre.once[_once_key(key, params)])
+    match = _MATCH.get(key) or pre.learned.get(key)
+    if match is None or not isinstance(params, dict):
+        return None
+    if match.user_param is not None and params.get(match.user_param) != pre.user_ref:
+        return None
+    asked = params.get(match.id_param)
+    if match.many:
+        return _serve_many(pre.data.get(match.table, {}), asked, match)
+    rows = pre.data.get(match.table, {}).get(asked) if isinstance(asked, int) else None
+    return None if rows is None else Rows(match.view(rows))
 
 
 def install(db: Any, pre: Prefetch) -> Callable[[], None]:
     """Replace ``db.execute`` for the rest of this request; returns the function that puts the real one back."""
     real = db.execute
 
-    def serve(statement: Any, params: Any) -> Rows | None:
-        key = norm(statement)
-        if _once_key(key, params) in pre.once:
-            return Rows(pre.once[_once_key(key, params)])
-        match = _MATCH.get(key) or pre.learned.get(key)
-        if match is None or not isinstance(params, dict):
-            return None
-        if match.user_param is not None and params.get(match.user_param) != pre.user_ref:
-            return None
-        sid = params.get(match.id_param)
-        rows = pre.data.get(match.table, {}).get(sid) if isinstance(sid, int) else None
-        return None if rows is None else Rows(match.view(rows))
-
     async def execute(statement: Any, params: Any = None, *args: Any, **kwargs: Any) -> Any:
-        served = None if args or kwargs else serve(statement, params)
+        served = None if args or kwargs else serve_statement(pre, statement, params)
         if served is not None:
             pre.served += 1
             return served

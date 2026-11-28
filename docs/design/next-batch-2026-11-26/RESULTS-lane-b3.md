@@ -1,4 +1,4 @@
-STATUS 23:55 | PC W-02 FIX PUSHED (baa2fb8f0, TOTAL PASS) and review fixes pushed next: one batch answer of nine rows 219 -> 136 -> 12 QUERIES, the same 12 for 3 rows (the count no longer grows with rows); at the PC's 134 ms a query that is 12 x 0.134 = 1.6 s of database time, was 88 queries / 11.8 s | page asked 11 times: see 'PC round 2 W-02' | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request | blocker: send_message to @parent refused; this line is the report
+STATUS 00:20 | CLOSING PUSH pending its check: W-02 fix = ONE batch answer of nine rows 219 -> 136 -> 12 -> 10 QUERIES, the same 10 for 3 rows (the count does not grow with rows); at the owner's 134 ms a query that is 10 x 0.134 = 1.3 s of database time, was 88 queries / 11.8 s | fires_at carried by not-checked rows (W-30) | duplicate template dropped, RA2's execution_return_changed used; entries wording pinned to the build, owner question written | wave 1 merged | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request | blocker: send_message to @parent refused; this line is the report
 
 # Lane B3 results (28 Nov 2026)
 
@@ -71,11 +71,11 @@ its database is next door, so the statement counts 219 -> 136 were the wrong goa
   fails. The ownership statement is learned from `strategy_store.owns` at run time (its SQL has one home).
 - Same answer: `test_nine_rows_each_row_its_own_and_a_fixed_number_of_queries` compares every row of the batch with its
   single route and checks each row's own armed level; the read_tracked equality test is unchanged.
-- Count, MEASURED on nine strategies: 219 queries before, 12 now. `test_the_query_count_does_not_grow_with_the_number_of_rows`
-  runs 3 rows and 9 rows and requires the same count. The 12: 3 request settings, 1 combined read, orders 1, contracts 2,
-  kinds 1, the expiry kind of the first row 3 (savepoint, catalogue, release), the ADR-247 time 1.
+- Count, MEASURED on nine strategies: 219 queries before, 10 now (12 at the first push; the rows' orders and the position kinds joined the combined statement). `test_the_query_count_does_not_grow_with_the_number_of_rows`
+  runs 3 rows and 9 rows and requires the same count. The 10: 3 request settings, 1 combined read (every table, orders and kinds included), contracts 2,
+  the expiry kind of the first row 3 (savepoint, catalogue, release), the ADR-247 time 1.
 - The owner's connection, modelled (the repo forbids wall-clock asserts, tests/test_no_wall_clock_asserts.py; a test proves
-  cost by counting): 134 ms per query x 12 = 1.6 s, asserted under the plan's 2 s (`LINK_S_PER_QUERY`, `PAGE_BUDGET_S`).
+  cost by counting): 134 ms per query x 10 = 1.3 s, asserted under the plan's 2 s (`LINK_S_PER_QUERY`, `PAGE_BUDGET_S`).
   Before: 88 queries x 134 ms = 11.8 s by the owner's measure.
 - Why 11 page requests and not 9 [Likely, not run in a browser]: `frontend/src/components/strategy/PaperStrategies.vue`
   (`watch([planIds, goodReadToken], readPlanBatches)`, about lines 335 to 370) cancels the batch in flight and asks again
@@ -112,10 +112,10 @@ not taken (no browser walk in this lane yet; proof level: cloud test).
 - `exit_market_closed_entries` / `exit_market_closed_entries_no_day`: in this tree they already carry NO "The market is
   closed." prefix ("Orders can be placed from 09:15 on {day}." / "Orders can be placed when it opens."), and Lane FD4's pins
   ENTRIES_DAY / ENTRIES_NO_DAY already match them. Nothing to change; no pin or string touched.
-- Return door: new key `execute_return_changed` (STRATEGY_VALIDATION_589), the sentence true at Return: "Something changed
-  while you were at Zerodha, so nothing was recorded from this return." It never says "no order was prepared" (Lane FD5
-  review F1). The route that raises it (`routes/execute.py` `_return`, now `gate_broker_unconfirmed`) is Lane B2's: see
-  "For the owner lane". Pins added to tests/errors/template_pins.json as "pending owner read" (only my two keys).
+- Return door: my key `execute_return_changed` duplicated Lane RA2's `execution_return_changed` (same sentence, same code
+  STRATEGY_VALIDATION_589, and the route uses RA2's). DROPPED at the wave 1 merge (28 Nov 23:50); my test now holds RA2's
+  template to the same guard: it must not say "prepared" (Lane FD5 review F1). RA2's sentence passes. The two wordings of
+  the entries sentences: see "Question for the owner".
 
 ## Item 5 (I-137): deferred issues 860 to 868, 878, 879
 All eleven are built and merged on this branch by earlier lanes; nothing left to build here. Not closed on GitHub by me
@@ -194,11 +194,30 @@ start) and M3 (prefetch outside the 15 s `wait_for`) stay open, display only, li
 - The prefetch failing is never a reason to refuse a row (fail closed per row, same answers as the single route).
 
 ## Question for the owner
-none
+The Add-to-Paper dialog line shown when the market is closed was worded two ways by two lanes (28 Nov):
+- Lane FD4 / this lane's first reading (no prefix): "Orders can be placed from 09:15 on Monday 30 Nov." and "Orders can be placed when it opens."
+- Lane RA2 item 9, the wording IN THE BUILD (prefix added, pins moved with it): "The market is closed. Orders can be placed from
+  09:15 on Monday 30 Nov." and "The market is closed. Orders can be placed when it opens."
+Is the prefix printed twice on a screen? In `PaperConfirmDialog.vue` the dialog prints ONE line, the server's `entries_sentence`
+alone (`marketLine`); with the build's wording it reads "The market is closed. Orders can be placed when it opens." once. If
+that dialog shows another "The market is closed." line beside it, the prefix repeats; I could not see the rendered screen
+from the cloud. Until the owner answers, `test_the_entries_sentences_are_the_wording_in_the_build` pins the build's wording.
+
+## Found, not assigned
+- `frontend/src/components/strategy/PaperStrategies.vue` (`watch([planIds, goodReadToken], readPlanBatches)`, about lines 335 to
+  370) cancels the batch in flight each time a good positions read changes `goodReadToken`; on the owner's connection (16 to 19 s
+  an answer) the batch never finished, which fits "no planned box showed its rule rows" and 11 requests in 3 minutes. [Likely,
+  not run in a browser.] With a 1.3 s answer the race should be gone; letting an in-flight batch for the same ids finish is
+  the safer page behaviour.
+- The Opus review's minor points on `plan_watch_prefetch.py` (served rows are namedtuples without `_mapping` / `.keys()` /
+  `.scalars()`; reads are as of the request start for every row): listed above under the review, not defects today.
+- Items still outside this lane's files (see "For the owner lane"): the 3 per-request settings reads, the first row's
+  expiry-kind catalogue read, and the in-row duplicate reads of the single route (`run_check`).
 
 ## New wording for the owner to read
 - `outcome_running_not_live`: "Prices are not live" (on the answer and every leg of a running paper trade with no provider).
-- `execute_return_changed` (STRATEGY_VALIDATION_589): what happened "Something changed while you were at Zerodha, so
+- (DROPPED, 28 Nov 23:50: Lane RA2's `execution_return_changed` carries the same sentence, code 589 and is used by the route; the guard
+  "must not say no order was prepared" is kept in `test_the_return_door_changed_sentence_does_not_claim_no_order_was_prepared`.) was: what happened "Something changed while you were at Zerodha, so
   nothing was recorded from this return."; impact "Your orders at Zerodha are unchanged; the platform has not stored them as
   placed."; blocked "Recording this return."; next "Open the strategy, check the plan against your Zerodha orders, then press
   Return again."
@@ -207,6 +226,7 @@ Both are decision-support wording, pending owner read (pins marked so).
 ## New test files
 - tests_app/test_plan_watch_batch_b3_1128.py (not selected by the #241 diff: nothing to register)
 - tests_app/test_outcome_running_b3_1128.py (registered by me in PR241_SELECTION, the coordinator allowed it)
+- tests_app/test_plan_watch_fires_at_b3_1128.py (stand-ins, no database; not selected by the #241 diff)
 
 ## Models and minutes
 | task | model | minutes |
