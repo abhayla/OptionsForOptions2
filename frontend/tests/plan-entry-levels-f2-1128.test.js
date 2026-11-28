@@ -56,6 +56,11 @@ describe('the plan block prints the stop and the target', () => {
     const w = await card({ check: PAUSED }, { ...PLAN, stop: null })
     expect(txt(w, 'plan-entry-stop').text()).toBe('Stop (Rs): Rs 400.00')
   })
+  it('a plan with a percent and no rupee figure, or only the server\'s words: the figure with its percent unit (FJ2 plan-card-levels case 2, carried over)', async () => {
+    const w = await card({ check: PAUSED }, { ...PLAN, target: '50.00', stop: '25.00', target_rupees: null, stop_rupees: null, target_words: '', stop_words: '' })
+    expect(txt(w, 'plan-entry-target').text()).toBe('Target: 50.00 %')
+    expect(txt(w, 'plan-entry-stop').text()).toBe('Stop: 25.00 %')
+  })
   it('check still loading or failed: the plan\'s levels are saved facts and still show; no plan: nothing', async () => {
     const w = await card({ check: null, checkStatus: 'failed' })
     expect(txt(w, 'plan-entry-stop').exists()).toBe(true)
