@@ -1,4 +1,4 @@
-STATUS 12:10 | item 1: done (all files green alone on a fresh database; 1 test edited) | next push: item 2 | blocker: none
+STATUS 13:05 | N1 built (sha in the push message), item 1 done | next: Opus review of N1, then item 2 | blocker: none
 
 # RESULTS Lane FD5 (backend leftovers of FD3, FD4, FR; every database test)
 
@@ -26,4 +26,30 @@ Run on the merged branch before any change (Core proof): 13 of the 15 files gree
 | test_route_latency_budget | `test_single_route_budget` | ENVIRONMENT: a wall-clock bound (200 ms warm) failed once on the first, cold run in the fresh container; green on two later runs | left as is (timing, 4-core container) |
 | test_pool_not_held_across_market_wait | `test_thread_executor_stalled_by_broker_reads_does_not_slow_health_or_the_paper_read` | INTERMITTENT, environment: failed on the first (cold) run of the file, passed on 8 later runs (6 whole-file, 2 alone). Its only bound is `/health` within 0.5 s while 20 plan-watch requests (about 100 ms CPU each) run on a 4-core box | not changed; failure message not captured in full (tail only) |
 
-SAFE TO CLOSE: not yet (queue items 2 to 4 follow).
+## N1 (coordinator, second Opus review of round 2): no paper order on a real position
+Core: red first (4 of 5 new tests failed: an `open`/`add` was stored on a sent basket, 201). Fix, in the one door every
+paper order passes: `paper_store.place` (all user kinds; `stop` and `settle` are the server's and pass) asks
+`strategy_store.paper_order_refused`: an unreadable kind refuses; a real position with NO held entry (a basket sent, no
+paper order) refuses every kind, so an order can never turn its kind from real to paper; a held entry refuses only an
+`exit`. `paper_limit.refuse_real_position` (was `refuse_real_exit`, alias kept) calls the same function earlier.
+Tests (tests_app/test_exit_door_real_fd3.py, 5): held add and exit, the store's open on a sent basket (kind stays
+real), the order route 409 with the real sentence, unknown refuses, paper/none/settle still place.
+Regression: every tests_app file that touches the paper store (89 files, each alone) was run: 2 red, both explained
+below, fixed.
+- test_held_entry `test_exit_and_add_orders_on_a_held_condor...` was already red on FD3's head (the I-158 exit refusal):
+  the test expected an exit on a held condor to be stored. ADR-330 (64) says no exit; test now expects 409 for the exit
+  and still records the add.
+- test_held_tracking k13 closed a held condor with `exit` orders through the store; now closes with `settle` (the
+  server's kind).
+
+## Decided for the owner
+- Held condor (ADR-292 (4)): `add` and `open` stay recordable (kind stays real, held row decides); only `exit` is
+  refused (ADR-330 (64)). Reason: the one way the app learns a broker change is the paper forms.
+
+## Question for the owner
+- A clash: ADR-292 (4) "The user records each change with the existing paper order and exit forms" vs ADR-330 (64) "a
+  real position has no exit in the app" (and the coordinator's N1 text "every paper order action on a real position is
+  refused"). I kept add/open on a HELD condor and refused its exit (the later rule). Recommendation: keep it; if the
+  owner wants no recording at all, a held condor can never be corrected after a broker change.
+
+SAFE TO CLOSE: not yet (queue items 2 to 4 and the coordinator's round 1 items follow).

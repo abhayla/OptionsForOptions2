@@ -9,7 +9,6 @@ The saved strategy is test_strategy_store's iron condor (65 units a leg, expiry 
 from __future__ import annotations
 
 import datetime
-from decimal import Decimal as D
 from http import HTTPStatus
 
 import pytest
@@ -251,7 +250,10 @@ async def test_an_add_order_with_a_held_block_is_422(db):
 
 
 # ---- GC-TRACK1 k09: broker changes are recorded with the existing exit and add forms (no new code) ----
-async def test_exit_and_add_orders_on_a_held_condor_move_the_figures_and_leave_the_held_row(db):
+async def test_add_orders_on_a_held_condor_move_the_figures_and_an_exit_is_refused_and_the_held_row_stays(db):
+    """GC-TRACK1 k09 (ADR-292 (4)) records a broker ADD with the paper form; ADR-330 (64) (owner 27 Nov: a real position
+    has no exit in the app, I-158) refuses the EXIT form for a held condor: 409, nothing stored (FD5 item 1: this test
+    still expected the exit to be stored and was red on FD3's head)."""
     app, stored, *_ = await _setup(db)
     assert (await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat(), "broker": "Upstox"}))
             ).status_code == HTTPStatus.CREATED
@@ -259,15 +261,11 @@ async def test_exit_and_add_orders_on_a_held_condor_move_the_figures_and_leave_t
     sold_call, bought_call = stored.saved.contract_ids[:2]
     leg = {"side": "BUY", "quantity": 65}
     out = await _post(app, stored, {"orders": [{"contract_id": sold_call, "kind": "exit", "price": "1.00", **leg}]})
-    assert out.status_code == HTTPStatus.CREATED, out.text
-    exit_price = D(out.json()["orders"][-1]["price"])  # an exit's price is the server's, as for any paper book
-    pos = {p["contract_id"]: p for p in out.json()["positions"]}[sold_call]
-    assert pos["net_quantity"] == 0
-    assert D(pos["booked"]) == (D(ENTRY_PRICES[0]) - exit_price) * 65  # sold at the entry price, bought back
+    assert out.status_code == HTTPStatus.CONFLICT, out.text
     added = await _post(app, stored, {"orders": [{"contract_id": bought_call, "kind": "add", "price": "13.00",
                                                   **leg}]})
     assert added.status_code == HTTPStatus.CREATED, added.text
     assert {p["contract_id"]: p["net_quantity"] for p in added.json()["positions"]}[bought_call] == 130  # noqa: PLR2004
     assert added.json()["orders"][-1]["price"] == "13.00"  # the typed price is the stored price
-    assert await _stored(db, stored.id) == (6, held_before)  # four legs + exit + add; the held row is unchanged
+    assert await _stored(db, stored.id) == (5, held_before)  # four legs + the add; the held row is unchanged
     assert added.json()["held"]["broker"] is not None

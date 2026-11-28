@@ -4,6 +4,7 @@ the one write both save paths use, and by the tracking exit route; nothing is st
 from __future__ import annotations
 
 import datetime
+from decimal import Decimal
 from http import HTTPStatus
 
 from ofo.marketdata.kite_provider import IST
@@ -108,3 +109,106 @@ async def test_r6_an_old_armed_stop_on_a_real_position_reads_not_applicable_neve
             assert [(t["id"], t["state"]) for t in rows] == [(tid, "not_applicable")], path
             assert rows[0]["not_applicable_text"] == REAL_SENTENCE
     assert [r.cancelled_at for r in await triggers.list_for(db, stored.id)] == [None]  # kept, not cancelled
+
+
+# --- FD5 / N1 (second Opus review of round 2; ADR-330 (64), (58)): NO paper order of any kind on a real position ----
+
+_ADD_AT = datetime.datetime(2026, 11, 27, 11, 0, tzinfo=IST)
+
+
+async def _sent_basket(db):
+    """A REAL position that is not held: a basket was sent (an execution plan) and no paper order exists."""
+    from sqlalchemy import text  # noqa: PLC0415
+    from test_strategy_tracking import _setup  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    await db.execute(text("INSERT INTO public.execution_plans (strategy_id, plan_number, action) "
+                          "VALUES (:s, 1, 'ENTRY')"), {"s": stored.id})
+    return app, stored, stored.saved.contract_ids
+
+
+async def _kind(db, stored) -> str:
+    from ofo_app import strategy_store  # noqa: PLC0415
+    return (await strategy_store.kinds_of(db, [stored.id]))[stored.id]
+
+
+async def test_n1_a_held_entry_records_an_add_and_an_open_but_refuses_an_exit_and_keeps_its_kind(db):
+    """ADR-292 (4): the user records a broker change on a held position with the paper forms; ADR-330 (64): no exit
+    (I-158, above). The kind stays real: the held row, not the order, makes it real."""
+    import pytest  # noqa: PLC0415
+    from ofo_app import paper_limit, paper_store  # noqa: PLC0415
+    from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
+    _app, stored, _ids = await _held_book(db)
+    first = (await paper_store.load(db, stored.id))[0].order
+    before = await _count(db, stored.id)
+    exit_ = paper_store.NewOrder(first.contract_id, "BUY", first.quantity, first.price, "exit", _ADD_AT)
+    with pytest.raises(StrategyRefused):
+        await paper_store.place(db, stored.user_ref, stored.id, [exit_])
+    assert await _count(db, stored.id) == before
+    add = paper_store.NewOrder(first.contract_id, first.side, first.quantity, first.price, "add", _ADD_AT)
+    await paper_store.place(db, stored.user_ref, stored.id, [add])
+    assert await _count(db, stored.id) == before + 1
+    assert await _kind(db, stored) == "real"
+    assert await paper_limit.refuse_real_position(db, stored.id, [add]) is None  # the door's own check agrees
+
+
+async def test_n1_the_store_itself_refuses_an_open_on_a_real_position_and_the_kind_stays_real(db):
+    """The structural guarantee: ``paper_store.place`` is the one door every paper order passes; a sent basket (a real
+    position with no paper order) must not become a paper position by an order."""
+    import pytest  # noqa: PLC0415
+    from ofo_app import paper_store  # noqa: PLC0415
+    from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
+    _app, stored, ids = await _sent_basket(db)
+    assert await _kind(db, stored) == "real"
+    new = paper_store.NewOrder(ids[0], "SELL", 65, Decimal("39.15"), "open", _ADD_AT)
+    with pytest.raises(StrategyRefused) as err:
+        await paper_store.place(db, stored.user_ref, stored.id, [new])
+    assert str(err.value) == "real_position_exit_refused"
+    assert await _count(db, stored.id) == 0
+    assert await _kind(db, stored) == "real"  # never flipped to paper
+
+
+async def test_n1_an_order_post_on_a_sent_basket_is_a_409_with_the_real_sentence_and_nothing_stored(db):
+    from test_paper_armed_exits import _order  # noqa: PLC0415
+    from test_paper_routes import _new  # noqa: PLC0415
+    app, stored, ids = await _sent_basket(db)
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders",
+                             json={"orders": [_order(_new(ids[0], "SELL", 65, "39.15"))]})
+    assert reply.status_code == HTTPStatus.CONFLICT, reply.text[:200]
+    assert REAL_SENTENCE in reply.json()["what_happened"] + " " + reply.json()["impact"]
+    assert await _count(db, stored.id) == 0
+    assert await _kind(db, stored) == "real"
+
+
+async def test_n1_an_unreadable_kind_refuses_every_order_kind_fail_closed(db, monkeypatch):
+    import pytest  # noqa: PLC0415
+    from ofo_app import paper_store  # noqa: PLC0415
+    from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
+    _app, stored, ids = await _book(db, max_adjustments=2)
+
+    async def unknown(_db, sids):
+        return dict.fromkeys(sids, "unknown")
+
+    monkeypatch.setattr("ofo_app.strategy_store.kinds_of", unknown)
+    before = await _count(db, stored.id)
+    new = paper_store.NewOrder(ids[0], "SELL", 65, Decimal("39.15"), "add", _ADD_AT)
+    with pytest.raises(StrategyRefused):
+        await paper_store.place(db, stored.user_ref, stored.id, [new])
+    assert await _count(db, stored.id) == before
+
+
+async def test_n1_a_paper_strategy_and_a_held_entrys_own_first_basket_still_place(db):
+    """No regression: kind ``none`` (an empty book: the held entry's first basket) and ``paper`` are allowed; the
+    server's settle kind is never refused (ADR-292 settles a held position)."""
+    from ofo_app import paper_store  # noqa: PLC0415
+    from test_strategy_tracking import _setup  # noqa: PLC0415
+    _app, stored, *_ = await _setup(db)
+    ids = stored.saved.contract_ids
+    await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
+        ids[0], "SELL", 65, Decimal("39.15"), "open", _ADD_AT)])  # kind none -> placed
+    await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
+        ids[1], "BUY", 65, Decimal("12.95"), "add", _ADD_AT)])  # kind paper -> placed
+    await held_entry_store.record(db, stored.id, _ADD_AT, "Zerodha")  # now real
+    await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
+        ids[0], "BUY", 65, Decimal("0.00"), "settle", _ADD_AT)])  # a settle is the server's, never refused
+    assert await _count(db, stored.id) == 3  # noqa: PLR2004 - open, add, settle
