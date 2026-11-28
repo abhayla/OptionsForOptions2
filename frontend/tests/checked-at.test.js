@@ -82,10 +82,23 @@ describe('Checked at on the four non-normal states', () => {
     expect(t(w, 'checked-at').text()).toBe(LINE)
   })
 
-  it('error with no server time says so, never the browser time', async () => {
+  // Lane FJ r3 (PC O-C-05, UX-B13): a time that is absent or cannot be read prints no "Checked at" line ("Time not available" is never inside a sentence)
+  it('error with no server time prints no "Checked at" line, never the browser time', async () => {
     answers['POST /strategies/outcome'] = new Error('x')
     const w = await open(withDraft)
-    expect(t(w, 'checked-at').text()).toBe('Checked at Time not available')
+    expect(state(w)).toBe('error')
+    expect(t(w, 'checked-at').exists()).toBe(false)
+    expect(w.text()).not.toContain('Time not available')
+  })
+
+  it('not connected / refused with an absent or unreadable answer time print no "Checked at" line', async () => {
+    for (const [st, at] of [['NOT_CONNECTED', undefined], ['NOT_CONNECTED', 'not a time'], ['REFUSED', undefined], ['REFUSED', '2026-10-16 03:50']]) {
+      answers['POST /strategies/outcome'] = { state: st, status_label: 'x', reason: 'r', legs: [], underlying: 'NIFTY', answered_at: at }
+      const w = await open(withDraft)
+      expect(state(w)).toBe(st === 'REFUSED' ? 'refused' : 'not-connected')
+      expect(t(w, 'checked-at').exists()).toBe(false)
+      expect(w.text()).not.toContain('Time not available')
+    }
   })
 
   it('mapError takes the time from the response Date header (Thu, 16 Oct 2026 03:50:05 GMT)', () => {

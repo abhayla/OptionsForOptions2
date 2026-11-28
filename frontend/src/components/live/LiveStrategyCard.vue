@@ -15,7 +15,7 @@ import PnlLine from '@/components/live/PnlLine.vue'
 import { CARD_LEGS_AS_SAVED_TEXT, CARD_QUEUED_TEXT } from '@/lib/sharedStateText'
 import { isRunning, strategyStatusWord } from '@/lib/strategyStatus'
 import { builderLinkOf, paperExitLinkOf, paperStopsLinkOf } from '@/lib/strategyLinks'
-import { istTime, maxLine, nameFromPool } from '@/lib/displayFormat'
+import { istTime, maxLine, nameFromPool, TIME_UNAVAILABLE } from '@/lib/displayFormat'
 import { RouterLink } from 'vue-router'
 import Chip from '@/components/common/Chip.vue'
 import { PRICE_GREYED_CLASS } from '@/lib/priceState'
@@ -236,7 +236,7 @@ class="rounded border border-line bg-surface p-4" :class="greyed ? PRICE_GREYED_
       <span v-if="paused && !serverPaused" class="inline-flex items-center gap-1 text-sm text-ink-muted" data-testid="live-health-dot" data-health="unknown">
         <span class="inline-block h-2 w-2 rounded-full bg-gray-400" aria-hidden="true"></span>Health unknown
       </span>
-      <p v-if="state === 'ready' && data && !quiet" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
+      <p v-if="state === 'ready' && data && !quiet && checkedAt !== TIME_UNAVAILABLE" class="ml-auto text-xs text-ink-muted" data-testid="live-checked-at">Checked at {{ checkedAt }}</p>
     </header>
 
     <!-- D-41: the trade's P&L from the Positions page's function, in every state of the card (the page reads it once for all cards) -->

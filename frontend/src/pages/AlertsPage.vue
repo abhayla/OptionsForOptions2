@@ -16,6 +16,7 @@ import { istHm, istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { NEUTRAL_PARTS } from '@/services/api'
 import { builderLinkOf } from '@/lib/strategyLinks'
+import { STILL_LOADING_TEXT, useStillLoading } from '@/lib/useStillLoading'
 import { RECORDS_EMPTY, PAPER_ALERTS_EMPTY, activeAlerts, alertHistory, answerAlert, dropActive, loadAlertHistory, loadPaperRecords, paperRecords, readActive, takeActive } from '@/lib/paperAlerts'
 
 // U23: the title shows once; an older stored body still opens with it, so that repeat is dropped (display only)
@@ -95,6 +96,7 @@ async function loadTab() {
     dropActive(e)
   }
 }
+const stillLoading = useStillLoading(() => (isActive.value ? !activeAlerts.loaded : !alertHistory.loaded || !paperRecords.loaded))
 onMounted(loadTab)
 </script>
 
@@ -123,7 +125,7 @@ onMounted(loadTab)
           <p class="mt-1 text-sm" data-testid="record-body">{{ alertBody({ title: r.title, body: r.body }) }}</p>
         </li>
       </ul>
-      <p v-if="!alertHistory.loaded || !paperRecords.loaded" class="text-sm text-ink-muted" data-testid="alerts-loading">Loading...</p>
+      <p v-if="!alertHistory.loaded || !paperRecords.loaded" class="text-sm text-ink-muted" data-testid="alerts-loading">Loading...<span v-if="stillLoading" class="block" data-testid="alerts-still-loading">{{ STILL_LOADING_TEXT }}</span></p>
       <EmptyState v-else-if="!alertHistory.items.length && !alertHistory.parts && !paperRecords.records.length && !paperRecords.parts" :message="line" icon="bell" data-testid="alerts-empty" />
     </template>
     <template v-else-if="isActive && activeAlerts.parts">
@@ -149,7 +151,7 @@ onMounted(loadTab)
         <div v-if="answerError[a.id]" class="mt-2" data-testid="alert-answer-error"><ErrorMessage :parts="answerError[a.id]" compact prefix="alert-answer" /></div>
       </li>
     </ul>
-    <p v-else-if="isActive && !activeAlerts.loaded" class="text-sm text-ink-muted" data-testid="alerts-loading">Loading...</p>
+    <p v-else-if="isActive && !activeAlerts.loaded" class="text-sm text-ink-muted" data-testid="alerts-loading">Loading...<span v-if="stillLoading" class="block" data-testid="alerts-still-loading">{{ STILL_LOADING_TEXT }}</span></p>
     <EmptyState v-else :message="line" icon="bell" data-testid="alerts-empty" />
     <PaperStrategies v-if="exitFor !== null" :key="exitFor" :exit-only-for="exitFor" class="mt-3" data-testid="alerts-exit-door" @exit-closed="exitFor = null" />
   </section>

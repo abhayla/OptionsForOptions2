@@ -83,7 +83,7 @@ import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import TargetBlock from '@/components/strategy/TargetBlock.vue'
 import { OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT, OPEN_LEGS_ONLY_TEXT, bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
 import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
-import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
+import { contractName, istClock, istTime, nameFromPool, TIME_UNAVAILABLE } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
 import { ORDER_PATH_OFF_SENTENCE } from '@/lib/orderPath'
 import { useCapabilities } from '@/lib/brokerCapabilities'
@@ -1595,6 +1595,8 @@ const checkedAt = computed(() => {
   }
   return istTime(state.value === 'error' ? errorAnsweredAt.value : data.value?.answered_at)
 })
+// UX-B13 (PC O-C-05): a time that is absent or cannot be read prints no "Checked at" line, like MarginLine
+const checkedAtKnown = computed(() => checkedAt.value !== TIME_UNAVAILABLE)
 const staleLegs = computed(() => (data.value?.legs ?? []).filter((l) => l.label))
 // REQ-135 AC-3: the ONE 'Prices as of' stamp, from the answer's last_price_at. A stale answer shows its data-health label in
 // place of the time; while the feed reconnects the reconnecting sentence (same helper, already on the page) is that label;
@@ -1774,7 +1776,7 @@ const leaveGuard = useLeaveBuilder({
         <div v-else-if="state === 'unpriced'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-unpriced">
           <p class="font-medium">{{ NOT_CONNECTED_LABEL }}</p>
           <p class="mt-1 text-sm text-ink-muted">No numbers are shown because not every leg has a planned entry from live market data.</p>
-          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+          <p v-if="checkedAtKnown" class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
         </div>
 
         <div v-else-if="state === 'left-out'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-left-out">
@@ -1784,13 +1786,13 @@ const leaveGuard = useLeaveBuilder({
 
         <div v-else-if="state === 'error'" class="mt-4">
           <ErrorMessage :parts="errorParts" data-testid="state-error" />
-          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+          <p v-if="checkedAtKnown" class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
         </div>
 
         <div v-else-if="state === 'not-connected'" class="mt-4 rounded border border-line bg-surface p-4" data-testid="state-not-connected">
           <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
           <p class="mt-1 text-sm text-ink-muted">No numbers are shown because there is no live market data to price this draft.</p>
-          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+          <p v-if="checkedAtKnown" class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
           <ul class="mt-2 text-sm" data-testid="draft-legs">
             <li v-for="leg in data.legs" :key="leg.instrument_id">{{ leg.action }} {{ leg.lots }} lot, <span data-testid="leg-name">{{ nameOf(leg) }}</span>, planned entry {{ leg.planned_entry_display ?? '—' }}</li>
           </ul>
@@ -1800,7 +1802,7 @@ const leaveGuard = useLeaveBuilder({
           <p class="font-medium" data-testid="status-label">{{ data.status_label }}</p>
           <p v-if="data.reason" class="mt-1 text-sm" data-testid="refused-reason">{{ data.reason }}</p>
           <p class="mt-1 text-sm text-ink-muted">No numbers are shown for this draft.</p>
-          <p class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
+          <p v-if="checkedAtKnown" class="mt-1 text-sm text-ink-muted" data-testid="checked-at">Checked at {{ checkedAt }}</p>
         </div>
 
         <!-- GC-ICFIX 21 (X-7, ADR-259): a strategy with orders and no open leg (Completed) has no tracking panel; its history stays readable. Not strategyStatus.js: a practice strategy opens from GET /paper/strategies/{id}, which carries no status. -->

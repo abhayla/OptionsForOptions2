@@ -11,6 +11,7 @@
     <!-- "Updating the numbers..." only ever sits over good rows (the mark under the table); with no good answer on screen a read in progress is "Loading" -->
     <p v-if="closed" class="text-xs text-ink-muted" data-testid="plan-watch-closed">{{ CLOSED_TEXT }}</p>
     <template v-else-if="outcomeLoading && (view === null || (view.state !== 'ok' && updating))"></template><!-- Lane FB: nothing says "loading" while the builder's own outcome is still loading -->
+    <p v-else-if="view !== null && view.state === 'not_read' && view.retrying" class="text-xs text-ink-muted" data-testid="plan-watch-updating">{{ UPDATING_TEXT }}</p><!-- FJ r3 (W-03): a not_read row is asked again by its host; until then it is "updating", never "not available" -->
     <p v-else-if="view === null || (view.state !== 'ok' && updating)" class="text-xs text-ink-muted" data-testid="plan-watch-loading">{{ LOADING_TEXT }}</p>
     <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ stale && (view.state === 'failed' || view.state === 'unavailable') ? PRICES_NOT_LIVE_TEXT : view.text }}</p>
     <template v-else>
