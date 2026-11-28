@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import json
 
 from ofo.timeutil import IST
 from ofo_app import feed_bus
@@ -50,9 +51,11 @@ def test_no_heartbeat_at_all_and_unreadable_store_are_paused():
 
 
 def test_fresh_worker_names_each_strategy_and_active_shows_no_badge():
+    live_monitor = json.dumps({"at": NOW.isoformat(), "owners": {"m": {  # coordinator item (a): no report = not watched
+        "at": NOW.isoformat(), "not_run": {}, "watching": []}}})
     fresh = {ms.key(): ms.encode([ms.Entry(1, ms.ACTIVE, "", "", NOW - datetime.timedelta(minutes=5)),
                                   ms.Entry(2, ms.PAUSED, "stale", "", NOW - datetime.timedelta(minutes=1))], NOW),
-             feed_bus.heartbeat_key(): NOW.isoformat()}
+             ms.exits_key(): live_monitor, feed_bus.heartbeat_key(): NOW.isoformat()}
     a, b = route.compose(_read(_Client(fresh), [1, 2]), [1, 2], NOW)
     assert (a.watch_state, a.badge_text, a.reason_text, a.health_text) == ("active", None, None, None)
     assert a.since_text == "Since 10:55"

@@ -73,8 +73,13 @@ async def test_a_paused_trade_is_stored_with_its_reason_why_and_since():
     assert got == {SID: Entry(SID, PAUSED, "leg_missing", "rest_stale", T0)}
 
 
+async def _monitor_reports(client, at):  # item (a): no report = not watched; a live monitor's empty report is set-up
+    await monitoring_state.ExitsPublisher(client, "m").publish([], {}, at)
+
+
 async def test_since_is_kept_while_status_and_reason_stay_and_restarts_when_either_changes():
     client = _Client()
+    await _monitor_reports(client, T0)
     pub = monitoring_state.Publisher(client)
     await pub.publish({SID: PAUSED_S}, {SID: _Status("STALE")}, {}, T0)
     await pub.publish({SID: PAUSED_S}, {SID: _Status("STALE")}, {}, T0 + 40 * SEC)
@@ -118,6 +123,7 @@ async def test_a_snapshot_that_is_missing_old_future_corrupt_or_unreadable_is_pa
         got = await monitoring_state.read_states(client, [SID], T0, heartbeat=_fresh)
         assert got == {SID: Entry(SID, PAUSED, "state_unreadable", "", None)}, name
     ok = _Client()
+    await _monitor_reports(ok, T0)
     ok.data[monitoring_state.key()] = fresh
     assert (await monitoring_state.read_states(ok, [SID], T0, heartbeat=_fresh))[SID].status == ACTIVE
     down = _Client(boom=True)
@@ -131,6 +137,7 @@ def encode_at(at):
 
 async def test_a_strategy_the_snapshot_does_not_name_is_not_listed_never_active():
     client = _Client()
+    await _monitor_reports(client, T0)
     await monitoring_state.Publisher(client).publish({SID: ACTIVE_S}, {}, {}, T0)
     got = await monitoring_state.read_states(client, [SID, 55], T0, heartbeat=_fresh)
     assert got[SID].status == ACTIVE and got[55] == Entry(55, PAUSED, "not_listed", "", None)
@@ -172,5 +179,6 @@ async def test_the_worker_publishes_a_stale_quote_with_the_quotes_own_reason(scn
 
 async def test_the_worker_publishes_a_priced_trade_as_active(scn):  # noqa: F811
     client, now, _w = await _cycle(scn, SourceReading(SourceState.FAILED), feed_spot=True)
+    await _monitor_reports(client, now)
     got = await monitoring_state.read_states(client, [SID], now, heartbeat=_fresh)
     assert got[SID] == Entry(SID, ACTIVE, "", "", now)

@@ -29,6 +29,7 @@ async def test_a_strategy_that_left_the_list_is_no_longer_published_as_watched(s
     watched = _Listed(_watched(scn))
     w = _worker(prov, watched, now, calls, want_client=client)
     await w.cycle()
+    await monitoring_state.ExitsPublisher(client, "m").publish([], {}, now[0])  # a live monitor's report exists
     assert w.status[FIRST_ID].name == "ACTIVE"
     ok = await monitoring_state.read_states(client, [FIRST_ID], now[0], heartbeat=_fresh)
     assert ok[FIRST_ID].status == ACTIVE
@@ -76,6 +77,7 @@ async def test_a_snapshot_stamped_in_the_future_is_not_a_fresh_snapshot():
 async def test_a_snapshot_a_second_ahead_is_still_fresh_and_one_119_seconds_old_too():
     client = _Client()
     now = T0
+    await monitoring_state.ExitsPublisher(client, "m").publish([], {}, now)
     for stamp in (now + SEC, now - 119 * SEC):
         client.data[monitoring_state.key()] = monitoring_state.encode([Entry(SID, ACTIVE, "", "", now)], stamp)
         got = (await monitoring_state.read_states(client, [SID], now, heartbeat=_fresh))[SID]

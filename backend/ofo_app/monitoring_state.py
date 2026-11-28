@@ -53,6 +53,7 @@ NOT_LISTED: Final = "not_listed"
 CLOCK_SKEW_S: Final = 5  # how far ahead of the reader's clock a worker's or monitor's stamp may be and still be current
 SNAPSHOT_STALE_S: Final = feed_bus.HEARTBEAT_STALE_S  # the same two minutes as the heartbeat (AC-6)
 INDEX_NOT_LIVE: Final = "index_not_live"  # the ``why`` of a trade whose index exit has no live index reading
+EXITS_NOT_CHECKED_YET: Final = "exits_not_checked_yet"  # the ``why`` when no monitor has written any report
 INDEX_EXITS_NOT_RUN: Final = "index_exits_not_run"  # the ``why`` when the monitor's own snapshot stopped
 INDEX_STALE_REASON: Final = "stale"  # the existing code and sentence (``monitoring_why_stale``); no new on-screen text
 INDEX_READING_TTL_S: Final = 120
@@ -267,8 +268,9 @@ async def _with_index_exits(client: Any, answers: dict[int, Entry], now: datetim
     except Exception as exc:  # noqa: BLE001 - a store that cannot answer cannot clear a trade with an exit
         log.warning("monitoring state: the index-exit report could not be read: %s", type(exc).__name__)
         return {i: _paused_unreadable(e) for i, e in answers.items()}
-    if raw is None:
-        return answers
+    if raw is None:  # no monitor has written a report: the exits have not been checked yet, never assumed good
+        return {i: e if e.status != ACTIVE else Entry(i, PAUSED, INDEX_STALE_REASON, EXITS_NOT_CHECKED_YET, e.since)
+                for i, e in answers.items()}
     exits = decode_exits(raw, now)
     if exits is None:  # a report we cannot read clears nothing (fail closed, as the snapshot's own rule)
         return {i: _paused_unreadable(e) for i, e in answers.items()}

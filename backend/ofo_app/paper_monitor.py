@@ -176,6 +176,7 @@ class PaperMonitor:
         self._exits_publisher: tuple[Any, monitoring_state.ExitsPublisher] | None = None
         self._dirty = True
         self._loaded_at: float | None = None
+        self.not_applicable: dict[int, str] = {}  # trigger id -> the position kind that has no stops here (told once)
         self._ever_loaded = False  # review F3: no armed exit is known until a reload has succeeded; no claim is made
         self.fires = 0
         self.failures = 0
@@ -193,7 +194,7 @@ class PaperMonitor:
         self._loaded_at = self._monotonic()
         feed = self._feed_source()
         async with self._sessions() as session:
-            armed = await triggers.armed(session)
+            armed = await self._paper_only(session, await triggers.armed(session))
             orders = await triggers.orders_of(session, sorted({a.trigger.strategy_id for a in armed}))
             open_ids = {sid: _open(o) for sid, o in orders.items()}
             ids = sorted({a.trigger.contract_id for a in armed if a.trigger.contract_id is not None}
@@ -226,6 +227,25 @@ class PaperMonitor:
             # hotfix 27 Nov (DB pool 2 on the PC): the hold's two reads use THIS session, not a second checkout
             await self._reload_hold(feed, found, session)  # AFTER the stop watch: a failed hold never unwatches a stop
         self._ever_loaded = True
+
+    async def _paper_only(self, session: Any, armed: Sequence[triggers.ArmedTrigger]) -> list[triggers.ArmedTrigger]:
+        """ADR-330 (64): stops and alerts here cover PAPER trades only; a real position has no stop in this app. An
+        armed trigger of a strategy whose position is real, or whose kind could not be read (fail closed), is never
+        evaluated or fired: it is left as it is and told once as not applicable. One read for every armed strategy."""
+        from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: the one kind rule and its reader
+        kinds = await strategy_store.kinds_of(session, sorted({a.trigger.strategy_id for a in armed}))
+        keep: list[triggers.ArmedTrigger] = []
+        for a in armed:
+            kind = kinds.get(a.trigger.strategy_id, position_kind.UNKNOWN)
+            if kind == position_kind.PAPER:
+                keep.append(a)
+            elif a.trigger.id not in self.not_applicable:
+                self.not_applicable[a.trigger.id] = kind
+                log.info("paper trigger %s of strategy %s not applicable: the position is %s (ADR-330 (64))",
+                         a.trigger.id, a.trigger.strategy_id, kind)
+        live = {a.trigger.id for a in armed}
+        self.not_applicable = {k: v for k, v in self.not_applicable.items() if k in live}
+        return keep
 
     async def _read_index_age(self) -> None:
         """The index age rule in force (the one the worker's read applies), read at most once per reload period and
