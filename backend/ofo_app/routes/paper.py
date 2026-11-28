@@ -1442,6 +1442,7 @@ async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, 
     from ofo_app.routes.adjustment import refuse_take_profit_at_loss  # noqa: PLC0415 - as above
     from ofo_app.user_preferences_store import values_for  # noqa: PLC0415 - as above
     prefs = from_values(await values_for(db, user_ref))
+    await release_connection(db)  # FD3 item 4: the offer's own build path waits on the feed and the market; no connection
     await refuse_take_profit_at_loss(approach_id, strategy_id, tracked_reader, ctx,
                                      rates if isinstance(rates, ChargeRates) else None, prefs,
                                      check.basis_in_force(None, None, None))
@@ -1544,6 +1545,7 @@ async def _place_orders(db: Any, strategy_id: int, stored: Any, body: PaperOrder
         raise StrategyRefused("paper_contract_not_tradable")
     _refuse_duplicate_legs(stored.saved.definition.underlying, body.orders, state)  # ADR-319 (3)
     if body.approach_id is not None:  # ADR-326 (1): the offer's own build path decides, before any price read
+        await release_connection(db)  # FD3 item 4: the offer's own build path waits on the feed; no connection held
         await _refuse_take_profit_at_loss(db, user_ref, strategy_id, body.approach_id, ctx, rates, tracked_reader)
     placed_at = now()
     may_act.refuse_unless_allowed(ctx, "place", placed_at)  # ADR-212: before any price read

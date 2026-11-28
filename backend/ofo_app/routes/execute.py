@@ -83,7 +83,7 @@ from ofo_app.basket_post import BasketPost
 from ofo_app.catalogue_picker import loaded_before, publish_time
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.checked_basket import checked_basket, is_checked_basket
-from ofo_app.db import get_db
+from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.execution_return import drifted
 from ofo_app.freeze_store import review_freeze_limits
@@ -350,11 +350,20 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
     return out
 
 
+async def _off_loop(req: _Request, fn: Callable[..., Any], *args: Any, **kwargs: Any) -> Any:
+    """FD3 item 4: every Zerodha wait of this door gives the pooled connection (and any row lock) back FIRST, then waits
+    off the event loop. The door's own writes come last (claim, ``record_plan``), and ``record_plan`` takes the strategy
+    lock again and re-checks what was read (an open plan, a number not above the highest, a tag taken), so releasing
+    never weakens the guard against a double order: a second press that raced past a released lock is refused there."""
+    await release_connection(req.db)
+    return await asyncio.to_thread(fn, *args, **kwargs)
+
+
 async def _reserve_number(req: _Request) -> tuple[int, list[object]]:
     """Zerodha's book first (floor + still-open refusal), then the store's number under the strategy lock. Returns the
     number and the order rows it read (W-107: the drift check reuses them, no second read)."""
     try:
-        book = await asyncio.to_thread(req.session.reads.fetch_orders)
+        book = await _off_loop(req, req.session.reads.fetch_orders)
         floor, still_open = ep.book_floor(book, req.strategy_id)
     except (KiteReadError, ValueError) as exc:
         raise _refuse(unconfirmed_template(exc)) from None
@@ -488,7 +497,7 @@ async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) ->
         names[want.instrument_id] = (f"{zerodha_exchange(entry.id.exchange_segment)}:"
                                      f"{entry.ref(ZERODHA).broker_symbol}")
     try:
-        bands = await asyncio.to_thread(req.session.reads.fetch_circuit_bands, list(names.values()))
+        bands = await _off_loop(req, req.session.reads.fetch_circuit_bands, list(names.values()))
     except KiteReadError:
         bands = {}
 
@@ -519,7 +528,7 @@ async def _basket(req: _Request, priced: ep.PricedPlan, catalogue: Any, plan_num
     if frozen.blocks:
         raise _refuse_with(frozen.blocks[0].message)
     try:
-        basket = await asyncio.to_thread(checked_basket, priced.plan, catalogue, plan_number,
+        basket = await _off_loop(req, checked_basket, priced.plan, catalogue, plan_number,
                                          margin_client=req.session.margin,
                                          freeze_check=lambda p: freeze_check(
                                              p, limits, today=today, stale_after_days=stale_days))
@@ -582,7 +591,7 @@ async def _positions(req: _Request, catalogue: Any) -> PositionsRead | None:
     """Zerodha's positions reply, read once per request; unreadable -> None (reconciliation unknown, products
     unread: both block)."""
     try:
-        reply = await asyncio.to_thread(req.session.reads.fetch_positions)
+        reply = await _off_loop(req, req.session.reads.fetch_positions)
         read = positions_from_reply(reply, ContractIndex.from_catalogue(catalogue))
     except (KiteReadError, KiteReplyError, ValueError):
         return None
@@ -617,8 +626,8 @@ async def _zerodha_margin(req: _Request, priced: ep.PricedPlan,
                           catalogue: Any) -> tuple[Decimal | None, Decimal | None]:
     orders = _margin_orders(priced, catalogue)
     try:
-        available = await asyncio.to_thread(KiteMargin.fetch_available_funds, req.session.margin)
-        basket = await asyncio.to_thread(KiteMargin.fetch_basket_margin, req.session.margin, orders)
+        available = await _off_loop(req, KiteMargin.fetch_available_funds, req.session.margin)
+        basket = await _off_loop(req, KiteMargin.fetch_basket_margin, req.session.margin, orders)
     except Exception:  # noqa: BLE001 - any failure to read Zerodha's figures is "not confirmed" (None blocks)
         return None, None
     return available, basket.required_total
