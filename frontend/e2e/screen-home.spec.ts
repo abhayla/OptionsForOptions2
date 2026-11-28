@@ -100,6 +100,11 @@ async function stubApi(page: Page, over: Partial<Pick<Stub, 'strategies' | 'pape
     if (get && pathname === '/api/strategies') return serve(route, S.strategies)
     if (get && pathname === '/api/paper/strategies') return serve(route, S.paper)
     if (get && pathname === '/api/paper/alerts') return serve(route, S.alerts)
+    // ADR-330 (3), (4): the bell and Alerts > Active read ONE route, GET /alerts/active: {count, alerts} (the server's count of unanswered actionable alerts); the reply the tests give as {unread, alerts} is served in that shape
+    if (get && pathname === '/api/alerts/active') {
+      const r = S.alerts as { json?: { unread?: number; alerts?: unknown[] } }
+      return serve(route, r.json && typeof r.json.unread === 'number' ? { ...(S.alerts as object), json: { count: r.json.unread, alerts: r.json.alerts ?? [] } } as Reply : S.alerts)
+    }
     if (get && pathname === '/api/adjustment-opportunities') return serve(route, S.opps)
     if (get && pathname === '/api/market/indices') return serve(route, S.indices)
     const one = /^\/api\/strategies\/(\d+)$/.exec(pathname)
@@ -240,10 +245,10 @@ test.describe('Home: the header bell (REQ-109 AC-8, ADR-325 (7))', () => {
     await expect(page).toHaveURL(/\/alerts\/active$/)
   })
 
-  test('BELL-4 the badge adds the open adjustment records to the unread stops (2 + 1 = 3)', async ({ page }) => {
-    // Spec basis: ADR-325 (7) / ADR-260 (the bell counts unread stops plus open adjustment records)
+  test('BELL-4 the badge is the server\'s one count of unanswered actionable alerts (3): the browser adds nothing', async ({ page }) => {
+    // Spec basis: ADR-330 (3), (4) (one read, GET /alerts/active; the bell number is its count); ADR-325 (7) replaced: the open adjustment record is already in the server's count
     const opps = { groups: [{ strategy_id: 12, strategy_name: 'Iron Condor Nov', label: 'Delta above 0.3', records: [{ id: 5, outcome: 'open', condition: 'Delta above 0.3', shown_at: T_NOW }] }] }
-    await stubApi(page, { alerts: ok({ unread: 2, alerts: [] }), opps: ok(opps) })
+    await stubApi(page, { alerts: ok({ unread: 3, alerts: [] }), opps: ok(opps) })
     await openHome(page)
     await expect(page.getByTestId('alerts-bell-count')).toHaveText('3')
     await expect(fig(page, 'unread')).toHaveText('3')
@@ -288,8 +293,8 @@ test.describe('Home: the avatar / Account & Settings menu (REQ-009 AC-8)', () =>
     // Spec basis: REQ-009 AC-8 (the avatar opens Account & Settings); ADR-313 (3)
     await page.getByTestId('avatar-menu').click()
     await page.getByTestId('account-menu-title').click()
-    await expect(page).toHaveURL(/\/settings\/subscription-billing$/)
-    await expect(title(page)).toHaveText('Subscription & Billing')
+    await expect(page).toHaveURL(/\/settings\/app-settings$/) // FJ group B (7d0310e49): /settings lands on App Settings
+    await expect(title(page)).toHaveText('Settings')
   })
 
   for (const [label, slug, heading] of items) {
@@ -438,7 +443,7 @@ test.describe('Home: the strategy list fails (fail closed, REQ-065 four-part mes
     await expect(page.getByTestId('home-has-strategies')).toHaveCount(0)
     await expect(page.getByTestId('home-actions')).toHaveCount(0)
     await expect(page.getByTestId('recent-row')).toHaveCount(0)
-    await expect(home(page).getByRole('button')).toHaveCount(0)
+    await expect(home(page).getByRole('button').filter({ hasNotText: 'Retry' })).toHaveCount(0) // D-TD-2: the one Retry of the failed list, nothing else to press
     await expect(page.getByTestId('index-strip')).toBeVisible()
     await expect(page.getByTestId('zerodha-line')).toHaveText(ZERODHA_LINE)
   }
@@ -451,6 +456,7 @@ test.describe('Home: the strategy list fails (fail closed, REQ-065 four-part mes
     await expect(page.getByTestId('home-error-impact')).toHaveText('The list is missing.')
     await expect(page.getByTestId('home-error-blocked')).toHaveText('Nothing else is blocked.')
     await expect(page.getByTestId('home-error-next')).toHaveText('Try again shortly.')
+    await expect(page.getByTestId('home-error-retry')).toBeVisible() // D-TD-2: the server's message keeps its four parts and gets a Retry below
     await expect(fig(page, 'running')).toHaveText('—')
     await expect(note(page, 'running')).toHaveText(FIGURE_FAILED)
     await NO_STATE_GUESSED(page)
@@ -819,7 +825,7 @@ test.describe('Home: the live index strip (REQ-008 AC-4, REQ-049 AC-4, REQ-072 A
     // Spec basis: REQ-049 AC-4 (a missing value carries a reason in place); REQ-114 AC-7; ADR-015
     await stubApi(page, { indices: ok(idxNotConnected()) })
     await openHome(page)
-    await expect(page.getByTestId('strip-state')).toHaveText('Index values unavailable.')
+    await expect(page.getByTestId('price-notice-text')).toHaveText('Prices are not live.') // ADR-330 (56): the page's ONE price notice says it; the strip does not repeat it (UX-A09)
     await expect(page.getByTestId('strip-NIFTY').getByTestId('strip-value')).toHaveText('Not available')
     await expect(page.getByTestId('strip-SENSEX').getByTestId('strip-value')).toHaveText('Not available')
   })
