@@ -1,0 +1,324 @@
+{
+  "_comment": "Filled coordinator state for 28 Nov 2026 evening, built by Lane CC at about 23:30 IST from the coordinator's message and docs/process/session-handover-2026-11-28-evening.md. Facts not in those sources are null or marked unknown. Schema: docstring of .claude/skills/lanes/lane_watch.py.",
+  "migrations_path": "backend/ofo_app/alembic/versions",
+  "base_branch": "fix/ic-live-test-1123",
+  "build": {
+    "branch": "integration/weekend-r3-1129",
+    "pull_request": 881
+  },
+  "items": null,
+  "lanes": [
+    {
+      "name": "B2",
+      "session_id": "session_01QaT8YG7nc63xpT4Wha4YZf",
+      "branch": "fix/r3-backend-b2-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-b2.md",
+      "owns": [
+        "backend/**",
+        "tests/**",
+        "tests_app/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-b2.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-29T01:30:00+05:30",
+      "context_note": "other routes, stores, request key, server unknown-outcome block. owns is by area only: the exact file list of the lane's brief is not in git; fill it in to turn FILE OVERLAP on. results_file name is the usual pattern, unchecked."
+    },
+    {
+      "name": "B3",
+      "session_id": "session_01QaT8YHcJsYhiQ9MTSpCUp3",
+      "branch": "fix/r3-backend-b3-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-b3.md",
+      "owns": [
+        "backend/**",
+        "tests/**",
+        "tests_app/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-b3.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-28T22:30:00+05:30",
+      "context_note": "plan-watch speed, outcome wording. owns is by area only: the exact file list of the lane's brief is not in git; fill it in to turn FILE OVERLAP on. results_file name is the usual pattern, unchecked."
+    },
+    {
+      "name": "B1b",
+      "session_id": "unknown: not in the handover table",
+      "branch": "fix/r3-backend-b1b-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-b1b.md",
+      "owns": [
+        "backend/**",
+        "tests/**",
+        "tests_app/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-b1b.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-29T01:30:00+05:30",
+      "context_note": "carries RA2/B1 leftovers; the only way leftovers-2 commits newer than dc1aeebd8 may reach the build. owns is by area only: the exact file list of the lane's brief is not in git; fill it in to turn FILE OVERLAP on. results_file name is the usual pattern, unchecked."
+    },
+    {
+      "name": "F1b",
+      "session_id": "unknown: not in the handover table",
+      "branch": "fix/r3-frontend-f1b-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-f1b.md",
+      "owns": [
+        "frontend/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-f1b.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-29T01:30:00+05:30",
+      "context_note": "frontend; F1b had no branch 83 minutes after start earlier. owns is by area only: the exact file list of the lane's brief is not in git; fill it in to turn FILE OVERLAP on. results_file name is the usual pattern, unchecked."
+    },
+    {
+      "name": "F2",
+      "session_id": "session_01QaT8YHowsRYRpSxJJrcCLJ",
+      "branch": "fix/r3-frontend-f2-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-f2.md",
+      "owns": [
+        "frontend/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-f2.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-28T22:30:00+05:30",
+      "context_note": "plan screens, Execute page. owns is by area only: the exact file list of the lane's brief is not in git; fill it in to turn FILE OVERLAP on. results_file name is the usual pattern, unchecked."
+    },
+    {
+      "name": "F3",
+      "session_id": "session_01QaT8YFYnFG8sqbkiPDAuBc",
+      "branch": "fix/r3-frontend-f3-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-f3.md",
+      "owns": [
+        "frontend/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-f3.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-28T22:30:00+05:30",
+      "context_note": "Positions, Home, list pages. owns is by area only: the exact file list of the lane's brief is not in git; fill it in to turn FILE OVERLAP on. results_file name is the usual pattern, unchecked."
+    },
+    {
+      "name": "T",
+      "session_id": "session_01QaT8YGrRAPFNpXkAat7khm",
+      "branch": "test/r3-tests-t-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-t.md",
+      "owns": [
+        "tests/**",
+        "tests_app/**",
+        "docs/**",
+        "scripts/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-t.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-29T01:30:00+05:30",
+      "context_note": "test-only and tooling; then third walker"
+    },
+    {
+      "name": "W2",
+      "session_id": "session_01QaT8YHvwJDJkiBcmcrVHUY",
+      "branch": "test/r3-proof-w2-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-w2.md",
+      "owns": [
+        "tests/**",
+        "tests_app/**",
+        "docs/**",
+        "scripts/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-w2.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-28T22:30:00+05:30",
+      "context_note": "cloud proof of each merged fix"
+    },
+    {
+      "name": "W3",
+      "session_id": "unknown: not in the handover table",
+      "branch": "test/r3-plan-walk-3-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-w3.md",
+      "owns": [
+        "tests/**",
+        "tests_app/**",
+        "docs/**",
+        "scripts/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-w3.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-28T22:30:00+05:30",
+      "context_note": "cloud walk of the plan, third walker"
+    },
+    {
+      "name": "Z3",
+      "session_id": "session_01QaT8YGJntZzKU9jAqYfTot",
+      "branch": "integration/weekend-r3-1129",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-z3.md",
+      "owns": [
+        "**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-z3.md"
+      ],
+      "base": null,
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:45:00+05:30",
+      "next_push_due": "2026-11-28T22:45:00+05:30",
+      "context_note": "the build lane; Z4 follows; draft pull request 881. next_push_due is wave 1 (22:45)"
+    },
+    {
+      "name": "X2",
+      "session_id": "session_01QaT8YJFCQRTmhBxycpERGg",
+      "branch": "docs/test-plan-weekend-1127",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-x2.md",
+      "owns": [
+        "docs/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-x2.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-28T22:30:00+05:30",
+      "context_note": "PC test lists"
+    },
+    {
+      "name": "R1",
+      "session_id": "session_01QaT8YGXMT6KVQFLLEe5sRx",
+      "branch": "feat/real-same-screens-be-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-r1.md",
+      "owns": [
+        "backend/**",
+        "tests/**",
+        "tests_app/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-r1.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-29T01:30:00+05:30",
+      "context_note": "real = paper backend; out of the build until the coordinator names a commit"
+    },
+    {
+      "name": "R2",
+      "session_id": "session_01QaT8YKyMiG1dUJvqqhkykR",
+      "branch": "feat/real-same-screens-fe-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-r2.md",
+      "owns": [
+        "frontend/**",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-r2.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": null,
+      "first_push_due": "2026-11-28T22:30:00+05:30",
+      "next_push_due": "2026-11-28T22:30:00+05:30",
+      "context_note": "real = paper frontend; out of the build until the coordinator names a commit"
+    },
+    {
+      "name": "CC",
+      "session_id": "session_01QaT8YJ1UALaXd7B3XcNpjZ",
+      "branch": "feat/coordinator-core-1128",
+      "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-cc.md",
+      "owns": [
+        ".claude/skills/lanes/lane_watch.py",
+        ".claude/skills/lanes/state.example.json",
+        ".claude/skills/lanes/LESSONS-TO-CHECKS.md",
+        "tests/orchestrator/test_lane_watch_*.py",
+        "docs/process/coordinator-system-design-2026-11-28.md",
+        "docs/process/coordinator-state-2026-11-28.json",
+        "docs/design/next-batch-2026-11-26/RESULTS-lane-cc.md"
+      ],
+      "base": "fix/ic-live-test-1123",
+      "state": "working",
+      "started_at": "2026-11-28T23:16:00+05:30",
+      "first_push_due": "2026-11-29T01:16:00+05:30",
+      "next_push_due": null,
+      "context_note": "this lane; push 1 within 120 minutes of start, push 2 the design"
+    }
+  ],
+  "holds": [
+    {
+      "branch": "fix/r3-leftovers-2-1128",
+      "not_newer_than": "dc1aeebd8",
+      "reason": "nothing newer than dc1aeebd8 from this branch enters the build except through B1b's branch (the script cannot tell a merge through B1b from a direct one: a violation naming this hold needs a human look)",
+      "until": "2026-11-30T09:15:00+05:30"
+    },
+    {
+      "branch": "feat/real-same-screens-be-1128",
+      "not_newer_than": "a1d70422599c0db530f98b66cec2c8b886da8c66",
+      "reason": "out of the build until the coordinator names a commit (limit = where the branch left the build, at 23:35 IST 28 Nov)",
+      "until": "2026-11-30T09:15:00+05:30"
+    },
+    {
+      "branch": "feat/real-same-screens-fe-1128",
+      "not_newer_than": "a1d70422599c0db530f98b66cec2c8b886da8c66",
+      "reason": "out of the build until the coordinator names a commit (limit = where the branch left the build, at 23:35 IST 28 Nov)",
+      "until": "2026-11-30T09:15:00+05:30"
+    }
+  ],
+  "conditions": [
+    {
+      "what": "real-same-screens proven (database test with worker as separate process, browser walk, Opus review) or dropped from the build",
+      "by": "2026-11-29T10:00:00+05:30",
+      "met": false
+    }
+  ],
+  "waves": [
+    {
+      "name": "wave 1",
+      "due": "2026-11-28T22:45:00+05:30",
+      "commit": null,
+      "ci": null
+    },
+    {
+      "name": "wave 2",
+      "due": "2026-11-29T01:45:00+05:30",
+      "commit": null,
+      "ci": null
+    },
+    {
+      "name": "last code wave",
+      "due": "2026-11-29T05:30:00+05:30",
+      "commit": null,
+      "ci": null
+    }
+  ],
+  "commitments": [
+    {
+      "what": "all MUST items merged and browser-proven",
+      "by": "2026-11-29T04:00:00+05:30"
+    },
+    {
+      "what": "all 72 items merged and proven",
+      "by": "2026-11-29T07:00:00+05:30"
+    },
+    {
+      "what": "build freeze with green CI on the frozen commit, local check and Opus review",
+      "by": "2026-11-29T10:00:00+05:30"
+    },
+    {
+      "what": "PC round 3 starts on the frozen build",
+      "by": "2026-11-29T12:00:00+05:30"
+    }
+  ],
+  "instructions": []
+}

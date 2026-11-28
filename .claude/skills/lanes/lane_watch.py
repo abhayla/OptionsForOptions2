@@ -41,7 +41,7 @@ from pathlib import Path
 
 IST = timezone(timedelta(hours=5, minutes=30))
 DEFAULT_MIGRATIONS = "backend/ofo_app/alembic/versions"
-READ_ONLY = {"rev-parse", "log", "show", "diff", "merge-base", "cat-file", "ls-tree", "for-each-ref"}
+READ_ONLY = {"rev-parse", "rev-list", "log", "show", "diff", "merge-base", "cat-file", "ls-tree", "for-each-ref"}
 GIT_LOG: list[list[str]] = []  # every git command run, for the tests
 GREEN = {"green", "pass", "passed", "success"}
 DONE = {"done", "closed", "proven", "merged", "passed", "complete", "completed"}
@@ -185,8 +185,10 @@ def watch(repo: str, state: dict, now: datetime, silent_min: int = 90, instr_min
                     if m:
                         diff = (int(m.group(1)) * 60 + int(m.group(2))) - (now.hour * 60 + now.minute)
                         diff = (diff + 720) % 1440 - 720
-                        if diff > 10:
-                            rec["flags"].append("STATUS CLOCK AHEAD (ignored)")
+                        ahead = (int(m.group(1)) * 60 + int(m.group(2))) - (ct.hour * 60 + ct.minute)
+                        ahead = (ahead + 720) % 1440 - 720
+                        if diff > 10 or ahead > 15:
+                            rec["flags"].append(f"STATUS CLOCK AHEAD {max(diff, ahead)} min (ignored)")
         info[name] = {"commit": c, "text_ok": rec["status"] is not None}
         if st == "working":
             missing = [k for k in ("results_file", "owns") if not lane.get(k)]
@@ -242,16 +244,15 @@ def watch(repo: str, state: dict, now: datetime, silent_min: int = 90, instr_min
                 rep.act("FINDING", br, f"hold commit {h['commit'][:9]} of {br} not found in the repository")
         elif h.get("not_newer_than"):
             hb = ref_of(br)
-            mb = merge_base(repo, hb, build_ref)
-            if mb is None or commit_of(repo, hb) is None:
+            rc, out = git(repo, "rev-list", "--first-parent", "--no-merges", "--max-count=500",
+                          hb, f"^{h['not_newer_than']}")
+            if rc != 0:
                 rec["status"] = "UNKNOWN"
-                rep.act("FINDING", br, f"hold on {br}: branch or merge base not found")
+                rep.act("FINDING", br, f"hold on {br}: branch or limit {h['not_newer_than'][:9]} not found")
             else:
-                ok = is_ancestor(repo, mb, h["not_newer_than"])
-                viol = None if ok is None else (not ok)
-                if ok is None:
-                    rec["status"] = "UNKNOWN"
-                    rep.act("FINDING", br, f"hold limit {h['not_newer_than'][:9]} of {br} not found")
+                # the branch's OWN commits newer than the limit (first-parent: what it merged from the build is not
+                # its own work); held if the build contains any of them
+                viol = any(is_ancestor(repo, c, build_ref) for c in out.split())
         if viol:
             rec["status"] = "VIOLATED"
             rep.act("HOLD VIOLATED", br, f"{br}: the build {build} contains held work ({h.get('reason', '')}); "
@@ -309,7 +310,7 @@ def watch(repo: str, state: dict, now: datetime, silent_min: int = 90, instr_min
         ref = ref_of(ln["branch"])
         if commit_of(repo, ref) is None:
             continue
-        base_br = ln.get("base") or state.get("base_branch") or build
+        base_br = build if build_ok else (ln.get("base") or state.get("base_branch") or build)
         base_ref = ref_of(base_br) if base_br else ""
         mb = merge_base(repo, ref, base_ref) if base_ref else None
         if mb is None:

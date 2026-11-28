@@ -1,4 +1,4 @@
-STATUS 23:25 | items 1, 2, 3: built, tests green, review pending | next push 00:30 (push 1) | blocker: message to @parent refused (device trust), this line is the report
+STATUS 23:45 | push 1 ready: lane_watch + 38 tests + example and filled state + lessons table + design draft; full check next | next push 00:30 | blocker: message to @parent refused (device trust); this line is the report
 
 # Lane CC results: the coordinator's core
 
@@ -45,6 +45,66 @@ ACT NOW: 10
  10. CONDITION NOT MET: F3 as-of commit on origin
 ```
 
+## First real run (coordinator's request: filled state file against the real origin)
+
+State file: `docs/process/coordinator-state-2026-11-28.json` (tracked; added at the coordinator's message,
+outside the original May-edit list). Built from the coordinator's message and the handover on the fix branch.
+Lane `owns` are by area only (the briefs with exact file lists are not in git); session ids of B1b, F1b, W3 are
+"unknown". `next_push_due` is 01:30 Sun for a lane with a commit at or after 22:30, else 22:30 Sat. Run: `lane_watch.py
+--repo . --state docs/process/coordinator-state-2026-11-28.json --now 2026-11-28T23:40:00+05:30 --no-fetch` (origin
+fetched at about 23:29 IST), exit 1. First 37 lines, cut to 190 characters:
+
+```
+ACT NOW: 34   (watch time 28 Nov 23:40 IST)
+ 1. OVERDUE: B3: push due 22:30, now 23:40 (70 min late); last commit 21:44
+ 2. SILENT: B3: no commit for 115 min (last 21:44); STATUS text is not a heartbeat
+ 3. OVERDUE: F2: push due 22:30, now 23:40 (70 min late); last commit 21:46
+ 4. SILENT: F2: no commit for 113 min (last 21:46); STATUS text is not a heartbeat
+ 5. OVERDUE: F3: push due 22:30, now 23:40 (70 min late); last commit 21:48
+ 6. SILENT: F3: no commit for 111 min (last 21:48); STATUS text is not a heartbeat
+ 7. OVERDUE: W2: push due 22:30, now 23:40 (70 min late); last commit 21:33
+ 8. SILENT: W2: no commit for 126 min (last 21:33); STATUS text is not a heartbeat
+ 9. OVERDUE: W3: push due 22:30, now 23:40 (70 min late); no branch test/r3-plan-walk-3-1128 on origin
+ 10. OVERDUE: Z3: push due 22:45, now 23:40 (55 min late); last commit 18:56
+ 11. SILENT: Z3: no commit for 283 min (last 18:56); STATUS text is not a heartbeat
+ 12. OVERDUE: X2: push due 22:30, now 23:40 (70 min late); last commit 20:15
+ 13. SILENT: X2: no commit for 204 min (last 20:15); STATUS text is not a heartbeat
+ 14. OVERDUE: R2: push due 22:30, now 23:40 (70 min late); last commit 19:52
+ 15. SILENT: R2: no commit for 227 min (last 19:52); STATUS text is not a heartbeat
+ 16. MIGRATION COLLISION: fix/r3-backend-b2-1128 adds 0063_basket_facts_spot_at and feat/real-same-screens-be-1128 adds 0063_position_tags: same revision number 0063, same down_revision 0062
+ 17. MIGRATION COLLISION: fix/r3-backend-b1b-1128 adds 0063_basket_facts_spot_at and feat/real-same-screens-be-1128 adds 0063_position_tags: same revision number 0063, same down_revision 006
+ 18. FILE OVERLAP: B2 and B1b both changed 3 file(s) not owned by both: docs/api/openapi.json, docs/design/next-batch-2026-11-26/RESULTS-lane-ra2.md, requirements-dev.txt
+ 19. FILE OVERLAP: B2 and F3 both changed 4 file(s) not owned by both: backend/ofo_app/routes/paper.py, docs/design/next-batch-2026-11-26/RESULTS-lane-ra2.md, docs/process/friction-log.md, t
+ 20. FILE OVERLAP: B2 and R1 both changed 1 file(s) not owned by both: docs/api/openapi.json
+ 21. FILE OVERLAP: B1b and F3 both changed 3 file(s) not owned by both: backend/ofo_app/routes/paper.py, docs/design/next-batch-2026-11-26/RESULTS-lane-ra2.md, tests_app/test_stored_close_pa
+ 22. FILE OVERLAP: B1b and R1 both changed 1 file(s) not owned by both: docs/api/openapi.json
+ 23. FILE OVERLAP: F1b and F2 both changed 2 file(s) not owned by both: docs/design/next-batch-2026-11-26/RESULTS-lane-fj2.md, docs/design/next-batch-2026-11-26/screen-inventory.json
+ 24. FILE OVERLAP: F3 and R1 both changed 1 file(s) not owned by both: backend/ofo_app/routes/paper.py
+ 25. OUTSIDE OWNS: B2 changed 4 file(s) outside its owns: docs/api/openapi.json, docs/design/next-batch-2026-11-26/RESULTS-lane-ra2.md, docs/process/friction-log.md, requirements-dev.txt
+ 26. OUTSIDE OWNS: B1b changed 3 file(s) outside its owns: docs/api/openapi.json, docs/design/next-batch-2026-11-26/RESULTS-lane-ra2.md, requirements-dev.txt
+ 27. OUTSIDE OWNS: F1b changed 3 file(s) outside its owns: docs/design/next-batch-2026-11-26/RESULTS-lane-fj2.md, docs/design/next-batch-2026-11-26/screen-inventory.json, docs/design/next-ba
+ 28. OUTSIDE OWNS: F2 changed 2 file(s) outside its owns: docs/design/next-batch-2026-11-26/RESULTS-lane-fj2.md, docs/design/next-batch-2026-11-26/screen-inventory.json
+ 29. OUTSIDE OWNS: F3 changed 4 file(s) outside its owns: backend/ofo_app/routes/paper.py, docs/design/next-batch-2026-11-26/RESULTS-lane-ra2.md, docs/process/friction-log.md, tests_app/test
+ 30. OUTSIDE OWNS: T changed 1 file(s) outside its owns: .github/workflows/app-tests.yml
+ 31. OUTSIDE OWNS: W2 changed 54 file(s) outside its owns: tests_browser/r2_plan_walk_1128/b4a.js, tests_browser/r2_plan_walk_1128/b4b.js, tests_browser/r2_plan_walk_1128/b4c.js, tests_brows
+ 32. OUTSIDE OWNS: R1 changed 1 file(s) outside its owns: docs/api/openapi.json
+ 33. OUTSIDE OWNS: R2 changed 1 file(s) outside its owns: tests/broker_name_allowlist.py
+ 34. WAVE PAST DUE: wave wave 1 was due 22:45; commit none, ci none
+LANES
+ B2 (working) head 9220b5cdf | 54 min since last commit
+```
+
+What it found that is real (the first run also exposed three faults of the watch itself, fixed: file checks were
+measured against the fix branch instead of the build (672 files of noise); a lane that merges the build into its branch
+looked like held work; the STATUS check only compared with now): R1's `0063_position_tags` collides with RA2's
+`0063_basket_facts_spot_at` (already inside B2 and B1b) on the same parent 0062 (R1 must renumber); wave 1 (22:45) has
+no new build commit (build head a1d70422 still 18:56 IST); B3, F2, F3, W2, X2, R2 and Z3 have no commit since 21:44,
+21:46, 21:48, 21:33, 20:15, 19:52 and 18:56; W3 has no branch; F3's STATUS says 23:20 in a commit made at 21:48 (a lane
+clock 92 minutes ahead; B1b 56, R2 53, F2 39 minutes). Limits: OVERDUE judges "push met" by a commit at or after the due
+time, so a lane that pushed batch 1 at 21:44 is shown overdue until the coordinator moves its `next_push_due`; the
+hold on `fix/r3-leftovers-2-1128` cannot tell a merge through B1b from a direct one (shown HELD now; a later VIOLATED
+needs a human look); commit times come from the lane machine's clock.
+
 ## Decided for the owner
 
 - A push is "met" by a commit newer than `started_at` (first push) or newer than `next_push_due`. The coordinator moves
@@ -81,9 +141,19 @@ runs no tests). `send_later` named as the wake-up (no recurring timer). Push rul
 the next watch run. Lessons 16, 17, 18, 20 are not to be copied into SKILL.md until the real case is supplied. Row 13
 recounted as partial. Not done from the review: a count of the debt rows by the watch, a `faults_open` state field.
 
+## Review of the tests (second helper, 78 mutants, one at a time in a detached worktree)
+
+Every one of the seven 28 Nov cases has a test that fails when its check is removed. Surviving mutants that mattered
+were closed with 9 new tests: CONDITION NOT MET (met, not yet due), WAVE not yet due, first push with a commit older than
+`started_at`, FILE OVERLAP when both lanes own the file, owns patterns (`/**/`, trailing `/`), CLOSING for a `closed`
+lane, instruction between 30 and 300 minutes, STATUS ahead at the 10 minute boundary and across midnight, hold with the
+build unreachable. Still surviving and accepted: the same-blob `pa == pb` half, the duplicate-pair dedupe, closed lanes
+in the migration check, `.py` filter, FETCH FAILED flag, the two hold-UNKNOWN paths for `not_newer_than`.
+Equivalent mutants: the `watch()` default arguments.
+
 ## Not done
 
 - Item 4 (design document), review of the design, item 5.
-- Second-helper mutation review of the tests: running.
+- Mutation review of the tests (second helper, 78 mutants): see the section below.
 
 SAFE TO CLOSE: not yet.

@@ -378,3 +378,130 @@ def test_lane_watch_state_incomplete_lane_without_owns_or_push_time(repo, capsys
     bad = lane("Q", owns=[], results_file="", first_push_due=None, next_push_due=None)
     _, out = repo.run(state([bad]), capsys=capsys)
     assert "STATE INCOMPLETE: Q: state file lacks results_file, owns, first_push_due or next_push_due" in out
+
+
+def test_lane_watch_hold_lane_that_merged_the_build_into_itself_is_not_violated(repo, capsys):
+    """First real run, 28 Nov: lanes merge the build into their branch before each push. That is not the held work."""
+    fork = repo._git(repo.w, "rev-parse", "main").strip()
+    repo.commit("feat/real", {"area/real/a.py": "1\n"}, "2026-11-28T20:00:00+05:30")
+    repo.commit(BUILD, {"docs/build.md": "x\n"}, "2026-11-28T20:10:00+05:30")
+    repo._git(repo.w, "checkout", "-q", "feat/real")
+    repo._git(repo.w, "merge", "-q", "--no-ff", "-m", "take build", f"origin/{BUILD}", when="2026-11-28T20:20:00+05:30")
+    repo._git(repo.w, "push", "-q", "origin", "feat/real")
+    repo._git(repo.w, "checkout", "-q", "main")
+    hold = {"branch": "feat/real", "not_newer_than": fork, "reason": "out of the build", "until": "2026-11-30T09:00:00+05:30"}
+    st = state([lane("REAL", branch="feat/real", next_push_due="2026-11-28T23:00:00+05:30")], holds=[hold])
+    code, out = repo.run(st, capsys=capsys)
+    assert "HOLD VIOLATED" not in out and code == 0
+    repo.merge(BUILD, "feat/real", "2026-11-28T20:30:00+05:30")  # now the build takes the branch's own commit
+    code, out = repo.run(st, capsys=capsys)
+    assert code == 1 and "HOLD VIOLATED: feat/real" in out
+
+
+def test_lane_watch_file_checks_use_the_build_as_base_so_merged_build_files_are_not_the_lanes(repo, capsys):
+    """First real run: 672 'changed files' came from build work a lane had merged. Only its own commits count."""
+    repo.commit(BUILD, {"docs/from_build.md": "b\n"}, "2026-11-28T20:00:00+05:30")
+    for n in ("a", "b"):
+        repo._git(repo.w, "checkout", "-q", "-b", f"feat/{n}", f"origin/{BUILD}")
+        (repo.w / f"area/{n}").mkdir(parents=True, exist_ok=True)
+        (repo.w / f"area/{n}/x.py").write_text("1\n", encoding="utf-8")
+        repo._git(repo.w, "add", "-A")
+        repo._git(repo.w, "commit", "-q", "-m", n, when="2026-11-28T21:00:00+05:30")
+        repo._git(repo.w, "push", "-q", "origin", f"feat/{n}")
+        repo._git(repo.w, "checkout", "-q", "main")
+    st = state([lane("A", next_push_due="2026-11-28T23:00:00+05:30"), lane("B", next_push_due="2026-11-28T23:00:00+05:30")],
+               base_branch="main")
+    for ln in st["lanes"]:
+        ln["base"] = "main"
+    _, out = repo.run(st, capsys=capsys)
+    assert "FILE OVERLAP" not in out and "OUTSIDE OWNS" not in out
+
+
+def test_lane_watch_status_time_after_its_own_commit_time_is_flagged_lane_clock_ahead(repo, capsys):
+    """First real run: F3's STATUS said 23:20 in a commit made at 21:48."""
+    repo.commit("feat/f3", {"RESULTS-F3.md": "STATUS 23:20 | PUSHED | next push 01:30\n"}, "2026-11-28T21:48:00+05:30")
+    _, out = repo.run(state([lane("F3", next_push_due="2026-11-28T21:00:00+05:30")]), now="2026-11-28T23:32:00+05:30",
+                      capsys=capsys)
+    assert "STATUS CLOCK AHEAD 92 min" in out
+
+
+def test_lane_watch_condition_met_or_not_yet_due_is_quiet_and_never_exit_1(repo, capsys):
+    cond = {"what": "F3 as-of", "by": "2026-11-28T22:00:00+05:30", "met": True}
+    _, out = repo.run(state([], conditions=[cond]), capsys=capsys)
+    assert "CONDITION NOT MET" not in out
+    cond.update(met=False, by="2026-11-28T23:00:00+05:30")
+    _, out = repo.run(state([], conditions=[cond]), capsys=capsys)
+    assert "CONDITION NOT MET" not in out  # not yet due
+    cond["by"] = "2026-11-28T22:00:00+05:30"
+    code, out = repo.run(state([], conditions=[cond]), capsys=capsys)
+    assert "CONDITION NOT MET" in out and code == 0
+
+
+def test_lane_watch_wave_not_yet_due_is_quiet(repo, capsys):
+    waves = [{"name": "wave 2", "due": "2026-11-29T01:45:00+05:30", "commit": None, "ci": None}]
+    _, out = repo.run(state([], waves=waves), capsys=capsys)
+    assert "WAVE PAST DUE" not in out
+
+
+def test_lane_watch_first_push_a_commit_older_than_the_lane_start_does_not_count(repo, capsys):
+    """A branch cut from an old base holds only old commits: that is not the lane's first push."""
+    repo.commit("feat/q", {"area/q/x.py": "x\n"}, "2026-11-28T16:00:00+05:30")
+    q = lane("Q", started_at="2026-11-28T21:00:00+05:30", first_push_due="2026-11-28T22:15:00+05:30")
+    _, out = repo.run(state([q]), capsys=capsys)
+    assert "OVERDUE: Q" in out
+    repo.commit("feat/q", {"area/q/y.py": "y\n"}, "2026-11-28T22:00:00+05:30")
+    _, out = repo.run(state([q]), capsys=capsys)
+    assert "OVERDUE" not in out
+
+
+def test_lane_watch_file_overlap_is_quiet_when_both_lanes_own_the_shared_file(repo, capsys):
+    repo.commit("feat/a", {"shared/x.py": "A\n"}, "2026-11-28T21:00:00+05:30")
+    repo.commit("feat/b", {"shared/x.py": "B\n"}, "2026-11-28T21:05:00+05:30")
+    a = lane("A", owns=["shared/**"], next_push_due="2026-11-28T23:00:00+05:30")
+    b = lane("B", owns=["shared/**"], next_push_due="2026-11-28T23:00:00+05:30")
+    _, out = repo.run(state([a, b]), capsys=capsys)
+    assert "FILE OVERLAP" not in out
+    a["owns"] = ["area/a/**"]  # now only B owns it: A changed a file it does not own, B too (A not owning it)
+    _, out = repo.run(state([a, b]), capsys=capsys)
+    assert "FILE OVERLAP" in out
+
+
+def test_lane_watch_owns_patterns_directory_prefix_and_double_star_in_the_middle(repo, capsys):
+    repo.commit("feat/a", {"backend/pkg/x.py": "1\n", "docs/design/n.md": "1\n"}, "2026-11-28T21:00:00+05:30")
+    a = lane("A", owns=["backend/**/*.py", "docs/design/"], next_push_due="2026-11-28T23:00:00+05:30")
+    _, out = repo.run(state([a]), capsys=capsys)
+    assert "OUTSIDE OWNS" not in out
+
+
+def test_lane_watch_closed_lane_without_safe_to_close_is_flagged(repo, capsys):
+    repo.commit("feat/tg2", {"RESULTS-TG2.md": "STATUS 22:00 | done\n"}, "2026-11-28T22:00:00+05:30")
+    _, out = repo.run(state([lane("TG2", state="closed")]), capsys=capsys)
+    assert "CLOSING WITHOUT SAFE TO CLOSE: TG2 is closed" in out
+
+
+def test_lane_watch_instruction_one_hour_old_is_flagged_and_ten_minutes_is_not(repo, capsys):
+    ins = [{"to_lane": "R1", "sent_at": "2026-11-28T21:40:00+05:30", "text_short": "renumber", "acknowledged_at": None},
+           {"to_lane": "R1", "sent_at": "2026-11-28T22:30:00+05:30", "text_short": "fresh", "acknowledged_at": None}]
+    _, out = repo.run(state([], instructions=ins), capsys=capsys)
+    assert out.count("INSTRUCTION NOT ACKNOWLEDGED") == 1 and "60 min" in out
+
+
+def test_lane_watch_status_clock_ahead_boundary_and_midnight(repo, capsys):
+    repo.commit("feat/f3", {"RESULTS-F3.md": "STATUS 22:50 | x\n"}, "2026-11-28T22:40:00+05:30")
+    f3 = lane("F3", next_push_due="2026-11-28T22:00:00+05:30")
+    _, out = repo.run(state([f3]), now="2026-11-28T22:45:00+05:30", capsys=capsys)
+    assert "CLOCK AHEAD" not in out  # 10 minutes ahead of its commit is allowed
+    repo.commit("feat/f3", {"RESULTS-F3.md": "STATUS 23:30 | x\n"}, "2026-11-28T22:40:00+05:30")
+    _, out = repo.run(state([f3]), now="2026-11-28T22:45:00+05:30", capsys=capsys)
+    assert "CLOCK AHEAD 50 min" in out
+    repo.commit("feat/f3", {"RESULTS-F3.md": "STATUS 23:50 | x\n"}, "2026-11-29T00:10:00+05:30")
+    _, out = repo.run(state([f3]), now="2026-11-29T00:15:00+05:30", capsys=capsys)
+    assert "CLOCK AHEAD" not in out  # a STATUS 20 minutes BEFORE the commit, across midnight, is a normal lag
+
+
+def test_lane_watch_hold_with_build_unreachable_is_a_finding(repo, capsys):
+    hold = {"branch": "feat/ra2", "commit": "0" * 40, "reason": "r", "until": "2026-11-29T06:00:00+05:30"}
+    st = state([], holds=[hold])
+    st["build"] = {"branch": "integration/none", "pull_request": 1}
+    _, out = repo.run(st, capsys=capsys)
+    assert "hold on feat/ra2 cannot be checked: build branch not reachable" in out and "UNKNOWN" in out
