@@ -465,7 +465,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
     if (outcome === PAPER_STATE.REFUSED) paperError.value = refusalText(e?.parts, NEUTRAL_PARTS.what_happened) // 4xx: nothing stored; F6: every part of the reply
     if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
-    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value, 'add') // a definite refusal (580 / 581 / 583 too): nothing stored, the key is free
+    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value, 'add') // a definite refusal (580 / 583 too; a 581 is UNKNOWN, see paperPostOutcome): nothing stored, the key is free
     if (outcome === PAPER_STATE.UNKNOWN) { saveAddLock(target, { at: Date.now(), out: false, before: '', key, sig }); startUnknownTimer() } // `at` is now when the client gave up
     else dropAddLock(target, { key, at: outAt }) // a definite refusal: nothing stored, the lock ends with the answer
     addTick.value++

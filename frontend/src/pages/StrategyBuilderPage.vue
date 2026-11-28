@@ -591,7 +591,7 @@ function addVerdict(id, read) {
   const lock = adoptedAddLock(id, Date.now()) // the stored lock itself (a malformed one counts from its first sight: a later good read decides it)
   if (!lock) return null
   const b = bookOfNet(read?.net)
-  return { lock, d: decideLock(lock, b ? { key: b.key, units: b.units, hasOrders: true } : { key: '?unreadable', units: null, hasOrders: true }, Number.isFinite(read?.sentAt) ? read.sentAt : Date.now()) }
+  return { lock, d: decideLock(lock, b ? { key: b.key, units: b.units, hasOrders: true } : { key: '?unreadable', units: null, hasOrders: true }, Number.isFinite(read?.sentAt) ? read.sentAt : NaN) } // R2-6: no send time = keep
 }
 function decideAddLock(id, read) {
   const v = addVerdict(id, read)
@@ -853,7 +853,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
     reply = own || waiting ? await postPaperOrders(api, id, orders, [], null, null, null, false, key) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true, key)
   } catch (e) {
     const outcome = paperPostOutcome(e)
-    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(id, sendsExit ? 'exit' : 'add') // the server itself refused (580 / 581 / 583 too): nothing stored, the key is free
+    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(id, sendsExit ? 'exit' : 'add') // the server itself refused (580 / 583 too; a 581 is UNKNOWN, see paperPostOutcome): nothing stored, the key is free
     if (sendsExit && outcome === PAPER_STATE.REFUSED) dropExitLock(id, { key, at: outAt })
     if (!sendsExit && outcome === PAPER_STATE.REFUSED) dropAddLock(id, { key, at: outAt })
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -968,7 +968,7 @@ let readSeq = 0 // reads of the book started by the unknown-exit door; an answer
 let appliedSeq = 0
 const REREAD_EVERY_MS = 5000 // how often the unknown exit's book is read again
 // Lane Z review F1: an UNCHANGED trade is not proof of "not stored" until the server's longest possible commit window (UNKNOWN_EXIT_WINDOW_MS) has passed; the lock stays, with its plain line, meanwhile
-function decideUnknownExit(newNet, readId, sentAt = Date.now()) {
+function decideUnknownExit(newNet, readId, sentAt = NaN) { // Opus round 2 (R2-6): no send time = no decision (decideLock keeps the lock)
   const u = exitUnknown.value
   if (!u) return true
   if (String(u.id) !== String(readId)) return false // Opus review F1: only a read of THIS strategy's book decides its unknown exit

@@ -21,6 +21,7 @@ vi.mock('@/services/api', async (importActual) => {
     if (method === 'GET' && url.startsWith('/market/exit-state')) return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // R3 join: FA2's market gate (ADR-330 (60)) wants closed:false
     if (method === 'POST' && /^\/paper\/strategies\/\d+\/orders$/.test(url)) {
       if (postMode === 'unknown') return Promise.reject(Object.assign(new Error('timeout'), { status: 504, parts: { what_happened: 'No answer.' } }))
+      if (postMode === 'c581') return Promise.reject(Object.assign(new Error('581'), { status: 409, error_code: 'STRATEGY_VALIDATION_581', parts: { what_happened: 'Read the strategy orders, then press Confirm again.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } }))
       if (postMode === 'refused') return Promise.reject(Object.assign(new Error('refused'), { status: 422, parts: { what_happened: 'Lots too high.' } }))
       return Promise.resolve({ data: { ok: true } })
     }
@@ -77,6 +78,22 @@ describe('FJ2 F-B: the same add after a price tick carries the first key', () =>
     expect(posts()).toHaveLength(2)
     expect(posts()[1].body.orders[0].price).not.toBe(posts()[0].body.orders[0].price)
     expect(posts()[1].body.client_request_id).toBe(posts()[0].body.client_request_id)
+    w.unmount()
+  })
+})
+
+describe('FJ2 R2-5 (Opus round 2): a 581 (same key, another body) on the save bar keeps the lock and the key', () => {
+  it('Confirm answered 581, Cancel, reopen: Add to Paper stays locked and a second Confirm sends nothing', async () => {
+    postMode = 'c581'
+    const w = await mountBar()
+    await openAndConfirm(w)
+    expect(posts()).toHaveLength(1)
+    await cancel()
+    expect(t(w, 'add-to-paper').attributes('disabled')).toBeDefined() // the lock stands: the first request may still be placed
+    await t(w, 'add-to-paper').trigger('click')
+    await flushPromises()
+    expect(dom('paper-confirm-button')).toBeNull()
+    expect(posts()).toHaveLength(1)
     w.unmount()
   })
 })
