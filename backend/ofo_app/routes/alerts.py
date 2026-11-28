@@ -22,6 +22,7 @@ from ofo.alerts import CLOSED_BY_SYSTEM, SIDE_CLOSED
 from ofo.errors import render
 from ofo.errors.explanations import render_explanation
 from pydantic import BaseModel, ConfigDict
+from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import actionable_alerts as aa
 from ofo_app import alert_title, side_closed
@@ -205,8 +206,12 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
     by_id = await _texts(db, user_ref)
     titles = await alert_title.labels(db, [(a.strategy_id, a.strategy_name) for a in rows])  # ADR-330 (19)(b)
     from ofo.alerts import allowed_answers  # noqa: PLC0415 - stdlib table
+
     from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: it reaches the order modules
-    kinds = await strategy_store.kinds_of(db, [a.strategy_id for a in rows])
+    try:
+        kinds = await strategy_store.kinds_of(db, [a.strategy_id for a in rows])
+    except SQLAlchemyError:  # FD5 D (F4): a failed kind read is the not-available refusal, never a bare 500
+        raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
     alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id], "kind": _kind(a),
                "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
                "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),

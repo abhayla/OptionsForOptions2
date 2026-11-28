@@ -241,3 +241,52 @@ async def test_f5_a_plan_only_real_strategy_answers_the_real_position_refusal_be
             assert await _count(conn, sid) == 0
         finally:
             await trans.rollback()
+
+
+# --- FD5 D / N7: a failed kind read answers a catalogue refusal before the commit, and success after it ------------
+
+async def test_d_a_failed_kind_read_refuses_the_order_with_a_catalogue_sentence_and_stores_nothing(db, monkeypatch):
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415
+    from test_paper_armed_exits import _order  # noqa: PLC0415
+    from test_paper_routes import _new  # noqa: PLC0415
+    app, stored, ids = await _book(db, max_adjustments=2)
+    before = await _count(db, stored.id)
+
+    async def failing(_db, _sids):
+        raise SQLAlchemyError("kind read failed")
+
+    monkeypatch.setattr(strategy_store, "kinds_of", failing)
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders",
+                             json={"orders": [_order(_new(ids[0], "SELL", 65, "39.15", "add"))]})
+    assert reply.status_code == HTTPStatus.SERVICE_UNAVAILABLE, reply.text[:200]
+    assert reply.json()["what_happened"], reply.text[:200]  # a catalogue sentence, not a bare 500
+    assert await _count(db, stored.id) == before
+
+
+async def test_n7_a_stop_stored_then_a_failed_kind_read_still_answers_success_with_the_line_unknown(db, notified,
+                                                                                                    monkeypatch):
+    """The trigger routes build their answer AFTER the commit: a failed kind read must not turn a stored stop into a 5xx
+    (the user would press again). The answer is the 201 with the lines read as unknown (fail closed)."""
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    real = strategy_store.kinds_of
+    calls = {"n": 0}
+
+    async def second_call_fails(conn, sids):
+        calls["n"] += 1
+        if calls["n"] > 1:  # the first read is the door's own check, before the commit
+            raise SQLAlchemyError("kind read failed after the commit")
+        return await real(conn, sids)
+
+    monkeypatch.setattr(strategy_store, "kinds_of", second_call_fails)
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/triggers",
+                             json={"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "120.00"})
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    (line,) = [t for t in reply.json()["triggers"] if t["kind"] == "leg_stop"]
+    assert line["state"] == "armed" or line["not_applicable_text"] is not None  # stored, and reported, never a 5xx
+    assert calls["n"] >= 2  # noqa: PLR2004

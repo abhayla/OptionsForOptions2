@@ -178,8 +178,15 @@ async def paper_order_refused(conn: Any, strategy_id: int, order_kinds: Iterable
     broker (a basket was sent and no paper order exists) takes no paper order of any kind, because the order would
     turn its kind from real to paper; a held entry (ADR-292 (4): the user records each broker change with the paper
     forms) refuses only an exit (ADR-330 (64): no exit here), and its kind stays real whatever is recorded. A read
-    that fails PROPAGATES, like ``kinds_of``."""
-    kind = (await kinds_of(conn, [strategy_id])).get(strategy_id, "unknown")
+    that fails answers the not-available refusal (nothing stored)."""
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415 - only this answer needs it
+
+    try:
+        kind = (await kinds_of(conn, [strategy_id])).get(strategy_id, "unknown")
+    except SQLAlchemyError:  # FD5 D (F4): a failed kind read is a refusal with a catalogue sentence, never a bare 500
+        from ofo_app.errors import Failure  # noqa: PLC0415
+        from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
+        raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
     if kind == "unknown":
         return True
     if kind != "real":

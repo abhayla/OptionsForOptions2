@@ -1469,7 +1469,10 @@ async def _refuse_real_position(db: Any, strategy_id: int) -> None:
     in the app: an exit or stop request for it reaches this paper route only by a wrong link, and would run a PAPER
     action the trader could take for a real exit. Refused by name (nothing is stored); every other kind goes on, an
     unreadable one too (fail closed)."""
-    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id)
+    try:
+        kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id)
+    except SQLAlchemyError:  # FD5 D (F4): a failed kind read refuses with a catalogue sentence (nothing stored)
+        raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
     if kind in _NO_PAPER_ACTION_KINDS:
         raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
 
@@ -2063,7 +2066,11 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
     ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     marks = await _adjustment_marks(db, await paper_store.load(db, strategy_id), rows)
-    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown") if rows else "paper"
+    try:
+        kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown") if rows else "paper"
+    except SQLAlchemyError:  # FD5 N7: this answer is built AFTER the commit; a stop that was stored or cancelled is
+        _LOG.warning("triggers answer: the position kind could not be read; its lines read unknown", exc_info=True)
+        kind = "unknown"  # answered as success, the lines fail closed (no live paper stop)
     off = kind in _NO_PAPER_ACTION_KINDS  # R6: a real or unreadable position has no live paper stop
     return TriggersOut.model_validate({"already_set": already_set, "already_armed": list(already_armed), "triggers": [{
         "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
