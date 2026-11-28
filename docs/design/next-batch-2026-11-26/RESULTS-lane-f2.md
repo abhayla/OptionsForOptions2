@@ -1,4 +1,4 @@
-STATUS 19:50 | KEEP F2's version of AdjustPlanSheet.vue and PlanEntry.vue at the build wave (not FJ2's handoff 4297f7065 for those two files) | batch 1 pushed 28c0e7be6; local for batch 2: D-TG2-1, W-29 step 57, W-30 front half, FJ2's stale-box case | item 4 waits for F1's add lock | W-30 Positions row needs Lane RA2 (see For the owner lane) | next push batch 2 | blocker: coordinator link refused (elevated_session_untrusted_device), this line is the report
+STATUS 21:00 | I-197 RE-FIXED (walker W2 failed 28c0e7be6): the stored stop and target figure is always shown and the server's not-checked reason follows on the SAME line; test plan-entry-levels-f2-1128 (W-30 describe, 3 cases); NOT YET PUSHED (batch 2) | KEEP F2's AdjustPlanSheet.vue and PlanEntry.vue at the build wave | batch 1 on origin 28c0e7be6; local for batch 2: D-TG2-1, W-29 step 57, W-30, FJ2 stale-box case, I-197 re-fix | item 4 waits for F1's add lock | W-30 Positions row needs Lane RA2 | blocker: coordinator link refused, this line is the report
 
 # RESULTS Lane F2 (frontend plan screens, Review wording, Execute page), branch fix/r3-frontend-f2-1128
 

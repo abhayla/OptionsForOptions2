@@ -22,7 +22,8 @@
         <p v-else-if="!limits.rows.length" data-testid="plan-entry-limits-none">{{ LIMITS_NONE_TEXT }}</p>
         <template v-else>
           <template v-for="row in limits.rows" :key="row.id">
-            <p v-if="row.text" :class="row.muted ? 'text-ink-muted' : ''" :data-testid="`plan-entry-limit-${row.id}`">{{ row.text }}</p>
+            <template v-if="mergedIds.has(row.id)"></template><!-- its sentence is on the level's own line above (I-197 re-fix) -->
+            <p v-else-if="row.text" :class="row.muted ? 'text-ink-muted' : ''" :data-testid="`plan-entry-limit-${row.id}`">{{ row.text }}</p>
             <LoadFailed v-else :text="LIMITS_LOAD_FAILED_TEXT" :prefix="`plan-entry-limit-${row.id}`" @retry="$emit('retry-check')" />
           </template>
         </template>
@@ -89,7 +90,8 @@ const limits = computed(() => {
   // an empty list means "no rules" only where the server says there is no playbook; any other empty answer is not one we can read
   if (!c.limits.length && c.playbook?.source !== 'none') return null
   const rows = c.limits.map((l) => ({ id: l.rule_id, text: KNOWN_STATES.includes(l.state) && typeof l.text === 'string' ? l.text : null,
-    muted: l.state === 'already_true' })) // ADR-296: an already-true line is grey, never red
+    muted: l.state === 'already_true', // ADR-296: an already-true line is grey, never red
+    level: l.trigger_id === 'T-07' ? 'target' : 'stop', notChecked: l.state === 'not_checked', reason: typeof l.reason === 'string' ? l.reason.trim() : '' }))
   return { paused: null, rows }
 })
 
@@ -100,6 +102,11 @@ const printed = computed(() => {
   const has = (l) => (l.state === 'checked' || l.state === 'already_true') && typeof l.text === 'string' && l.text !== ''
   return { target: rows.some((l) => has(l) && l.trigger_id === 'T-07'), stop: rows.some((l) => has(l) && l.trigger_id !== 'T-07') }
 })
+// I-197 re-fix (walker W2): the stored figure is always shown and the reason it is not being checked follows it on the SAME line (the server's reason, as sent);
+// the row's own "Stop: not being checked: ..." sentence is then not printed a second time. A not-checked row with no reason keeps its sentence.
+const reasonOf = (level) => limits.value?.rows.find((r) => r.level === level && r.notChecked && r.text && r.reason)?.reason ?? ''
+const mergedIds = computed(() => new Set((limits.value?.rows ?? []).filter((r) => r.notChecked && r.reason && read.value?.plan && reasonOf(r.level) === r.reason).map((r) => r.id)))
+const NOT_CHECKED_LEAD = ', not being checked: ' // the server's own phrase for the same state (limit_stop_off)
 const NO_STOP_TEXT = 'No stop is set for this trade.' // pending owner read
 const NO_TARGET_TEXT = 'No target is set for this trade.' // pending owner read
 function levelText(label, rupeeLabel, percent, rupees, none) {
@@ -115,8 +122,9 @@ const planLevels = computed(() => {
   const labels = read.value?.labels ?? {}
   if (!plan) return []
   const out = []
-  if (!printed.value.stop) out.push({ id: 'stop', text: levelText(labels.stop || 'Stop', labels.stop_rupees || 'Stop (Rs)', plan.stop, plan.stopRupees, NO_STOP_TEXT) })
-  if (!printed.value.target) out.push({ id: 'target', text: levelText(labels.target || 'Target', labels.target_rupees || 'Target (Rs)', plan.target, plan.targetRupees, NO_TARGET_TEXT) })
+  const withReason = (level, text, set) => (set && reasonOf(level) ? `${text}${NOT_CHECKED_LEAD}${reasonOf(level)}` : text)
+  if (!printed.value.stop) out.push({ id: 'stop', text: withReason('stop', levelText(labels.stop || 'Stop', labels.stop_rupees || 'Stop (Rs)', plan.stop, plan.stopRupees, NO_STOP_TEXT), !!(plan.stop || plan.stopRupees)) })
+  if (!printed.value.target) out.push({ id: 'target', text: withReason('target', levelText(labels.target || 'Target', labels.target_rupees || 'Target (Rs)', plan.target, plan.targetRupees, NO_TARGET_TEXT), !!(plan.target || plan.targetRupees)) })
   return out
 })
 
