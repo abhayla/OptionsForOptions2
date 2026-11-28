@@ -500,3 +500,20 @@ def test_a_plain_time_exit_with_an_unknown_kind_waits_for_expiry_day_on_another_
     r = _t10b_result(sc, _unknown_kind_state(sc, today=expiry - datetime.timedelta(days=2), expiry=expiry,
                                              hhmm="14:31"))
     assert isinstance(r, NotChecked) and r.code == "adjust_trigger_waits_expiry_day"
+
+
+# ---- Lane FR item 4 (#861): no stops because the expiry kind is not known -------------------------------------------
+def test_a_state_without_stops_names_the_unknown_expiry_kind_when_days_left_is_not_known():
+    sc = load("ADJ-14")
+    unknown = StrategyState(**{**state_of(sc).__dict__, "stops": None, "days_left": None})
+    ev = evaluate(body_of(sc), unknown, {}, None)
+    t06 = next(r for r in ev.results if r.trigger_id == "T-06")
+    print("T-06", t06)
+    assert isinstance(t06, NotChecked) and t06.code == sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN)
+
+
+def test_a_state_without_stops_but_with_a_stated_kind_still_says_not_supplied():
+    sc = load("ADJ-14")
+    ev = evaluate(body_of(sc), StrategyState(**{**state_of(sc).__dict__, "stops": None}), {}, None)
+    t06 = next(r for r in ev.results if r.trigger_id == "T-06")
+    assert isinstance(t06, NotChecked) and t06.code == sl.STOPS_NOT_SUPPLIED

@@ -370,6 +370,8 @@ def _trigger_line(body: Mapping, kind: str, base: Decimal | Any | None,  # noqa:
         return StopInForce(kind, True, None, None, source, STOP_VALUE_UNREADABLE)
     where = _stage_index(body, at)
     if where is None:
+        if isinstance(at, StageAt) and not at.expiry_kind:  # #866: the trade's expiry kind is not known: say that
+            return StopInForce(kind, True, None, None, source, sl.EXPIRY_KIND_UNKNOWN)
         return StopInForce(kind, True, None, None, source, STAGE_UNKNOWN)
     try:
         figure, later = _figures(trig, *where)

@@ -1116,6 +1116,8 @@ def _stop_answer(c: _Ctx, tid: str) -> Hit | _Missing:  # noqa: PLR0911 - one an
     if t.get("data", "ok") != "ok":
         return _Missing(f"{P}data_unavailable")
     if c.state.stops is None:
+        if c.state.days_left is None:  # #861: no days left = the expiry kind is not known (state_of): name THAT fact
+            return _Missing(sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN))
         return _Missing(sl.STOPS_NOT_SUPPLIED)
     line = _line(c.state, tid)
     if line is None or not line.active:
