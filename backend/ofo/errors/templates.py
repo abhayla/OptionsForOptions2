@@ -1110,6 +1110,13 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "Something changed on this strategy while you were away at Kite, so nothing was recorded.",
           "Nothing was recorded and nothing was sent; Zerodha was not asked to change anything.",
           "Recording the result of your Kite orders.", "Press Return again."),
+    # Lane B2 (ADR-016 to ADR-019, ADR-330 (58)): while an earlier order request of the strategy has no known result,
+    # every further order request is refused whatever its key or body (``ofo_app.order_outcome``). New wording,
+    # pending the owner's read.
+    _gate("order_outcome_unknown", _SV, 590,
+          "An earlier order for this strategy has no known result yet.",
+          "No order was stored by this request; another order now could double the position.",
+          "Placing these orders.", "Read the strategy's orders, then try again in a couple of minutes."),
     # Lane FD2 #877 (ADR-330 (64)): a real position is exited and protected in Kite, not on the paper routes.
     _gate("real_position_exit_refused", _SV, 584,
           "Real position: exit and protect it in Kite.",
