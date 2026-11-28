@@ -46,8 +46,6 @@ import {
 const props = defineProps({
   legs: { type: Array, default: () => [] },
   rulesRef: { type: String, default: '' },
-  // FJ2 (Opus review, ADR-330 (64)): the open strategy is a REAL trade (Running, no paper book). The server refuses only paper EXIT rows on a real position, so an add stored on its id would make it read as paper and then offer Exit: no Add to Paper here
-  realTrade: { type: Boolean, default: false },
   // the saved strategy this screen is editing ({ id, revision, name } as the page loaded or saved it), or null for a never-saved one
   current: { type: Object, default: null },
   // the name the builder shows for an unsaved strategy (its shape name); an unsaved strategy is saved under it before Add to Paper
@@ -409,7 +407,7 @@ onBeforeUnmount(() => { clearInterval(unknownTimer); unknownTimer = null; offLoc
 const refusedLists = new Map() // FJ r3 (FB2 F6): `${id}|${sig}` -> the refusal sentence, for EVERY refused list that was sent unedited (not only the last one)
 const refusalKey = (id, rows) => `${id}|${rowSig(rows)}`
 const rowSig = (rows) => JSON.stringify(rows.map((r) => [r.contract_id, r.side, String(r.lots)]))
-const canAddToPaper = computed(() => !props.paperMode && !props.realTrade && !paperRecorded.value && !addLocked.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
+const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !addLocked.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
 // ADR-330 (19): an UNSAVED strategy asks for its name first (the name dialog, prefilled with the shape name); Confirm saves it under
 // that name and goes on to the paper confirm, Cancel adds nothing. A strategy already saved asks nothing: the code cannot tell a name
