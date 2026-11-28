@@ -11,7 +11,8 @@ def test_the_leg_quotes_carry_bid_and_ask_texts_at_two_decimals_for_a_one_decima
     has None texts (the browser prints the dash)."""
     from ofo_app.routes.outcome import _leg_quotes
 
-    quote = SimpleNamespace(bid=Decimal("99.8"), ask=Decimal("100.5"), health=SimpleNamespace(value="available"))
+    quote = SimpleNamespace(bid=Decimal("99.8"), ask=Decimal("100.5"), health=SimpleNamespace(value="available"),
+                            price_at=None)
     snapshot = SimpleNamespace(legs={"A": SimpleNamespace(quote=quote)})
     definition = SimpleNamespace(legs=[SimpleNamespace(instrument_id="A"), SimpleNamespace(instrument_id="B")])
     rows = _leg_quotes(snapshot, definition, {"A": "NIFTY X", "B": None})

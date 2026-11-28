@@ -16,6 +16,7 @@ UPDATE, guarded by the database). Suggest-only (ADR-003): no route here reaches 
 """
 from __future__ import annotations
 
+import dataclasses
 import datetime
 import logging
 from typing import Annotated, Any, Literal
@@ -24,6 +25,7 @@ from fastapi import APIRouter, Depends
 from ofo.adjustment import level_watch
 from ofo.adjustment.held_reasons import HELD_TEXT_IDS
 from ofo.adjustment.playbook_eval import TIME_TRIGGERS, is_day_rule_id, is_situation_rule_id
+from ofo.adjustment.popup_quiet import popup_due
 from ofo.errors import render
 from ofo.errors.explanations import DAY_RULE_GENERIC_TEXT, LEVEL_WATCH_LABEL_TEXT, render_explanation
 from ofo.strategy.stored_form import shown_name
@@ -42,6 +44,7 @@ from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.routes.broker import current_user_ref
+from ofo_app.routes.outcome import AnswerClock, get_answer_clock
 from ofo_app.strategy_refused import StrategyRefused
 from ofo_app.strategy_store import StrategyStoreError
 
@@ -73,6 +76,10 @@ class OpportunityOut(ApiModel):
     outcome_text: CatalogueText
     detail: CatalogueText | None  # a dismiss reason or why it lapsed
     can_act: bool  # open: Dismiss and acted on are allowed
+    closed_at: datetime.datetime | None = None  # D-26: when it lapsed / was dismissed / acted on; None while open
+    # D-67 (ADR-326 (5)): the pop-up for this record is raised now. False only while a rule that was already true at
+    # entry is inside its first 5 minutes; the record and the bell's count do not wait (ofo.adjustment.popup_quiet)
+    popup_due: bool = True
 
 
 class GroupOut(ApiModel):
@@ -90,6 +97,12 @@ class CountOut(ApiModel):
     outcome: Outcome
     text: CatalogueText
     count: int
+
+
+class TotalsOut(ApiModel):
+    conditions: int  # every record in the counters' sum
+    rows: int  # every row (group) the list shows
+    text: CatalogueText
 
 
 class ReasonOut(ApiModel):
@@ -115,6 +128,7 @@ class InboxOut(ApiModel):
     groups: list[GroupOut]
     held: list[HeldOut]
     counts: list[CountOut]
+    totals: TotalsOut  # D-30: conditions and rows, each on its own unit
     empty_text: CatalogueText | None
     dismiss_reasons: list[ReasonOut]
 
@@ -142,7 +156,7 @@ def _detail(s: store.Suggestion) -> Any:
 
 def _yes_no_name(s: store.Suggestion) -> str | None:
     """The stored label of a clock-time rule, situation rule or level watch, else a watch's catalogue label."""
-    own = None if s.label == s.rule_id else s.label
+    own = _stored_label(s)
     if s.unit == CLOCK_UNIT or s.trigger_id in TIME_TRIGGERS:  # a clock-time rule stores no value: its own label
         return own
     if not (is_situation_rule_id(s.rule_id) or level_watch.is_rule_id(s.rule_id)):
@@ -150,12 +164,38 @@ def _yes_no_name(s: store.Suggestion) -> str | None:
     return own or LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
 
 
+def _stored_label(s: store.Suggestion) -> Any:
+    """The label the record stored, or None when it is only the rule's raw id (an id is no wording). The ONE place a
+    record's label is read for a line, so no rule id reaches the screen as its label (D-58)."""
+    return None if s.label == s.rule_id else s.label
+
+
+def _own_label(s: store.Suggestion) -> Any:
+    """The label for a valued record's line: the stored one, else the rule's own words (a day rule's action words, a
+    level watch's catalogue label); None when the rule has no wording."""
+    own = _stored_label(s)
+    if own is not None:
+        return own
+    if is_day_rule_id(s.rule_id):
+        return day_rule_words(s.rule_id)
+    if level_watch.is_rule_id(s.rule_id):
+        return LEVEL_WATCH_LABEL_TEXT.get(level_watch.direction_of(s.rule_id) or "")
+    return None
+
+
+def _valued_line(s: store.Suggestion, shown: Any, figures: Any) -> Any:
+    label = _own_label(s)
+    if label is None and s.trigger_id == s.rule_id:  # the id would stand in as the label: no wording, no line
+        return None
+    return condition_line(s.trigger_id, label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond, figures)
+
+
 def condition_text(s: store.Suggestion) -> Any:
     """A record's condition in the catalogue's words (the inbox line; the adjustment history's Why, REQ-163 AC-1)."""
     if s.cmp not in ("le", "ge", "lt") or s.trigger_id is None or s.value is None or s.threshold is None:
         if is_day_rule_id(s.rule_id):  # ADR-267 amendment: a day rule names itself, never an empty "What happened"
             # the rule's action words; the id as a label is no wording: the id's own sentence, never the raw id
-            names = (None if s.label == s.rule_id else s.label, day_rule_words(s.rule_id), DAY_RULE_GENERIC_TEXT)
+            names = (_stored_label(s), day_rule_words(s.rule_id), DAY_RULE_GENERIC_TEXT)
             if names[1].startswith(DAY_RULE_GENERIC_TEXT):
                 log.warning("day rule id with no wording: %s", s.rule_id)  # the raw id goes to the log only
             for name in names:
@@ -177,14 +217,31 @@ def condition_text(s: store.Suggestion) -> Any:
     shown = s.threshold if s.limit is None else s.limit
     found = s.target if s.trigger_id == "T-07" else None  # ADR-294 (2): the figures it was shown with
     figures = None if found is None else TargetFigures(*found)
-    return condition_line(s.trigger_id, s.label, s.unit, format(s.value, "f"), format(shown, "f"), s.beyond, figures)
+    return _valued_line(s, shown, figures)
 
 
-def _record(s: store.Suggestion, paper: bool) -> dict:
-    return {"id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
+@dataclasses.dataclass(frozen=True)
+class PopupFacts:
+    """D-67: what ``popup_quiet.popup_due`` needs besides the record (``store.popup_facts``) and the clock."""
+
+    entry: dict[int, datetime.datetime]
+    seen_clear: dict[tuple[int, str], bool]
+    now: datetime.datetime
+
+
+def _popup_due(s: store.Suggestion, facts: PopupFacts | None) -> bool:
+    if facts is None or s.outcome != "open":
+        return True
+    return popup_due(entry_at=facts.entry.get(s.strategy_id), shown_at=s.shown_at,
+                     seen_clear=facts.seen_clear.get((s.strategy_id, s.rule_id)), now=facts.now)
+
+
+def _record(s: store.Suggestion, paper: bool, popup: PopupFacts | None = None) -> dict:
+    return {"popup_due": _popup_due(s, popup), "id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
             "stage": stage_name_text(s.stage), "value": s.value, "threshold": s.threshold,
             "condition": condition_text(s), "shown_at": s.shown_at, "outcome": s.shown_outcome,
-            "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open"}
+            "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open",
+            "closed_at": s.closed_at}
 
 
 def held_body(rows: list[store.HeldInboxRow]) -> list[dict]:
@@ -194,7 +251,8 @@ def held_body(rows: list[store.HeldInboxRow]) -> list[dict]:
              "text": render_explanation(HELD_TEXT_IDS[h.reason]), "held_at": h.held_at} for h in rows]
 
 
-def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None = None) -> dict:
+def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None = None,
+               popup: PopupFacts | None = None) -> dict:
     groups: dict[str, dict] = {}
     for row in rows:  # newest first; a group's first row seen is its newest record
         s = row.suggestion
@@ -205,7 +263,7 @@ def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None
             g = groups[key] = {"group": key, "strategy_id": s.strategy_id,
                                "strategy_name": shown_name(row.strategy_name), "shown_at": s.shown_at,
                                "label": render_explanation(label), "records": []}
-        g["records"].append(_record(s, row.paper))
+        g["records"].append(_record(s, row.paper, popup))
     for g in groups.values():
         g["records"].sort(key=lambda r: (r["rule_id"], r["id"]))
         n = len(g["records"])
@@ -215,6 +273,8 @@ def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None
     return {"groups": list(groups.values()), "held": held_body(held or []),
             "counts": [{"outcome": o, "text": render_explanation(f"suggestion_outcome_{o}"), "count": counted[o]}
                        for o in OUTCOMES],
+            "totals": {"conditions": len(rows), "rows": len(groups),
+                       "text": render_explanation("suggestion_counts_units", conditions=len(rows), rows=len(groups))},
             "empty_text": None if rows else render_explanation("suggestion_inbox_empty"),
             "dismiss_reasons": [{"id": r, "text": render_explanation(f"suggestion_dismiss_{r}")}
                                 for r in store.DISMISS_REASONS]}
@@ -263,8 +323,12 @@ async def _close(db: Any, work: Any) -> SuggestionOut:
 
 @router.get("/api/adjustment-opportunities", response_model=InboxOut)
 async def adjustment_opportunities(db: Annotated[Any, Depends(get_db)],
-                                   user_ref: Annotated[str, Depends(current_user_ref)]) -> InboxOut:
-    return InboxOut.model_validate(inbox_body(await store.inbox(db, user_ref), await store.held_inbox(db, user_ref)))
+                                   user_ref: Annotated[str, Depends(current_user_ref)],
+                                   now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> InboxOut:
+    rows = await store.inbox(db, user_ref)
+    entry, clear = await store.popup_facts(db, user_ref, {r.suggestion.strategy_id for r in rows})
+    popup = PopupFacts(entry, clear, now())
+    return InboxOut.model_validate(inbox_body(rows, await store.held_inbox(db, user_ref), popup))
 
 
 @router.post("/api/adjustment-opportunities/{suggestion_id}/dismiss", response_model=SuggestionOut)

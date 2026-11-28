@@ -29,9 +29,14 @@
         <dd class="num text-sm font-semibold" data-testid="book-total"><AfterChargesTap :breakdown="total.breakdown">{{ total.text ?? '-' }}</AfterChargesTap></dd>
         <p v-if="total.reason" class="max-w-xs text-ink-muted" data-testid="book-after-reason">{{ total.reason }}</p>
       </div>
+      <!-- D-14: the line says which charges it shows: those paid, and beside them the estimate to close now (both inside the total) -->
       <div>
-        <dt class="text-ink-muted">Charges</dt>
+        <dt class="text-ink-muted" data-testid="book-charges-label">Charges paid</dt>
         <dd class="num text-sm font-semibold" data-testid="book-charges">{{ book.charges_text ?? '-' }}</dd>
+      </div>
+      <div v-if="book.charges_to_close_text">
+        <dt class="text-ink-muted" data-testid="book-charges-close-label">Estimated cost to close</dt>
+        <dd class="num text-sm font-semibold" data-testid="book-charges-close">{{ book.charges_to_close_text }}</dd>
       </div>
     </dl>
 
@@ -47,7 +52,7 @@
             <td class="py-1 pr-2" data-testid="net-contract">{{ p.contract_text }}</td>
             <td class="num text-center" data-testid="net-lots">{{ lotsOf(p) }}</td>
             <td class="num text-right" data-testid="net-avg">{{ p.average_text ?? '-' }}</td>
-            <td class="num text-right" data-testid="net-ltp">{{ p.ltp_text ?? '-' }}</td>
+            <td class="num text-right"><span data-testid="net-ltp">{{ p.ltp_text ?? '-' }}</span><span v-if="p.ltp_text" class="ml-1 text-ink-muted" data-testid="net-ltp-at">{{ istClock(p.price_at ?? null) ?? 'time n/a' }}</span></td>
             <td class="num text-right" data-testid="net-booked">{{ p.booked_text }}</td>
             <td class="num text-right" data-testid="net-unbooked">{{ p.unbooked_text ?? '-' }}</td>
             <td class="num text-right" data-testid="net-pnl">{{ p.total_text ?? '-' }}</td>
@@ -61,13 +66,10 @@
           </tr>
         </tbody>
       </table>
-      <p v-if="closed.length" class="mt-2 text-xs text-ink-muted" data-testid="closed-basis">Closed contracts: booked P&amp;L (before charges)</p>
-      <ul v-if="closed.length" class="text-xs text-ink-muted" data-testid="closed-list">
-        <li v-for="p in closed" :key="p.contract_id" class="flex gap-2" data-testid="closed-row">
-          <span class="flex-1" data-testid="closed-contract">{{ p.contract_text }}</span>
-          <span>Closed, booked</span><span class="num" data-testid="closed-booked">{{ p.booked_text }}</span>
-        </li>
-      </ul>
+      <!-- D-10 (ADR-207 (2)): the Closed section: each closed lifecycle with its entry, exit and its own booked P&L (before charges);
+           a contract bought back and opened again has a row here AND its open row above, whose Booked starts at 0 -->
+      <ClosedRows :rows="closedRows" />
+      <p v-if="book.closed_text" class="mt-2 text-xs font-semibold" data-testid="closed-result">{{ book.closed_text }}</p>
     </div>
 
     <table v-else class="mt-2 w-full text-xs" data-testid="order-table">
@@ -78,7 +80,7 @@
         <tr v-for="o in book.orders" :key="o.id" class="border-t border-line" data-testid="order-row">
           <td class="num py-1" data-testid="order-time">{{ istClock(o.placed_at) ?? '-' }}</td>
           <td class="text-center" data-testid="order-side">{{ o.side === 'BUY' ? 'B' : 'S' }}</td>
-          <td data-testid="order-contract">{{ o.contract_text }}</td>
+          <td data-testid="order-contract">{{ o.contract_text }}<span v-if="o.reason_text" class="block text-[11px] text-ink-muted" data-testid="order-reason">{{ o.reason_text }}</span></td>
           <td class="num text-right" data-testid="order-qty">{{ o.quantity }}</td>
           <td class="num text-right" data-testid="order-price">{{ o.price_text }}</td>
           <td class="text-center" data-testid="order-kind">{{ kindText(o.kind) }}</td>
@@ -94,6 +96,7 @@ import { istClock } from '@/lib/displayFormat'
 import { CONTRACTS_CHANGED_TEXT, afterFigure, pausedText } from '@/lib/tracking'
 import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import { withAsOf } from '@/lib/paperList'
+import ClosedRows from '@/components/strategy/ClosedRows.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { EXIT_ALL_LABEL, EXIT_LABEL, NET_POSITIONS_LABEL, ORDERBOOK_LABEL, exitLotsFrom, exitLotsOk, openLots, paperKindLabel } from '@/lib/paperDrafts'
 
@@ -123,7 +126,7 @@ const total = computed(() => afterFigure(props.book, props.book.total_text ?? nu
 const view = ref(props.showOrders > 0 ? 'orders' : 'net')
 watch(() => props.showOrders, (n) => { if (n > 0) view.value = 'orders' })
 const open = computed(() => props.book.positions.filter((p) => p.net_quantity !== 0))
-const closed = computed(() => props.book.positions.filter((p) => p.net_quantity === 0))
+const closedRows = computed(() => (Array.isArray(props.book.closed) ? props.book.closed : []))
 const lotsOf = (p) => openLots(props.net, p.contract_id)
 // the order's own kind in words ('open' is the first add)
 const kindText = (kind) => (kind === 'open' ? 'Open' : paperKindLabel(kind))

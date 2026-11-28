@@ -31,7 +31,9 @@ def _found(cid: int, expiry: datetime.date):
 
 def _order(cid: int, side: str, price: str, kind: str):
     paper_order = PaperOrder(str(cid), side, 65, D(price), kind, AT)
-    return SimpleNamespace(order=SimpleNamespace(contract_id=cid, as_paper=lambda: paper_order))
+    # the real NewOrder fields the figures read: kind, reason (None, as for an order with no stored reason), placed_at
+    return SimpleNamespace(order=SimpleNamespace(contract_id=cid, as_paper=lambda: paper_order, kind=kind, reason=None,
+                                                 placed_at=paper_order.placed_at))
 
 
 def _figures(expiry: datetime.date, today: datetime.date | None, closed_first: bool = False):

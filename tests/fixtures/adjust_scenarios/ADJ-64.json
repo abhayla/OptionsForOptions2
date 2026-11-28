@@ -4685,7 +4685,7 @@
    },
    "A-35": {
     "side": "both",
-    "refused": "Your playbook sets no time exit, so this approach is not built.",
+    "refused": "This approach is not built because your playbook sets no exit time.",
     "step_basis": null,
     "step_value": null
    },

@@ -219,7 +219,7 @@ describe('u127 each screen offers the breakdown', () => {
 
   it('Completed row: the server charges_paid_text is only the figure, so the row adds the word Charges (strategy 143)', async () => {
     const closed = { ...CLOSED, total_after: '-305.24', total_after_text: '-305.24', charges_paid: '279.24', charges_paid_text: '₹279.24' }
-    answer = () => Promise.resolve({ data: { strategies: [{ id: 143, underlying: 'NIFTY', status: 'closed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', final_pnl_text: '-26.00', ...closed }] } })
+    answer = () => Promise.resolve({ data: { strategies: [{ id: 143, underlying: 'NIFTY', status: 'closed', status_word: 'Completed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', final_pnl_text: '-26.00', ...closed }] } })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'Completed Strategies', parent: 'Strategies', completedOnly: true } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
     await router.push('/s')
     await router.isReady()
@@ -229,7 +229,7 @@ describe('u127 each screen offers the breakdown', () => {
   })
 
   it('Completed row: Net after charges opens the breakdown; the Charges figure stays its own number', async () => {
-    answer = () => Promise.resolve({ data: { strategies: [{ id: 141, underlying: 'NIFTY', status: 'closed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', final_pnl_text: '-32.50', ...CLOSED }] } })
+    answer = () => Promise.resolve({ data: { strategies: [{ id: 141, underlying: 'NIFTY', status: 'closed', status_word: 'Completed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z', final_pnl_text: '-32.50', ...CLOSED }] } })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'Completed Strategies', parent: 'Strategies', completedOnly: true } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
     await router.push('/s')
     await router.isReady()

@@ -26,7 +26,7 @@ from enum import Enum
 from typing import Final
 
 from ofo.engine import UNLIMITED, strategy_metrics
-from ofo.engine.metrics import LossRegion
+from ofo.engine.metrics import LossRegion, breakevens_with_shift, loss_regions_after_charges
 from ofo.engine.legs import require_price
 from ofo.engine.model import ModelInputs
 from ofo.scenario.config import ScenarioConfig
@@ -271,6 +271,31 @@ def build_level_set(
         risk_boundaries=risk_boundaries,
         expected_move_points=move,
     )
+
+
+def booked_level_set(level_set: LevelSet, inputs: ModelInputs, booked: Decimal | None) -> LevelSet:
+    """D-11 / D-16 (ADR-209, ADR-263; R3): the level set of a table whose TOTAL cells carry ``booked`` (Add Booked P&L
+    switch ON). The 0-P&L columns, ``breakevens`` and the Lower / Upper BE values are the levels where open legs +
+    booked is 0, before charges: the engine's ``breakevens_with_shift`` with shift = booked, the same levels as the
+    chart's marks (``book_breakevens(view, terms, 0)``), so the TOTAL cell at a 0-P&L column reads 0.00. A column that
+    existed only as an open-legs breakeven is dropped; every grid, CURRENT and strike column stays. None or 0 booked,
+    or legs on more than one expiry: ``level_set`` as it was. The summary keeps the open-legs ``level_set``."""
+    strategy = inputs.strategy
+    if booked is None or booked == 0 or not strategy.is_single_expiry:
+        return level_set
+    breakevens = breakevens_with_shift(strategy, booked)
+    kinds: dict[Decimal, set[ColumnKind]] = {}
+    for c in level_set.columns:
+        rest = set(c.kinds) - {ColumnKind.ZERO_PNL}
+        if rest:
+            kinds[c.level] = rest
+    for be in breakevens:
+        if level_set.start <= be <= level_set.end:
+            kinds.setdefault(be, set()).add(ColumnKind.ZERO_PNL)
+    columns = tuple(LevelColumn(lvl, frozenset(k)) for lvl, k in sorted(kinds.items()))
+    regions = loss_regions_after_charges(strategy, -booked)  # a flat amount off every level: -booked = +booked on
+    lower_be, upper_be = _lower_upper(inputs, regions, breakevens, level_set.step)
+    return replace(level_set, columns=columns, breakevens=breakevens, lower_be=lower_be, upper_be=upper_be)
 
 
 def graph_level_set(level_set: LevelSet, inputs: ModelInputs) -> LevelSet:

@@ -140,3 +140,29 @@ def test_badge_is_not_available_without_an_estimate_with_the_reason_never_a_numb
     object.__setattr__(t, "at_refused_reason", reason)
     b = badge(t, _margin(Decimal(61163)))
     assert b["state"] == "unavailable" and b["reason"] == reason and b["amount"] is None
+
+
+NOT_LIVE = "not shown while prices are not live"
+
+
+async def test_d37_r2_a_live_reply_carries_no_not_live_sentence(provider):
+    """D-37 round 2: the sentence is sent only when the reply's prices are not live; a live reply (plain or with a target)
+    has none, neither in the reply nor in its target block, so the browser can never show it beside real figures."""
+    for extra in ({}, {"target_level": "25350"}):
+        out = await _target(provider, **extra)
+        assert "target_not_live_text" not in out and "not_live_text" not in out["target"]
+
+
+async def test_d37_r2_the_no_live_data_reply_carries_the_sentence():
+    out = (await _post_stored({**_spread_body(), "both_views": True})).json()
+    assert out["state"] == "FROM_ENTRIES" and out["target_not_live_text"] == NOT_LIVE
+
+
+def test_d37_r2_not_connected_carries_the_sentence_and_refused_does_not():
+    from ofo.outcome.serialize import outcome_to_dict  # noqa: PLC0415
+    from ofo.outcome.service import MARGIN, Outcome, OutcomeState  # noqa: PLC0415
+
+    not_connected = outcome_to_dict(Outcome(OutcomeState.NOT_CONNECTED, "NIFTY", None, None, (), MARGIN))
+    refused = outcome_to_dict(Outcome(OutcomeState.REFUSED, "NIFTY", None, None, (), MARGIN))
+    assert not_connected["target_not_live_text"] == NOT_LIVE
+    assert "target_not_live_text" not in refused  # a refusal has its own reason; not "prices are not live"

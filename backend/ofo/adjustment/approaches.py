@@ -287,6 +287,9 @@ class ApproachLegs:
     #: (expiry, type, strike) of every contract this build needed and found no price / no delta for (the caller's ONE
     #: second pass holds them, GC-IC1 round 3); empty when none
     unpriced: tuple[tuple[datetime.date, str, Decimal], ...] = ()
+    #: D-25 (ADR-294 (4)): A-24 / A-25 only: the whole trade's P&L BEFORE charges at the planned exit prices, the figure
+    #: the "in profit" test compared (the engine's ``pnl_now``); None for every other approach
+    whole_before_charges: Decimal | None = None
 
 
 class _Refused(Exception):
@@ -586,14 +589,15 @@ def _close_all(b: _Builder, legs: Sequence[PositionLeg]) -> tuple[list[Trade], l
     return [t for t, _ in pairs], [c for _, c in pairs], []
 
 
-def _take_profit_guard(b: _Builder, legs: Sequence[PositionLeg]) -> None:
+def _take_profit_guard(b: _Builder, legs: Sequence[PositionLeg]) -> Decimal:
     """ADR-238 (6): A-24 / A-25 only when the whole trade is in profit at the planned exit prices (the engine sums
-    and compares, ADR-008); booked unknown -> refused."""
+    and compares, ADR-008); booked unknown -> refused. Returns the figure it compared (before charges, ADR-294 (4))."""
     if b.p.booked is None:
         raise _refusal("adjust_take_profit_booked_unknown")
     pnl = adjust_money.pnl_now(b.p.booked, [(x.side, x.entry, b.price_of(x), x.lots * b.p.lot) for x in legs])
     if not adjust_money.in_profit(pnl):
         raise _refusal("adjust_take_profit_not_in_profit")
+    return pnl
 
 
 def _partial(b: _Builder, legs: Sequence[PositionLeg], percent: int) -> tuple[list[Trade], list[ClosedLeg],
@@ -686,6 +690,7 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
     trades: list[Trade] = []
     closed: list[ClosedLeg] = []
     after = legs
+    whole: Decimal | None = None
     try:
         if approach_id == "A-36":
             pass
@@ -694,9 +699,9 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
                 _time_exit_due(position, exits)
             trades, closed, after = _close_all(b, legs)
             if approach_id == "A-24":
-                _take_profit_guard(b, legs)
+                whole = _take_profit_guard(b, legs)
         elif approach_id == "A-25":
-            _take_profit_guard(b, legs)
+            whole = _take_profit_guard(b, legs)
             trades, closed, after = _partial(b, legs, config.partial_close_percent)
         elif approach_id == "A-27":
             trades, closed, after = _cheap_shorts(b, legs, exits.t09)
@@ -766,7 +771,7 @@ def build_approach(position: Position, chain: Sequence[ChainRow], spot: Decimal,
     if refusal is not None:
         return replace(base, refusal=refusal, refusal_message=refusal_message)
     return replace(base, trades=_ordered(trades), after=tuple(after), closed=tuple(closed), warnings=tuple(b.warnings),
-                   warning_messages=tuple(b.warning_messages))
+                   warning_messages=tuple(b.warning_messages), whole_before_charges=whole)
 
 
 def applicable_approaches(position: Position, chain: Sequence[ChainRow], spot: Decimal, config: Config,  # noqa: PLR0913

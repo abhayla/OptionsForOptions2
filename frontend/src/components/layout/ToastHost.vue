@@ -6,11 +6,10 @@ const newestFirst = computed(() => [...toasts].reverse())
 </script>
 
 <template>
-  <!-- u506: an overlay fixed at the BOTTOM RIGHT, where no page has a control (the Search boxes are top right). It takes no
-       room, so no page content moves; flex-col-reverse puts the newest (first in the DOM) nearest the corner and stacks the
-       older ones upward. bottom-24 clears a one-row sticky bar (OptionChainPage.vue:292). z-30 is below the modal and the
-       common drawer (z-50) and the adjust drawer (z-40), so a pop-up never covers a Confirm or Cancel. -->
-  <div class="fixed bottom-24 right-4 z-30 flex w-80 flex-col-reverse gap-2" aria-live="polite" data-testid="toast-host">
+  <!-- D-67 (owner decision, binding; replaces the u506 fixed bottom-right overlay): AppLayout renders this INSIDE the sticky header block,
+       so a pop-up raised while the trader is scrolled down is still on screen, and nothing is fixed over the page content. The
+       aria-live region is always rendered (empty with no pop-up) so the first announcement is read. Newest first (top). -->
+  <div class="mx-auto flex w-full max-w-[1200px] flex-col gap-2 px-4" :class="newestFirst.length ? 'py-2' : ''" aria-live="polite" data-testid="toast-host">
     <div
       v-for="t in newestFirst"
       :key="t.id"

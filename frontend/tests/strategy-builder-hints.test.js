@@ -431,7 +431,7 @@ describe("W-193: the builder page summary card", () => {
     // GC-UI step 3b (ADR-202 (4), D-A41): the warning is ONE visible line, the server's full message behind More
     expect(w.findAll('[data-testid="margin-shortfall"]')).toHaveLength(1);
     expect(w.findAll('[data-testid="margin-short-line"]')).toHaveLength(1);
-    expect(t(w, "margin-short-line").text()).toBe("Not enough funds for this strategy");
+    expect(t(w, "margin-short-line").text()).toBe("Not enough funds. Paper trade: this practice order is still allowed; a real order of this size would be refused.");
     expect(t(w, "summary-cards").find('[data-testid="margin-shortfall"]').exists()).toBe(true);
     expect(t(w, "margin").attributes("data-short")).toBe("true");
     await t(w, "margin-shortfall-more").trigger("click");

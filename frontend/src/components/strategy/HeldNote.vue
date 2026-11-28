@@ -7,7 +7,7 @@
     <p class="font-semibold" data-testid="held-label">{{ view.label }}</p>
     <p data-testid="held-entry">{{ view.entry }}</p>
     <p v-if="view.rules" data-testid="held-rules">{{ view.rules }}</p>
-    <p v-if="view.broker" data-testid="held-broker-name">{{ view.broker }}</p>
+    <p v-if="view.broker" data-testid="held-broker-name">{{ plainName(view.broker) }}</p>
     </template>
     <p v-if="note || noteOnly" class="mt-1 text-ink-muted" data-testid="held-record-note">{{ HELD_NOTE }}</p>
   </div>
@@ -16,6 +16,7 @@
 <script setup>
 import { computed } from 'vue'
 import { HELD_NOTE, heldView } from '@/lib/tracking'
+import { plainName } from '@/lib/saveDraft' // D-58: the API sends the broker text in quotes; they are not shown
 
 const props = defineProps({ held: { type: null, default: null }, note: { type: Boolean, default: false }, noteOnly: { type: Boolean, default: false } })
 const view = computed(() => heldView(props.held))

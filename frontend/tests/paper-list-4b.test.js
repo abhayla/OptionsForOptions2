@@ -4,7 +4,9 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import REAL from './fixtures/paper-strategies.json'
+import REAL0 from './fixtures/paper-strategies.json'
+import { closedFrom } from './_closedRows'
+const REAL = { ...REAL0, strategies: REAL0.strategies.map((s) => ({ ...s, closed: closedFrom(s.positions) })) }
 import { contractName } from '@/lib/displayFormat'
 
 const calls = []
@@ -84,7 +86,9 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(all(w, 'paper-group')[0].findAll('[data-testid="paper-leg"]')).toHaveLength(3)
     await t(w, 'show-closed').setValue(true)
     expect(all(w, 'paper-group').map((g) => g.attributes('data-strategy'))).toEqual(['2', '1', '3'])
-    expect(all(w, 'paper-group')[1].findAll('[data-testid="paper-leg"]')).toHaveLength(4)
+    expect(all(w, 'paper-group')[1].findAll('[data-testid="paper-leg"]')).toHaveLength(3) // open legs only: no Lots 0 row (D-10)
+    expect(all(w, 'paper-group')[1].findAll('[data-testid="paper-closed-leg"]')).toHaveLength(1) // the closed one, with entry and exit
+    expect(all(w, 'paper-group')[1].get('[data-testid="paper-closed-exit"]').text()).toBe(REAL.strategies[1].closed[0].average_exit_text)
     expect(all(w, 'paper-group')[0].get('[data-testid="paper-state"]').text()).toBe('Exited')
   })
 
@@ -96,7 +100,7 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(row.get('[data-testid="paper-instrument"]').text()).toContain(contractName({ underlying: REAL.strategies[1].underlying, expiry: p.expiry, strike: p.strike, instrument: p.instrument })) // U16: 'NIFTY 3 Nov 22950 CE', not the ISO date
     expect(row.get('[data-testid="paper-qty"]').text()).toBe('1 lot') // 65 units / the contract's lot size 65
     expect(row.get('[data-testid="paper-avg"]').text()).toBe(p.average_text)
-    expect(row.get('[data-testid="paper-ltp"]').text()).toBe(p.ltp_text)
+    expect(row.get('[data-testid="paper-ltp"]').text().startsWith(p.ltp_text)).toBe(true) // D-18: the quote time follows the price in the same cell
     expect(row.get('[data-testid="paper-leg-booked"]').text()).toBe(p.booked_text)
     expect(row.get('[data-testid="paper-leg-unbooked"]').text()).toBe(p.unbooked_text)
     expect(row.get('[data-testid="paper-leg-pnl"]').text()).toBe(p.total_text)
@@ -239,6 +243,30 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(t(w, 'paper-confirm-button').element.disabled).toBe(false)
   })
 
+  it('D-40: the header shows the server\'s left-out line as sent, and no line when none was left out', async () => {
+    const LINE = '2 strategies left out: their contracts have expired.'
+    const d = clone()
+    Object.assign(d.totals, { left_out_count: 2, left_out_text: LINE })
+    answers['GET /paper/strategies'] = ok(d)
+    const w = await show()
+    expect(t(w, 'totals-left-out').text()).toBe(LINE)
+    expect(t(w, 'totals-total').text()).toBe(REAL.totals.total_text) // the figures are the server's, not blanked
+    const none = clone()
+    Object.assign(none.totals, { left_out_count: 0, left_out_text: null })
+    answers['GET /paper/strategies'] = ok(none)
+    expect(has(await show(), 'totals-left-out')).toBe(false)
+  })
+  it('D-40 r2: the compact list shows no header figure, so no left-out line is missing beside one', async () => {
+    const d = clone()
+    Object.assign(d.totals, { left_out_count: 2, left_out_text: '2 strategies left out: their contracts have expired.' })
+    answers['GET /paper/strategies'] = ok(d)
+    const w0 = await show()
+    const w = (() => { const m = mount(PaperStrategies, { props: { compact: true }, global: { plugins: [w0.vm.$router] } }); return m })()
+    await flushPromises()
+    expect(has(w, 'paper-totals')).toBe(false)
+    expect(has(w, 'totals-total')).toBe(false)
+    expect(has(w, 'totals-left-out')).toBe(false)
+  })
   it('totals_reason replaces a missing figure with the server reason', async () => {
     const d = clone()
     Object.assign(d.totals, { total_text: null, total: null, totals_reason: 'prices_not_live', totals_reason_text: 'Prices are not live', decay_text: null, decay: null, decay_reason: 'no_iv', decay_reason_text: 'No Greeks yet' })

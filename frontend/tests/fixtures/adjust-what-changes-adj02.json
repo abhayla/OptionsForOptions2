@@ -1,0 +1,236 @@
+{
+ "A-36": {
+  "title": "What changes",
+  "rows": [
+   {
+    "id": "profit_range",
+    "label": "Profit range",
+    "before_text": "22656.77/23543.23 (profit range 886.46 points)",
+    "after_text": "22656.77/23543.23 (profit range 886.46 points)",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   },
+   {
+    "id": "breakeven_distance",
+    "label": "Distance from the index to each breakeven",
+    "before_text": "22,656.77 is 763.23 points below the index; 23,543.23 is 123.23 points above the index",
+    "after_text": "22,656.77 is 763.23 points below the index; 23,543.23 is 123.23 points above the index",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   },
+   {
+    "id": "pop",
+    "label": "Probability of profit",
+    "before_text": "66.69%",
+    "after_text": "66.69%",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   },
+   {
+    "id": "max_profit",
+    "label": "Max profit",
+    "before_text": "₹5,619.44",
+    "after_text": "₹5,619.44",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   },
+   {
+    "id": "max_loss",
+    "label": "Max loss",
+    "before_text": "₹20,380.56",
+    "after_text": "₹20,380.56",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   },
+   {
+    "id": "credit",
+    "label": "Credit or debit of this adjustment",
+    "before_text": "No trade",
+    "after_text": "No trade",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   },
+   {
+    "id": "margin",
+    "label": "Margin",
+    "before_text": "₹1,60,000.00",
+    "after_text": "₹1,60,000.00",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   },
+   {
+    "id": "net_delta",
+    "label": "Net delta",
+    "before_text": "-27.5730",
+    "after_text": "-27.5730",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   }
+  ],
+  "reason_line": null
+ },
+ "A-29": {
+  "title": "What changes",
+  "rows": [
+   {
+    "id": "profit_range",
+    "label": "Profit range",
+    "before_text": "22656.77/23543.23 (profit range 886.46 points)",
+    "after_text": "22684.44/23531.13 (profit range 846.69 points)",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "breakeven_distance",
+    "label": "Distance from the index to each breakeven",
+    "before_text": "22,656.77 is 763.23 points below the index; 23,543.23 is 123.23 points above the index",
+    "after_text": "22,684.44 is 735.56 points below the index; 23,531.13 is 111.13 points above the index",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "pop",
+    "label": "Probability of profit",
+    "before_text": "66.69%",
+    "after_text": "65.02%",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "max_profit",
+    "label": "Max profit",
+    "before_text": "₹5,619.44",
+    "after_text": "₹2,023.23",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "max_loss",
+    "label": "Max loss",
+    "before_text": "₹20,380.56",
+    "after_text": "₹23,976.77",
+    "direction": "up",
+    "direction_text": "up",
+    "unavailable_reason": null
+   },
+   {
+    "id": "credit",
+    "label": "Credit or debit of this adjustment",
+    "before_text": "No trade",
+    "after_text": "Debit ₹3,549.00",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "margin",
+    "label": "Margin",
+    "before_text": "₹1,60,000.00",
+    "after_text": "₹1,60,000.00",
+    "direction": "same",
+    "direction_text": "unchanged",
+    "unavailable_reason": null
+   },
+   {
+    "id": "net_delta",
+    "label": "Net delta",
+    "before_text": "-27.5730",
+    "after_text": "-12.9285",
+    "direction": "up",
+    "direction_text": "up",
+    "unavailable_reason": null
+   }
+  ],
+  "reason_line": "This removes credit from the call side, so the put spread becomes the largest loss."
+ },
+ "A-31": {
+  "title": "What changes",
+  "rows": [
+   {
+    "id": "profit_range",
+    "label": "Profit range",
+    "before_text": "22656.77/23543.23 (profit range 886.46 points)",
+    "after_text": "No breakeven: a loss at every level",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "breakeven_distance",
+    "label": "Distance from the index to each breakeven",
+    "before_text": "22,656.77 is 763.23 points below the index; 23,543.23 is 123.23 points above the index",
+    "after_text": "Not available",
+    "direction": "not_available",
+    "direction_text": "not available",
+    "unavailable_reason": "After: Not available: there is no breakeven, so there is no distance to measure."
+   },
+   {
+    "id": "pop",
+    "label": "Probability of profit",
+    "before_text": "66.69%",
+    "after_text": "0.00%",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "max_profit",
+    "label": "Max profit",
+    "before_text": "₹5,619.44",
+    "after_text": "−₹1,719.06",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "max_loss",
+    "label": "Max loss",
+    "before_text": "₹20,380.56",
+    "after_text": "₹1,719.06",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "credit",
+    "label": "Credit or debit of this adjustment",
+    "before_text": "No trade",
+    "after_text": "Debit ₹7,338.50",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "margin",
+    "label": "Margin",
+    "before_text": "₹1,60,000.00",
+    "after_text": "₹0.00",
+    "direction": "down",
+    "direction_text": "down",
+    "unavailable_reason": null
+   },
+   {
+    "id": "net_delta",
+    "label": "Net delta",
+    "before_text": "-27.5730",
+    "after_text": "Not available",
+    "direction": "not_available",
+    "direction_text": "not available",
+    "unavailable_reason": "After: No position left after exit"
+   }
+  ],
+  "reason_line": null
+ }
+}

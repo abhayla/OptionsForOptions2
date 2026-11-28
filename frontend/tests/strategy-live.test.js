@@ -239,7 +239,7 @@ describe('AC-4: the Builder live socket', () => {
 // ---- W-065 phase 3 round 2 (ADR-077, REQ-049 AC-5): the fallback follows THIS page's own socket --------------------------
 // The COMPUTED answer is the real recorded condor outcome (tests/fixtures/outcome-condor.json); the not-live
 // answer has the shape the server sends (NOT_CONNECTED, AC-5's text, no table, no ltp).
-const AC5 = 'Live market data disconnected. Last updated: 09:20:09 AM. Live strategy monitoring is paused.'
+const AC5 = 'Live market data disconnected. Last updated: 09:20:09 IST. Live strategy monitoring is paused.'
 const DRAFT = { underlying: 'NIFTY', legs: real.legs.map((l) => ({ instrument_id: l.instrument_id, action: l.action, lots: l.lots,
   planned_entry: l.planned_entry, captured_at: l.captured_at })) }
 const NOT_LIVE = { ...real, state: 'NOT_CONNECTED', status_label: AC5, table: null, summary: null, payoff: null, scenario: null,

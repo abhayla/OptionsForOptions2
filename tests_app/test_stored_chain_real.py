@@ -141,5 +141,6 @@ def test_a_catalogue_cannot_be_built_positionally():
     for cls in (chain_push.ChainCatalogue, leg_picker.FuturesCatalogue):
         assert dataclasses.is_dataclass(cls)
         with pytest.raises(TypeError):
-            cls((), (), True)
+            # deliberate positional call: kw_only dataclass must refuse it
+            cls((), (), True)  # type: ignore[call-arg]
     assert ChainCatalogue(expiries=(), contracts=()).unreadable is False

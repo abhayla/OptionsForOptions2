@@ -20,6 +20,7 @@ vi.mock('@/services/api', async (importActual) => {
 
 import { withPriceTexts } from './_priceTexts'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import { readTrackingItem, readTracking, TRACKING_REFRESH_MS, NOT_CONNECTED_TEXT } from '@/lib/tracking'
 
 const leg = (i, over = {}) => withPriceTexts({
@@ -106,13 +107,79 @@ describe('PaperStrategies: answer states', () => {
     expect(has(w, 'paper-group')).toBe(false)
     expect(has(w, 'paper-total')).toBe(false)
   })
-  it('a refresh failure after a good read shows no figures; the next good read restores them', async () => {
+  it('D-05 r2: a failed refresh keeps the loaded list, an open Stops panel and its typed level, and shows an error banner', async () => {
+    let fail = false
+    answers['GET /tracking'] = () => (fail ? Promise.reject({ status: null, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
+    answers['GET /paper/strategies/48/triggers'] = ok({ triggers: [] })
+    const w = await show()
+    await t(w, 'stops-open-48').trigger('click')
+    await flushPromises()
+    await t(w, 'ce-above').setValue('29980')
+    fail = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-error-what')).toBe(true)
+    expect(has(w, 'paper-group')).toBe(true)
+    expect(has(w, 'paper-stops')).toBe(true)
+    expect(t(w, 'ce-above').element.value).toBe('29980')
+    fail = false
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(has(w, 'paper-error-what')).toBe(false)
+    expect(t(w, 'ce-above').element.value).toBe('29980')
+  })
+  it('D-05 r3: a refresh failure after a good read shows NO figure, keeps cards, legs, the open Stops panel and its typed level', async () => {
+    let fail = false
+    answers['GET /tracking'] = () => (fail ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
+    answers['GET /paper/strategies/48/triggers'] = ok({ triggers: [] })
+    const w = await show()
+    expect(w.text()).toContain('113.60')
+    expect(w.text()).toContain('71.50')
+    await t(w, 'stops-open-48').trigger('click')
+    await flushPromises()
+    await t(w, 'ce-above').setValue('29980')
+    fail = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(w.text()).not.toContain('113.60')
+    expect(w.text()).not.toContain('71.50')
+    expect(t(w, 'paper-total').text()).toBe('—')
+    expect(w.findAll('[data-testid="paper-ltp"]').every((c) => c.text().startsWith('—'))).toBe(true)
+    expect(w.findAll('[data-testid="paper-leg-pnl"]').every((c) => c.text() === '—')).toBe(true)
+    expect(t(w, 'paper-total-reason').text()).toBe('Paper P&L paused - prices not live')
+    expect(has(w, 'paper-group')).toBe(true)
+    expect(w.findAll('[data-testid="paper-leg"]')).toHaveLength(4)
+    expect(has(w, 'paper-stops')).toBe(true)
+    expect(t(w, 'ce-above').element.value).toBe('29980')
+    expect(t(w, 'ce-save').attributes('disabled')).toBeUndefined()
+    fail = false
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(t(w, 'paper-total').text()).toBe('+71.50')
+    expect(w.text()).toContain('113.60')
+  })
+  it('D-05 r3 (REQ-109 AC-5): Exit is disabled with the reason while the last refresh failed, and no order opens from the old price', async () => {
+    let fail = false
+    answers['GET /tracking'] = () => (fail ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
+    const w = await show()
+    await t(w, 'select-leg-48-1').setValue(true)
+    expect(t(w, 'exit-selected-48').attributes('disabled')).toBeUndefined()
+    fail = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(t(w, 'exit-selected-48').attributes('disabled')).toBeDefined()
+    expect(t(w, 'paper-exit-reason').text()).toBe('Prices are not live; try again when they update')
+    await t(w, 'exit-selected-48').trigger('click')
+    await flushPromises()
+    expect(w.findComponent(PaperConfirmDialog).props('open')).toBe(false)
+    expect(calls.filter((c) => c[0] === 'POST')).toHaveLength(0)
+    fail = false
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(t(w, 'exit-selected-48').attributes('disabled')).toBeUndefined()
+    expect(has(w, 'paper-exit-reason')).toBe(false)
+  })
+  it('a refresh failure after a good read keeps the list under an error banner; the next good read clears the banner', async () => {
     let fail = false
     answers['GET /tracking'] = () => (fail ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
     const w = await show()
     fail = true
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
-    expect(has(w, 'paper-total')).toBe(false)
+    expect(has(w, 'paper-total')).toBe(true)
     expect(has(w, 'paper-error-what')).toBe(true)
     fail = false
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
@@ -176,6 +243,22 @@ describe('PaperStrategies: review 1 minors (GC-BP step 8)', () => {
     expect(has(w, 'paper-group')).toBe(true)
     expect(has(w, 'paper-confirm')).toBe(false)
     expect(has(w, 'paper-error')).toBe(false)
+  })
+  it('D-05 r5: an unreadable 2xx refresh closes an open confirm dialog; confirming then posts nothing and the reason shows', async () => {
+    let bad = false
+    answers['GET /tracking'] = () => Promise.resolve({ data: bad ? { unreadable: true } : REAL_REPLY })
+    answers['POST /paper/strategies/48/orders'] = ok({})
+    const w = await show()
+    await exitLeg(w, 0)
+    const orders = w.findComponent(PaperConfirmDialog).props('orders')
+    expect(w.findComponent(PaperConfirmDialog).props('open')).toBe(true)
+    bad = true
+    await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
+    expect(w.findComponent(PaperConfirmDialog).props('open')).toBe(false)
+    w.findComponent(PaperConfirmDialog).vm.$emit('confirm', orders)
+    await flushPromises()
+    expect(calls.filter((c) => c[0] === 'POST')).toHaveLength(0)
+    expect(t(w, 'paper-exit-reason').text()).toBe('Prices are not live; try again when they update')
   })
   it('R1-4: Cancel clears that group\'s exit error', async () => {
     answers['GET /tracking'] = ok(REAL_REPLY)

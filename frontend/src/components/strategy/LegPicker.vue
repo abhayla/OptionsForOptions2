@@ -9,9 +9,11 @@
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import Modal from '@/components/common/Modal.vue'
+import { DRAFT_HOLDS_TEXT, DUP_QUESTION, admitLegs, lotsRangeText } from '@/lib/legDoor'
 import DepthPopup from '@/components/strategy/DepthPopup.vue'
 import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
-import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istTime, setShownDate, strikeLabel } from '@/lib/displayFormat'
+import { capturedCaption, contractName, daysByExpiry, expiryText, expiryWithDays, istClock, istTime, setShownDate, strikeLabel } from '@/lib/displayFormat'
 import { marketClosedText } from '@/lib/sharedStateText'
 import { healthSentence } from '@/lib/dataHealthText'
 import { oiBarMax, oiBarWidth as barWidthOf } from '@/lib/oiBars'
@@ -197,6 +199,8 @@ const spotLive = computed(() => (strikesData.value?.centre === 'LIVE_SPOT' && st
 const spotTitle = computed(() => (spotLive.value && strikesData.value?.answered_at ? `Index price, read ${istTime(strikesData.value.answered_at)}` : ''))
 const centreStrike = computed(() => (strikesData.value?.centre === 'MIDDLE_STRIKE' ? null : (strikesData.value?.rows ?? []).find((r) => r.is_atm)?.strike ?? null))
 const centreLine = computed(() => centreText(strikesData.value, istTime))
+// D-18: the chain's LTPs are as of the OLDEST quote time the server made them from (prices_at), never the reply time
+const chainAsOf = computed(() => (strikesData.value ? (istClock(strikesData.value.prices_at) ? `Oldest chain price as of ${istClock(strikesData.value.prices_at)} IST` : 'Chain prices: time not given') : null))
 const strikesReason = computed(() => listReasonText(strikesData.value?.reason))
 const futuresReason = computed(() => futuresListReasonText(futuresData.value?.reason))
 const pickedCount = computed(() => Object.keys(picked.value).length)
@@ -503,6 +507,16 @@ async function capture(id, und) {
   }
 }
 
+/** D-60 (REQ-030 AC-12): a contract already in the strategy with the SAME action is never added silently. The dialog is one
+ *  promise: 'increase' | 'separate' | 'cancel'. The other action on the same contract is two legs, no question (AC-11). */
+const dup = ref(null)
+const askDuplicate = (leg) => new Promise((resolve) => { dup.value = { name: contractName(leg), resolve } })
+function answerDuplicate(choice) {
+  const d = dup.value
+  dup.value = null
+  d?.resolve(choice)
+}
+
 async function save() {
   if (!canSave.value) return
   busy.value = true
@@ -514,6 +528,19 @@ async function save() {
   const act = action.value
   const lotCount = lots.value
   const id = c ? instrumentId(c.exchange_segment, c.exchange_token) : old.instrument_id
+  const admitted = await admitLegs(props.legs, [{ instrument_id: id, action: act, lots: lotCount }], { ask: askDuplicate, maxLots: maxLots.value, skipId: old?.id })
+  if (!admitted || admitted.error) { // Cancel keeps the form as it is; a refused Increase says why
+    busy.value = false
+    if (admitted) doneError.value = admitted.error
+    return
+  }
+  if (admitted.legs !== props.legs) { // Increase quantity: the clashing row took the lots, the edited row is gone
+    resetForm()
+    emit('update:legs', admitted.legs.filter((l) => l.id !== old?.id))
+    busy.value = false
+    emit('done')
+    return
+  }
   resetForm()
   try {
     // A priced leg keeps its captured entry while its contract is unchanged (only buy/sell or lots changed).
@@ -558,17 +585,30 @@ async function done() {
   }
   doneError.value = ''
   busy.value = true
+  const kept = await resolveDuplicates(chosen)
+  if (!kept) { busy.value = false; return } // Cancel: nothing changes, the picks stay selected
   picked.value = {} // picks made while the entries are captured belong to the next batch
   cellLots.value = {}
   pickedContracts.value = {}
-  await addChosen(chosen, underlying.value)
+  await addChosen(kept, underlying.value)
   emit('done')
+}
+
+/** Ask once per chosen contract already held with the same action (the one door, lib/legDoor.js). Returns the contracts to
+ *  add as their own rows, or null when nothing may change (Cancel, or an Increase past the lots limit: said in done-error). */
+async function resolveDuplicates(chosen) {
+  const admitted = await admitLegs(props.legs, chosen.map((x) => ({ ...x, instrument_id: x.id })), { ask: askDuplicate, maxLots: maxLots.value })
+  if (!admitted) return null
+  if (admitted.error) { doneError.value = admitted.error; return null }
+  if (admitted.legs !== props.legs) emit('update:legs', admitted.legs)
+  return admitted.kept
 }
 
 /** The one path that turns chosen contracts into legs (Done and a future's Buy/Sell): each is captured like a single add;
  *  a leg with no price is still added and carries the reprice prompt. Caller has set busy. */
 async function addChosen(chosen, und) {
   try {
+    if (!chosen.length) return
     const pricing = await Promise.all(chosen.map((x) => capture(x.id, und)))
     const added = chosen.map((x, i) => ({
       id: nextId++,
@@ -611,7 +651,9 @@ async function addFuture(f, side) {
     doneError.value = 'Contract details are not available for this future, so nothing was added.'
     return
   }
-  await addChosen([{ id: f.instrument_id, c, action: side, lots: 1 }], und)
+  const kept = await resolveDuplicates([{ id: f.instrument_id, c, action: side, lots: 1 }])
+  if (!kept) { busy.value = false; return }
+  await addChosen(kept, und)
 }
 
 const legName = (l) => contractName(l)
@@ -631,6 +673,14 @@ defineExpose({ startEdit, showStrikes })
   <section class="flex h-full min-h-0 flex-col gap-3 text-sm" data-testid="leg-picker">
     <!-- Compact and with its own test id: the page's ErrorMessage keeps error-what/impact/blocked/next to itself. -->
     <ErrorMessage v-if="errorParts" :parts="errorParts" compact prefix="picker-error" data-testid="picker-error" />
+    <Modal :open="dup !== null" title="Already in this strategy" @close="answerDuplicate('cancel')">
+      <div data-testid="dup-dialog"><p data-testid="dup-question">{{ dup ? DUP_QUESTION(dup.name) : '' }}</p></div>
+      <template #actions>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-increase" @click="answerDuplicate('increase')">Increase quantity</button>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-separate" @click="answerDuplicate('separate')">Keep separate</button>
+        <button type="button" class="col-span-2 rounded border border-line px-2 py-1" data-testid="dup-cancel" @click="answerDuplicate('cancel')">Cancel</button>
+      </template>
+    </Modal>
     <div class="flex flex-wrap items-center gap-2 pr-10" data-testid="picker-header">
       <select class="h-8 rounded border border-line px-1 font-semibold" aria-label="Underlying" data-testid="pick-underlying" :value="underlying" :disabled="underlyingLocked" @change="onUnderlying($event.target.value)">
         <option v-for="u in UNDERLYINGS" :key="u" :value="u">{{ u }}</option>
@@ -704,6 +754,7 @@ defineExpose({ startEdit, showStrikes })
           <MarketClosedBanner v-if="strikesData.market_closed === true" class="mb-2" :prices-at="strikesData.last_price_at" />
           <p v-if="strikesReason" data-testid="strikes-reason">{{ strikesReason }}</p>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
+          <p v-if="chainAsOf" class="text-xs text-ink-muted" data-testid="chain-prices-as-of">{{ chainAsOf }}</p>
           <!-- UI-202 column heads: Call side | Strike | Put side, the same columns as every row below -->
           <div class="sticky top-0 z-10 mt-2 grid items-end gap-x-[3px] border-b border-line bg-surface pb-1 text-[9px] leading-tight text-ink-muted" :style="gridStyle" data-testid="strike-head">
             <span v-for="col in sideColumns('ce')" :key="`ce-${col}`" class="whitespace-nowrap text-right">{{ col === 'act' ? '' : `Call ${COLUMN_LABEL[col]}` }}</span>
@@ -739,14 +790,14 @@ defineExpose({ startEdit, showStrikes })
                       />
                       <span class="relative text-ink-muted" data-testid="cell-oi">{{ oiCompact(row[side].oi) }}</span>
                     </span>
-                    <!-- UI-203: B and S show on row hover or keyboard focus, and stay shown once chosen -->
+                    <!-- UI-203 / D-47: B and S are drawn on every cell (they were hover-only, which hid the way to add a leg) -->
                     <span v-else-if="col === 'act' && choicesFor(row[side]).length" class="flex gap-0.5">
                       <button
                         v-for="sd in [['BUY', 'B', 'Buy'], ['SELL', 'S', 'Sell']]" :key="sd[0]" type="button"
                         class="h-4 w-3 rounded text-[10px] font-semibold focus:opacity-100"
                         :class="picked[row[side].instrument_id] === sd[0]
                           ? (sd[0] === 'BUY' ? 'bg-buy text-white' : 'bg-sell text-white')
-                          : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell') + (picked[row[side].instrument_id] ? '' : ' opacity-0 group-hover:opacity-100 group-focus-within:opacity-100')"
+                          : (sd[0] === 'BUY' ? 'bg-buy-soft text-buy' : 'bg-sell-soft text-sell')"
                         :data-testid="sd[0] === 'BUY' ? 'cell-buy' : 'cell-sell'" :aria-pressed="picked[row[side].instrument_id] === sd[0]"
                         :aria-label="`${sd[2]} ${strikeLabel(row.strike)} ${side.toUpperCase()}`" :title="`${sd[2]} ${strikeLabel(row.strike)} ${side.toUpperCase()}`"
                         @click="choose(row[side].instrument_id, sd[0])"
@@ -806,6 +857,7 @@ defineExpose({ startEdit, showStrikes })
         <p v-else-if="!strikesData.rows?.length" data-testid="strikes-reason">{{ strikesReason || 'No strikes are listed for this expiry.' }}</p>
         <template v-else>
           <p v-if="centreLine" data-testid="strikes-centre">{{ centreLine }}</p>
+          <p v-if="chainAsOf" class="text-xs text-ink-muted" data-testid="chain-prices-as-of">{{ chainAsOf }}</p>
           <div class="grid grid-cols-[1fr_70px_1fr] border-b border-line pb-1 text-[10px] text-ink-muted" data-testid="type-head">
             <span class="text-right">Call LTP</span><span class="text-center">Strike</span><span>Put LTP</span>
           </div>
@@ -907,7 +959,7 @@ defineExpose({ startEdit, showStrikes })
         <button type="submit" data-testid="add-leg" :disabled="!canSave" class="rounded border border-line px-3 py-1" @click.prevent="save">Save leg</button>
         <button v-if="editing" type="button" data-testid="cancel-edit" class="rounded border border-line px-3 py-1" @click="resetForm">Cancel</button>
       </form>
-      <p v-if="!lotsOk" class="mt-1" data-testid="lots-error">Lots must be a whole number from 1 to 10000.</p>
+      <p v-if="!lotsOk" class="mt-1" data-testid="lots-error">{{ lotsRangeText(maxLots) }}</p>
       <p v-if="contract" class="mt-1 text-ink-muted" data-testid="lot-size">{{ contractName({ underlying, expiry: contract.expiry, instrument_type: contract.instrument_type, strike: contract.strike }) }}, lot size {{ contract.lot_size }}</p>
     </div>
 
@@ -939,6 +991,7 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
       data-testid="picker-footer"
     >
       <span class="font-medium" data-testid="picker-count">{{ pickedCount }} {{ pickedCount === 1 ? 'leg' : 'legs' }} selected</span>
+      <span v-if="legs.length" class="text-ink-muted" data-testid="picker-draft-count">{{ DRAFT_HOLDS_TEXT(legs.length) }}</span>
       <button type="button" class="ml-auto text-accent underline" data-testid="picker-pick-chain" @click="view = 'ltp'">Pick from Option Chain</button>
       <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
       <button type="button" data-testid="picker-done" class="rounded bg-accent px-3 py-1 font-semibold text-white hover:bg-accent-hover disabled:opacity-50" :disabled="busy || !pickedCount" @click="done">Done</button>

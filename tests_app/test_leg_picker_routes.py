@@ -13,6 +13,7 @@ from __future__ import annotations
 
 import ast
 import asyncio
+import dataclasses
 import datetime
 import math
 import pathlib
@@ -21,6 +22,7 @@ from decimal import Decimal
 import pytest
 from ofo.engine.executable_price import Depth, DepthLevel
 from ofo.engine.legs import Instrument
+from ofo.marketdata import quote as quote_module
 from ofo.marketdata.fanout import FanOut
 from ofo.marketdata.provider import (
     NOT_OFFERED,
@@ -898,3 +900,26 @@ def test_core_the_real_router_over_http_on_a_real_kite_provider_replaying_the_re
             break
     assert depth is not None, "no held contract gave a depth read with 5 bid and 5 ask levels"
 
+
+
+def test_d18_the_strikes_reply_carries_the_oldest_quote_time_of_its_prices_not_the_reply_time():
+    """GC-ICLIVE-B D-18: "Chain prices as of" is the oldest price time the cells were made from (hand: one option quote
+    is 7 s older than the rest, so prices_at = that quote's time), never the reply's own answered_at."""
+    provider, feed = priced_provider()
+    some = next(k for k, q in provider.quotes.items() if q.instrument_type is not None)
+    older = dataclasses.replace(provider.quotes[some], timestamp=T0 - datetime.timedelta(seconds=7))
+    provider.quotes[some] = older
+    out = answer(feed)
+    assert out.prices_at == older.price_at and out.prices_at < out.answered_at
+
+
+def test_d18_round3_a_used_quote_without_a_price_time_gives_no_prices_at_not_a_500(monkeypatch):
+    """A usable quote with no price time (no calendar data for its date) must not crash the min: prices_at None."""
+    provider, feed = priced_provider()
+    some = next(k for k, q in provider.quotes.items() if q.instrument_type is not None)
+    odd = dataclasses.replace(provider.quotes[some], timestamp=T0 - datetime.timedelta(seconds=3))
+    provider.quotes[some] = odd
+    real = quote_module.price_time
+    monkeypatch.setattr(quote_module, "price_time", lambda ts: None if ts == odd.timestamp else real(ts))
+    out = answer(feed)
+    assert out.prices_at is None

@@ -183,6 +183,7 @@ class StrategyOut(ApiModel):
     id: int
     name: CatalogueText  # REQ-134: the user's name, quoted user text (strip the outer quotes to edit it)
     status: Identifier
+    status_word: Literal["Draft", "Running", "Completed", "Unknown"]  # ADR-299: store.status_word
     revision: int
     created_at: datetime.datetime
     updated_at: datetime.datetime
@@ -202,6 +203,7 @@ class SummaryOut(ApiModel):
     id: int
     underlying: Underlying
     status: Identifier
+    status_word: Literal["Draft", "Running", "Completed", "Unknown"]  # ADR-299: store.status_word
     created_at: datetime.datetime
     updated_at: datetime.datetime
     name: CatalogueText  # REQ-134 AC-4: quoted user text
@@ -216,6 +218,8 @@ class SummaryOut(ApiModel):
     # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
     final_pnl: Optional[Money]  # noqa: UP045
     final_pnl_text: Optional[CatalogueText]  # noqa: UP045
+    current_legs_text: Optional[CatalogueText] = None  # noqa: UP045 - D-42: set when the current legs could not be read
+    closed_at: Optional[datetime.datetime] = None  # noqa: UP045 - D-66: the last closing fill / settlement; Completed only
     adjustments_made: Optional[int]  # noqa: UP045 - the history page's ADR-255 counter
     adjustment_cost: Optional[Money]  # noqa: UP045 - charges of the adjustment rows
     adjustment_cost_text: Optional[CatalogueText]  # noqa: UP045
@@ -339,6 +343,7 @@ async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
     await _with_tokens(db, doc, *version_docs)
     return StrategyOut.model_validate({
         "id": stored.id, "name": sf.shown_name(stored.name), "status": stored.status, "revision": stored.revision,
+        "status_word": store.status_word(stored.status, await store.has_order(db, stored.id)),
         "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc,
         "versions": [{"number": v.number, "state": v.state, "based_on": v.based_on, "created_at": v.created_at,
                       "confirmed_at": v.confirmed_at, "reconciled_at": v.reconciled_at, "outcome": v.outcome,
@@ -440,15 +445,19 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
     async def work():
         rows = await store.list_strategies(db, user_ref)
         from ofo_app.routes.adjustment_history import closed_figures_many  # noqa: PLC0415 - it imports routes.paper
+        from ofo_app.routes.paper import current_legs_many  # noqa: PLC0415 - routes.paper imports this module
         rates_ok = rates if isinstance(rates, ChargeRates) else None
         closed = await closed_figures_many(db, user_ref, [r.id for r in rows if r.status == "closed"], rates_ok)
         tracked = await _tracked_ids(db, [r.id for r in rows])
         opened = await _open_opportunities(db, user_ref)
+        current = await current_legs_many(db, user_ref)  # D-42: the legs and the word the Positions page reads
         return StrategyListOut.model_validate({"strategies": [
             {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
-             "updated_at": r.updated_at, "name": sf.shown_name(r.name), "leg_count": r.leg_count,
-             "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
-                           "expiry": r.first_leg.expiry},
+             "updated_at": r.updated_at, "name": sf.shown_name(r.name),
+             **{"status_word": store.status_word(r.status, r.has_order),
+                "leg_count": r.leg_count,
+                "first_leg": {"instrument": r.first_leg.instrument, "strike": r.first_leg.strike,
+                              "expiry": r.first_leg.expiry}} | current.get(r.id, {}),
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order, "has_order": r.has_order,
              "open_opportunities": None if opened is None else opened.get(r.id, 0),

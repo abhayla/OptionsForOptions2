@@ -213,6 +213,8 @@ class Hit:
     fired: bool
     #: ADR-268 (2): (short kind, strike, points spot is past it) when spot is at/beyond a short; the line names it
     beyond: tuple[str, Decimal, Decimal] | None = None
+    #: D-58: T-01 only, "CE" / "PE": the side whose short is nearest spot (the tested side); None = not known
+    side: str | None = None
 
 
 @dataclass(frozen=True)
@@ -526,6 +528,15 @@ def short_gap_pct(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> tuple[Decimal,
     return near * _HUNDRED, spot
 
 
+def nearest_short_side(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> str | None:
+    """D-58: the tested side, "CE" or "PE": the kind of the short nearest spot (a tie is the call side, as
+    ``approaches.tested_side``). None when no short states its kind, or the nearest one does not."""
+    if not shorts:
+        return None
+    near = min(shorts, key=lambda x: (abs(x.strike - spot), x.kind != "CE"))
+    return near.kind if near.kind in ("CE", "PE") else None
+
+
 def short_breached(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> ShortLeg | None:
     """ADR-268 (2): the short spot is AT or BEYOND (in the money): a CE with spot >= strike, a PE with spot <= strike.
     The deepest one when several; None when none (or no short states its kind)."""
@@ -535,13 +546,14 @@ def short_breached(spot: Decimal, shorts: tuple[ShortLeg, ...]) -> ShortLeg | No
 
 def _t01(c: _Ctx) -> Hit:
     spot = _need(c.state.spot, "spot")
-    hit = _compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state)))
+    hit = dataclasses.replace(_compare(c, "T-01", *short_gap_pct(spot, _shorts(c.state))),
+                              side=nearest_short_side(spot, c.state.shorts))
     b = short_breached(spot, c.state.shorts)
     if b is None:
         return hit
     beyond = (str(b.kind), b.strike, abs(spot - b.strike))
     if not hit.fired:  # ADR-268 (2): at or beyond the strike flags, whatever the % gap (no distance left: value 0)
-        return Hit("T-01", Decimal(0), hit.threshold, hit.cmp, True, beyond)
+        return Hit("T-01", Decimal(0), hit.threshold, hit.cmp, True, beyond, hit.side)
     return dataclasses.replace(hit, beyond=beyond)
 
 

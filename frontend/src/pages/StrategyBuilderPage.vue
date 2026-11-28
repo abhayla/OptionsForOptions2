@@ -33,7 +33,7 @@ import LoadFailed from '@/components/common/LoadFailed.vue'
 import { PAPER_REREAD_FAILED_TEXT } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
-  legsAfterExit, paperFillKey, paperLeftOf,
+  legsAfterExit, paperFillKey, paperLeftOf, paperChargesOf,
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
@@ -52,6 +52,8 @@ import { UNDERLYINGS } from '@/lib/underlyings'
 import PopFigure from '@/components/strategy/PopFigure.vue'
 import ActivityPanel from '@/components/strategy/ActivityPanel.vue'
 import Drawer from '@/components/common/Drawer.vue'
+import Modal from '@/components/common/Modal.vue'
+import { DUP_QUESTION, admitLegs } from '@/lib/legDoor'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import LegList from '@/components/strategy/LegList.vue'
 import { applyEditReply, buildEditRequest, controlsFrom, moveKey, MAX_STEPS, RELATIVE_CONTROLS, executeRefusal, CLEAR_UNDO_SECONDS_KEY, MULTIPLIER_MAX_KEY, EXECUTE_WAITS_FOR_LATEST, NO_CONTROLS } from '@/lib/legEdit'
@@ -61,7 +63,7 @@ import { matchesLegs } from '@/lib/liveMatch'
 import { INVALID_LINK_PARTS, canonicalLegs } from '@/lib/draftLink'
 import ScenarioControls from '@/components/strategy/ScenarioControls.vue'
 import TargetBlock from '@/components/strategy/TargetBlock.vue'
-import { bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
+import { OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT, OPEN_LEGS_ONLY_TEXT, bookedFields, dateStops, debounced, firstExpiry, targetFields } from '@/lib/targetBlock'
 import { CHART_FLAGS, DEFAULT_CHOICE, choiceFields, matchesChoice } from '@/lib/scenarioChoice'
 import { contractName, istClock, istTime, nameFromPool } from '@/lib/displayFormat'
 import { summaryFigure } from '@/lib/summaryFigures'
@@ -127,12 +129,16 @@ const actedSuggestionIds = computed(() => opportunitiesFromQuery(route.query.act
 // REQ-112: how many orders the prepared basket held (`basket=4`, set by prepare, travels with `acted`); sent with the
 // paper orders so the server can tell completed from partly completed. Anything but a whole 1..64 is not sent.
 const preparedBasketLegs = computed(() => { const n = String(route.query.basket ?? ''); return /^(?:[1-9]|[1-5]\d|6[0-4])$/.test(n) ? n : null }) // stays a string like the ids: the server's model reads it as a whole number
-async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0, exit = false }) { // the chosen approach's legs become the builder's legs; no order is placed
-  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, ...rest } = route.query
+// D-25 (ADR-326 (1)): a Take profit basket names its approach (`approach=A-24`, set by prepare, travels with `acted`) so the
+// server asks the same build path that offered it; only A-24 / A-25 are ever sent, anything else in the URL is ignored.
+const preparedApproachId = computed(() => { const a = String(route.query.approach ?? ''); return a === 'A-24' || a === 'A-25' ? a : null })
+async function prepareApproach({ legs: next, suggestionIds = [], basketLegs = 0, exit = false, approachId = null }) { // the chosen approach's legs become the builder's legs; no order is placed
+  const { adjust: _gone, pick: _picks, opp: _opp, acted: _acted, basket: _basket, approach: _approach, ...rest } = route.query
   const acted = opportunitiesFromQuery(suggestionIds.join(','))
   const size = Number.isInteger(basketLegs) && basketLegs > 0 && basketLegs <= 64 ? { basket: String(basketLegs) } : {}
   const id = adjustId.value
-  await router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size } : rest }) // awaited: nameInUrl below spreads it
+  const take = approachId === 'A-24' || approachId === 'A-25' ? { approach: approachId } : {}
+  await router.replace({ query: acted.length ? { ...rest, acted: acted.join(','), ...size, ...take } : { ...rest, ...take } }) // awaited: nameInUrl below spreads it
   // ADR-207 (2), live 2026-11-06 (strategy 88, A-11): a strategy with a paper book is edited in ITS Drafts Mode, never as a new
   // unlinked draft (whose Add to Paper would open a second position). A full exit takes the book's Exit all path; any other
   // approach's after-legs become the edited legs, so the pending changes are paperOrdersFor(net, after-legs) (the exit + add
@@ -165,9 +171,11 @@ function keepHeldFills(net, next) {
 // refused on every retry. A 422 (price, contract) is fixed by the user and keeps them.
 const ACTED_REFUSED = new Set([404, 409])
 // awaited: a later URL write (nameInUrl after the book re-read) spreads route.query and would put the ids back
-async function dropActed() { // the basket answered its records, or the server refused them: never sent again
-  if (route.query.acted === undefined) return
-  const { acted: _acted, basket: _basket, ...rest } = route.query
+async function dropActed({ withApproach = false } = {}) { // the basket answered its records, or the server refused them: never sent again
+  if (route.query.acted === undefined && !(withApproach && route.query.approach !== undefined)) return
+  // a refused record keeps the approach (the retry is asked again); a stored basket answers it once
+  const { acted: _acted, basket: _basket, approach: gone, ...rest } = route.query
+  if (!withApproach && gone !== undefined) rest.approach = gone
   await router.replace({ path: route.path, query: rest })
 }
 // W-090 (REQ-034 AC-4, AC-6): the scenario column and range the user picked; kept across every reload and push.
@@ -193,6 +201,7 @@ const guard = createNewestWins()
 const targetPick = ref({ level: '', dateIndex: 0 })
 const targetShown = ref(null)
 const targetStale = ref(false)
+const targetNotLiveText = ref('') // D-37: the latest reply's own sentence when its prices are not live; '' after a failed request or any other reply
 const dateStopList = computed(() => dateStops(data.value?.valuation, firstExpiry(data.value?.legs)))
 // GC-LIVE R-26: a pick goes to BOTH answer paths: the live socket's follow message (so every push of the new version
 // carries the target block, refreshed as prices move) and one REST request (the answer while the socket is not live).
@@ -253,6 +262,7 @@ async function load() {
     if (isSuperseded(e) || !guard.isNewest('outcome', mine)) return // a cancelled or older request shows nothing (AC-3)
     if ((target.target_level || target.target_at) && targetShown.value && data.value && prevState !== 'loading') {
       targetStale.value = true // a failed target request keeps the last good figures, marked stale
+      targetNotLiveText.value = '' // a failure says nothing about the prices: no not-live sentence
       state.value = prevState
       return
     }
@@ -295,6 +305,7 @@ function reask(kind, ticket) {
 // One outcome answer (REST or a live push) onto the page, as the server sent it: no number is computed here (ADR-008).
 function applyOutcome(body) {
   data.value = body
+  targetNotLiveText.value = typeof body.target_not_live_text === 'string' ? body.target_not_live_text : '' // D-37: only what this reply says
   const moved = !!targetPick.value.level || targetPick.value.dateIndex > 0
   if (body.target && (body.target.kind || !moved)) { // figures for the pick, or nothing picked: the reply's block as sent
     targetShown.value = body.target
@@ -444,6 +455,11 @@ function exitPaper(contractId, lots) {
 }
 // Drafts Mode summary: the book's Profit left / Loss left first (or the words for its extremes_reason), its original Max Profit /
 // Max Loss below; every figure the book reply's text as sent. Null outside Drafts Mode: the summary is unchanged.
+// D-11: the tiles and the chart's marks are the WHOLE trade (booked in, the paper reply: the tiles after charges, the marks on
+// the drawn curve's own basis, before charges, so they sit where the line crosses zero) with the switch ON, the open legs only (the
+// outcome's own summary) with it OFF; the server computes both, this only picks which served figure to show
+const wholeTrade = computed(() => !!paperLeft.value && includeBooked.value)
+const paperCharges = computed(() => (paper.value && includeBooked.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: the charges of the tiles beside it: switch ON = the paper tiles (paid + close); OFF = the open-legs tiles, the plan's round trip at entry prices (data.charges_breakdown)
 const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
   const b = paper.value?.book
   return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
@@ -457,7 +473,7 @@ async function confirmPending(orders) {
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
-    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value)
+    await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value)
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -475,7 +491,7 @@ async function confirmPending(orders) {
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
   paperStale.value = true
   try {
-    await dropActed() // one basket answers the records once
+    await dropActed({ withApproach: true }) // one basket answers the records once
   } catch { /* the ids may stay in the URL: the stored orders are never offered again (paperStale) */ }
   try {
     // the dialog stays, says it was placed, and has no Confirm, while the book is read again (issue 18: bounded retries, then Retry)
@@ -621,6 +637,7 @@ watch(() => route.query.draft, (v) => {
   }
 })
 const setLegs = (next) => {
+  cancelDuplicate() // D-60: every legs replacement passes here; a question about the replaced legs closes (its edit settles as Cancel)
   dropUndo() // any new leg list supersedes an Undo still on offer: it can never restore over new legs
   savedId.value = null
   savedRevision.value = null
@@ -714,6 +731,7 @@ async function moveLeg(edit) {
   pendingSteps.value = { [key]: m.net }
   if (m.net === 0) { // the clicks cancel out: nothing to ask, the confirmed legs stand
     guard.cancel('leg-edit')
+    cancelDuplicate() // a question left open by the move that just netted out closes as Cancel
     endMove(m)
     return
   }
@@ -724,6 +742,46 @@ async function editLeg(edit) {
   while (move) await move.done
   return sendEdit(edit, legs.value, controls.value.shiftTotal, null)
 }
+// D-60: the page's own question (the picker's wording and answers), asked for a leg a move landed on a held contract.
+const dupAsk = ref(null)
+// Exactly one live question: a new ask, or a newer edit starting, settles the open one as Cancel and closes its dialog, so
+// every sendEdit settles and the answer on screen always belongs to the newest move.
+const askDuplicate = (leg) => new Promise((resolve) => {
+  cancelDuplicate()
+  dupAsk.value = { name: contractName(leg), resolve }
+})
+/** The one way to cancel a pending ask: closes the dialog and settles its edit as Cancel. */
+// D-60: the move's base is still current when the legs on screen equal the ones it was computed from by content
+// (an equal-content refresh, e.g. link-opened legs named by a reply, keeps the answer; a real replacement already cancelled).
+function sameLegs(a, b) {
+  return a.length === b.length && a.every((l, i) => l.id === b[i].id && l.instrument_id === b[i].instrument_id && l.action === b[i].action && l.lots === b[i].lots)
+}
+function cancelDuplicate() { answerDuplicate('cancel') }
+function answerDuplicate(choice) {
+  const d = dupAsk.value
+  dupAsk.value = null
+  d?.resolve(choice)
+}
+/** The legs after a move, through admitLegs: only a leg whose contract the move changed is asked about, against the legs it
+ *  did not move. Null on Cancel; `{ error }` for an Increase past the lots limit; else `{ legs, increased }` in row order. */
+async function askMovedDuplicates(baseLegs, landed) {
+  const moved = landed.filter((l, i) => l.instrument_id !== baseLegs[i]?.instrument_id)
+  if (!moved.length) return { legs: landed, increased: false }
+  const movedIds = new Set(moved.map((l) => l.id))
+  const held = landed.filter((l) => !movedIds.has(l.id))
+  // each moved leg is checked against the held legs AND the moved legs already admitted (a Width or Shift that lands two
+  // same-action legs on one contract asks too); an Increase may fold into either
+  let cur = held
+  const opts = { ask: askDuplicate, maxLots: served.integer(MAX_LOTS_KEY) }
+  for (const x of moved) {
+    const r = await admitLegs(cur, [x], opts)
+    if (!r || r.error) return r
+    cur = r.kept.length ? [...r.legs, x] : r.legs
+  }
+  const byId = new Map(cur.map((l) => [l.id, l]))
+  const out = landed.flatMap((l) => (byId.has(l.id) ? [byId.get(l.id)] : []))
+  return { legs: out, increased: out.length !== landed.length }
+}
 async function sendEdit(edit, baseLegs, shiftTotal, owner) {
   const body = buildEditRequest(baseLegs[0]?.underlying, baseLegs, edit, shiftTotal)
   if (!body) {
@@ -731,6 +789,7 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     return
   }
   const mine = guard.next('leg-edit') // aborts the edit still in flight (its reply would be stale)
+  cancelDuplicate() // a question left open by the older move closes: the old edit settles as Cancel
   editError.value = null
   editErrorIndex.value = null
   try {
@@ -747,7 +806,24 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
       return
     }
     const keep = edit.control === 'include'
-    legs.value = applyEditReply(legs.value, reply)
+    const shown = legs.value // the legs the reply is computed against; the answer must still find them on screen
+    let landed = applyEditReply(shown, reply)
+    let increased = false
+    if (RELATIVE_CONTROLS.includes(edit.control)) {
+      // D-60 (ADR-319, review finding 2): a move that lands a leg on a contract another leg holds with the same action asks
+      // through the one shared door; Cancel keeps the legs as before the step, a refused Increase says why.
+      const door = await askMovedDuplicates(baseLegs, landed)
+      if (!guard.isNewest('leg-edit', mine)) return // a newer edit took over while the question was open
+      if (!sameLegs(legs.value, shown)) return // the move's base is no longer current: never overwrite the legs (Cancel)
+      if (!door) return
+      if (door.error) {
+        editError.value = { ...NEUTRAL_PARTS, what_happened: door.error }
+        return
+      }
+      increased = door.increased
+      landed = door.legs
+    }
+    legs.value = landed
     if (!keep) {
       savedId.value = null
       savedRevision.value = null
@@ -757,7 +833,9 @@ async function sendEdit(edit, baseLegs, shiftTotal, owner) {
     hasReply.value = true
     // The embedded outcome is the server's At Expiry on its default range, so it is drawn only when it matches the legs and
     // choice on screen and no outcome request is pending (that one is never cancelled here: its reply is checked the same way).
-    if (reply.outcome && drawable(reply.outcome) && !guard.pending.outcome) {
+    if (increased) {
+      load() // Increase quantity changed the legs the reply priced: the numbers for the legs now on screen
+    } else if (reply.outcome && drawable(reply.outcome) && !guard.pending.outcome) {
       guard.cancel('outcome')
       clearTimeout(slowTimer)
       slow.value = false
@@ -850,6 +928,7 @@ const zoomGrid = computed(() => {
   return sc?.step && sc.start && sc.end ? { step: sc.step, start: sc.start, end: sc.end } : null
 })
 onBeforeUnmount(() => {
+  cancelDuplicate() // the pending edit settles
   clearTimeout(slowTimer)
   clearTimeout(undoTimer)
 })
@@ -879,6 +958,8 @@ const fromEntries = computed(() => state.value === 'from-entries')
 const pickUnderlying = ref('NIFTY')
 const headerUnderlying = computed(() => data.value?.underlying ?? legs.value[0]?.underlying ?? '')
 // REQ-077 AC-6: each leg's live LTP string from the outcome the page already has (a FROM_ENTRIES answer carries none)
+// D-18: each leg's own quote time from the reply (leg_quotes[].quote_at), by instrument id
+const quoteAtById = computed(() => Object.fromEntries((data.value?.leg_quotes ?? []).filter((q) => typeof q.quote_at === 'string').map((q) => [q.instrument_id, q.quote_at])))
 const ltpById = computed(() => Object.fromEntries((data.value?.legs ?? []).filter((l) => l.ltp != null).map((l) => [l.instrument_id, l.ltp])))
 // GC-UI D-PX (REQ-152 AC-2): the server's two-decimal price texts by instrument id; the browser prints these, never the values
 // fix/paper-dialog-safe item 2: the live price per leg as the table shows it (ltp_display, else the ltp string); an entry row in
@@ -917,6 +998,15 @@ const pricesStamp = computed(() => {
     <!-- W-193 (UI-005): the visible title block is gone (the top bar breadcrumb names the page); the heading stays for screen
          readers. The planning sentence moved into the Important info note under the summary card. -->
     <h1 class="sr-only" data-testid="page-title">Strategy Builder</h1>
+    <!-- D-60 (ADR-319): the question for a move onto a held contract; outside every v-if chain, so no state hides it -->
+    <Modal :open="dupAsk !== null" title="Already in this strategy" @close="answerDuplicate('cancel')">
+      <div data-testid="dup-dialog"><p data-testid="dup-question">{{ dupAsk ? DUP_QUESTION(dupAsk.name) : '' }}</p></div>
+      <template #actions>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-increase" @click="answerDuplicate('increase')">Increase quantity</button>
+        <button type="button" class="rounded border border-line px-2 py-1" data-testid="dup-separate" @click="answerDuplicate('separate')">Keep separate</button>
+        <button type="button" class="col-span-2 rounded border border-line px-2 py-1" data-testid="dup-cancel" @click="answerDuplicate('cancel')">Cancel</button>
+      </template>
+    </Modal>
 
     <MarketClosedBanner v-if="closedBanner" class="mt-2" :prices-at="closedBanner.at" />
     <p v-if="orderPathNotice" class="mt-2 text-sm text-ink-muted" data-testid="order-path-off-notice">{{ ORDER_PATH_OFF_SENTENCE }}</p>
@@ -962,12 +1052,12 @@ const pricesStamp = computed(() => {
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <LegList
-          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
+          :multiplier-max="served.integer(MULTIPLIER_MAX_KEY)" :legs="legs" :pending-steps="pendingSteps" :paper-fills="paperFills" :quote-at-by-id="quoteAtById" :oldest-quote-at="data?.oldest_quote_at ?? null" :shape-name="shapeName" :has-reply="hasReply" :controls="controls" :updating="updating" :error-parts="editError" :error-index="editErrorIndex" :ltp-by-id="ltpById" :price-text-by-id="priceTextById"
           :undo-offered="undoHeld !== null" :leg-unit="legUnit" :strategy-name="openStrategy?.name ?? null"
           @edit="editLeg" @edit-leg="openInPicker" @include-all="includeAll" @remove="removeLeg" @add-leg="focusPicker" @pick-chain="pickFromChain" @clear-all="clearAll" @undo-clear="undoClear"
         >
           <template #money>
-            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" /></div>
+            <div v-if="showNumbers" :class="updating ? 'opacity-60' : ''"><MoneySummary class="!mt-0 !px-0" :net-premium="data.summary.net_premium ?? null" :charges="data.charges_breakdown ?? null" :paper-charges="paperCharges" :basis-text="data.summary.price_basis_text ?? null" /></div>
           </template>
         </LegList>
         <!-- GC-ICFIX P3 u513: while the confirm dialog is open its list is a preview, not "N pending changes" the user made -->
@@ -1081,16 +1171,18 @@ const pricesStamp = computed(() => {
             </ul>
           </div>
 
+          <!-- D-11/D-16 (ADR-209): the tiles follow the Add Booked switch; this line says which basis they are on -->
+          <p v-if="paperLeft" class="mt-4 text-xs text-ink-muted" data-testid="tiles-basis">{{ wholeTrade ? (paper.book.breakevens_basis_text ?? '') : (data.summary?.charges != null ? OPEN_LEGS_ONLY_TEXT : OPEN_LEGS_ONLY_BEFORE_CHARGES_TEXT) }}</p>
           <SummaryCards
             v-model:flipped="ratioFlipped"
             class="mt-4"
             :left="paperLeft"
-            :max-profit="paperLeft ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
-            :max-loss="paperLeft ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
-            :max-profit-exact="paperLeft ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
-            :max-loss-exact="paperLeft ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
-            :breakevens="paperLeft ? paper.book.breakevens_display ?? [] : data.summary.breakevens_display ?? []"
-            :breakevens-exact="paperLeft ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
+            :max-profit="wholeTrade ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
+            :max-loss="wholeTrade ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
+            :max-profit-exact="wholeTrade ? paper.book.max_profit ?? null : data.summary.max_profit ?? null"
+            :max-loss-exact="wholeTrade ? paper.book.max_loss ?? null : data.summary.max_loss ?? null"
+            :breakevens="wholeTrade ? paper.book.breakevens_display ?? [] : data.summary.breakevens_display ?? []"
+            :breakevens-exact="wholeTrade ? paper.book.breakevens ?? [] : data.summary.breakevens ?? []"
             :what-can-i-make="data.summary.what_can_i_make"
             :what-can-i-lose="data.summary.what_can_i_lose"
             :where-i-start-losing="data.summary.where_do_i_start_losing"
@@ -1103,6 +1195,7 @@ const pricesStamp = computed(() => {
             :estimate-label="data.output_label || null"
             :risk-reward="data.summary.risk_reward ?? null"
             :value-label="data.summary.value_label ?? null"
+            :time-value-basis="data.summary.time_value_basis_text ?? null"
             :value-reason="data.summary.value_reason ?? null"
             :funds-share="paperLeft ? null : data.summary.funds_share ?? null"
           >
@@ -1124,20 +1217,23 @@ const pricesStamp = computed(() => {
             :spot="data.spot_level ?? ''"
             :table="data.table"
             :legs="data.legs ?? null"
-            :max-profit="data.summary.max_profit_unlimited ? null : data.summary.max_profit"
-            :max-loss="data.summary.max_loss_unlimited ? null : data.summary.max_loss"
+            :max-profit="wholeTrade ? (paper.book.max_profit === 'unlimited' ? null : paper.book.max_profit ?? null) : data.summary.max_profit_unlimited ? null : data.summary.max_profit"
+            :max-loss="wholeTrade ? (paper.book.max_loss === 'unlimited' ? null : paper.book.max_loss ?? null) : data.summary.max_loss_unlimited ? null : data.summary.max_loss"
             :curves="data.curves ?? null"
             :target-curve="targetShown?.curve ?? null"
             :include-booked="includeBooked"
             :target-booked-text="targetShown?.includes_booked_text ?? ''"
             :target-badge="targetShown?.badge ?? null" :target-stale="targetStale" :target-stale-text="targetShown?.stale_text ?? ''" :show-badge="!!targetShown"
-            :breakevens="data.summary.breakevens ?? []"
+            :breakevens="wholeTrade ? paper.book.breakevens_curve ?? [] : data.summary.breakevens ?? []"
+            :curve-booked-text="data.curve_includes_booked_text ?? ''"
             :sd="data.standard_deviation ?? null"
             :oi="data.open_interest ?? null"
             :zoom="zoomGrid"
             :payoff-table="data.payoff_table ?? null"
             :saved-id="savedId"
             :paper-total="paperTotal"
+            :closed="paper?.book?.closed ?? null"
+            :charges="paper ? { paid: paper.book.charges_paid_text ?? paper.book.charges_text ?? null, close: paper.book.charges_to_close_text ?? null } : null"
             :saved-revision="savedRevision"
             @zoom="zoomTo"
             @update:include-booked="pickBooked"
@@ -1146,7 +1242,7 @@ const pricesStamp = computed(() => {
             <!-- GC-TP R-19a (Sensibull 020): the what-if Target block sits BELOW the payoff graph, inside the chart card -->
             <template #target>
               <TargetBlock
-                :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale"
+                :target="targetShown" :pick="targetPick" :stop-count="dateStopList.length" :stale="targetStale" :not-live-text="targetNotLiveText"
                 @level="(v) => pickTarget({ level: v })"
                 @date="(i) => pickTarget({ dateIndex: i })"
                 @reset-level="pickTarget({ level: '' })"

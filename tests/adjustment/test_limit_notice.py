@@ -13,7 +13,7 @@ SENTENCE = "Adjustment limit reached (2 of 2)"
 def test_the_sentence_is_row_297s_wording_with_the_trades_own_numbers():
     assert render_explanation("adjust_limit_reached", used=2, max=2) == SENTENCE
     assert render_explanation("adjust_limit_reached", used=3, max=2) == "Adjustment limit reached (3 of 2)"
-    assert render_explanation("adjust_limit_reason") == "Adjustment limit reached"
+    assert render_explanation("adjust_limit_reason", max=2) == "plan maximum of 2 reached"  # ADR-318 (1), owner wording
 
 
 def test_at_the_limit_there_is_a_notice_with_the_numbers_and_the_sentence():

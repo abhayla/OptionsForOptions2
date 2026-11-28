@@ -5,7 +5,8 @@ Both user save paths (``routes.paper.place_paper_orders`` and ``routes.tracking.
 then checks the limit, so neither path can skip a check. The offered approaches were already filtered by the limit
 (``ofo.adjustment.offered``); this refuses a batch a user builds by hand beyond it. Counting is the history page's
 (``adjustment_readers.history_count``: every batch after the entry is one adjustment, a partial exit included, the
-entry batch never). A batch that closes the whole strategy is always allowed, before any history or plan is read.
+entry batch never). A batch that closes the whole strategy is always allowed, before any history or plan is read;
+over the maximum a batch made only of reducing orders (ADR-318 (5)) is allowed too, and still counts.
 
 Answer states of the plan read: its own plan -> its ``guards.max_adjustments``; no plan -> the active playbook of the
 position's type (the plan sheet's pre-fill); a readable plan or playbook that sets no maximum, or no plan and no
@@ -38,7 +39,7 @@ async def _plan_body(db: Any, user_ref: str, strategy_id: int, reader: Any,  # n
     if plan is not None:
         return plan.body
     tracked = await reader(strategy_id, rates)  # raises when the open legs cannot be read: refused by name
-    stype = check.strategy_type(tracked.position, None, listed)
+    stype = check.entry_type(tracked, listed)  # D-04
     return (await check.resolve(db, user_ref, strategy_id, stype)).body
 
 
@@ -68,8 +69,9 @@ async def check_adjustment_limit(db: Any, user_ref: str, strategy_id: int,  # no
                                  existing: Sequence[Any], new: Sequence[Any], reader: Any, rates: Any,
                                  listed: Any) -> None:
     """Raises ``StrategyRefused`` when ``new`` (the batch just stored, ``.order`` rows' orders) would be adjustment
-    number > the plan's maximum over the ``existing`` stored rows. No stored order before (the entry) or a batch that
-    adds no adjustment -> returns without reading the plan."""
+    number > the plan's maximum and opens or adds to a leg (ADR-318 (5): a batch of reducing orders passes), over the
+    ``existing`` stored rows. No stored order before (the entry) or a batch that adds no adjustment -> returns without
+    reading the plan."""
     from ofo_app.adjustment_readers import history_count  # noqa: PLC0415 - it imports the route layer
     if not existing:
         return
@@ -94,9 +96,10 @@ async def check_adjustment_limit(db: Any, user_ref: str, strategy_id: int,  # no
         log.warning("paper adjustment limit: strategy %s plan unreadable (%s)", strategy_id, type(exc).__name__)
         raise _unread() from None
     limit = _limit_of(guards)
-    if limit is not None and after > limit:
-        raise StrategyRefused("paper_adjustment_limit",
-                              message=render("paper_adjustment_limit", limit=limit, number=after))
+    if limit is not None and after > limit and not all(o.kind in paper_store.REDUCING_KINDS for o in new):
+        # ADR-318 (5): at the maximum a basket of reducing orders is accepted (paper_store.place already refused any
+        # that exceeds the open quantity); one that opens or adds to a leg is refused with the approaches list's reason
+        raise StrategyRefused("paper_adjustment_limit", message=render("paper_adjustment_limit", limit=limit))
 
 
 def _limit_of(guards: Any) -> int | None:
@@ -124,9 +127,10 @@ async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequen
     """The ONE write both user save paths use (ADR-212, ADR-255): every fill outside market hours at ``at`` is refused
     (``gate_market_closed``; no market context fails closed by the calendar), then ``paper_store.place``, then the
     adjustment limit on the stored book. The caller commits, or rolls back on any raise. Returns the whole book."""
+    from ofo_app import adjustment_check as check  # noqa: PLC0415 - it imports the route layer
     refuse_when_closed(ctx, at)
     reader = await _read_before(reader, strategy_id, rates)
     book = await paper_store.place(db, user_ref, strategy_id, orders, entry=entry)
     await check_adjustment_limit(db, user_ref, strategy_id, book[:-len(orders)], [o.order for o in book[-len(orders):]],
-                                 reader, rates, None if ctx is None else ctx.provider.instrument_master())
+                                 reader, rates, check.listed_of(ctx))
     return book

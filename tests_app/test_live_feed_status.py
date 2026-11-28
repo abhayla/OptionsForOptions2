@@ -360,7 +360,7 @@ async def test_core_saturday_10am_backoff_reads_market_closed_with_the_banner_te
     assert market.running() and live_market.feed_phase() == FEED_MARKET_CLOSED
     out = await broker_status(_Db(), "owner", clock)
     assert (out.live_market_data.state, out.live_market_data.fix) == ("partial", "live_feed_market_closed")
-    assert out.live_market_closed.what_happened == "Market closed. Prices are from 03:07:20 PM."  # AT, 15:07:20 IST
+    assert out.live_market_closed.what_happened == "Market closed. Prices are from 15:07:20 IST."  # AT, 15:07:20 IST
 
 
 @pytest.mark.parametrize(("at", "fix"), [

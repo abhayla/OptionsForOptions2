@@ -373,3 +373,236 @@ def test_a_path_deleted_then_added_in_one_diff_fails_closed() -> None:
            "@@ -0,0 +1,1 @@\n+y = 1\n")
     with pytest.raises(sel.DiffNotParsed):
         sel.parse_diff(_deletion(DELETED) + add)
+
+
+# ---- rule A2: a change under tests_app/ (lane G item b, finding nodb-app-tests-skipped-by-step-gates) ----
+import subprocess  # noqa: E402
+
+ALL_FOUR = 4  # test files _tree() creates
+
+
+def _tree(tmp_path: pathlib.Path) -> pathlib.Path:
+    d = tmp_path / "tests_app"
+    (d / "golden_x").mkdir(parents=True, exist_ok=True)
+    (d / "sub").mkdir(exist_ok=True)
+    (d / "test_a.py").write_text("from tests_app import helper_one\n", encoding="utf-8")
+    (d / "test_b.py").write_text("p = 'golden_x/plan.json'\n", encoding="utf-8")
+    (d / "test_c.py").write_text("x = 1\n", encoding="utf-8")
+    (d / "sub" / "test_d.py").write_text("x = 2\n", encoding="utf-8")
+    (d / "helper_one.py").write_text("X = 1\n", encoding="utf-8")
+    (d / "conftest.py").write_text("", encoding="utf-8")
+    return d
+
+
+def _mod(rel: str, add: str = "+x") -> str:
+    return f"diff --git a/{rel} b/{rel}\n--- a/{rel}\n+++ b/{rel}\n@@ -1,1 +1,2 @@\n y\n{add}\n"
+
+
+def _gone(rel: str) -> str:
+    return (f"diff --git a/{rel} b/{rel}\ndeleted file mode 100644\n--- a/{rel}\n+++ /dev/null\n"
+            "@@ -1,1 +0,0 @@\n-y\n")
+
+
+def _sel(tmp_path, files, diff, **kw):
+    return sel.select(files, diff, _tree(tmp_path), lambda r: "", [], **kw)
+
+
+def test_a_changed_tests_app_test_file_selects_itself_with_backend_untouched(tmp_path) -> None:
+    f = "tests_app/test_c.py"
+    assert _sel(tmp_path, [f], _mod(f)) == [f]
+
+
+def test_a_comment_only_edit_of_a_test_file_is_still_selected(tmp_path) -> None:
+    f = "tests_app/test_c.py"
+    assert _sel(tmp_path, [f], _mod(f, "+# only a comment")) == [f]
+
+
+def test_a_changed_conftest_selects_every_test_file_below_its_folder(tmp_path) -> None:
+    top = ["tests_app/sub/test_d.py", "tests_app/test_a.py", "tests_app/test_b.py", "tests_app/test_c.py"]
+    assert _sel(tmp_path, ["tests_app/conftest.py"], _mod("tests_app/conftest.py")) == top
+
+
+def test_a_changed_nested_conftest_selects_only_its_subtree(tmp_path) -> None:
+    d = _tree(tmp_path)
+    (d / "sub" / "conftest.py").write_text("", encoding="utf-8")
+    f = "tests_app/sub/conftest.py"
+    assert sel.select([f], _mod(f), d, lambda r: "", []) == ["tests_app/sub/test_d.py"]
+
+
+def test_a_changed_helper_selects_the_tests_that_import_it(tmp_path) -> None:
+    f = "tests_app/helper_one.py"
+    assert _sel(tmp_path, [f], _mod(f)) == ["tests_app/test_a.py"]
+
+
+def test_a_data_file_named_by_a_test_selects_that_test(tmp_path) -> None:
+    f = "tests_app/golden_x/plan.json"
+    assert _sel(tmp_path, [f], _mod(f)) == ["tests_app/test_b.py"]
+
+
+def test_a_data_file_named_by_no_test_selects_every_test_file(tmp_path) -> None:
+    f = "tests_app/golden_x/other.json"
+    assert len(_sel(tmp_path, [f], _mod(f))) == ALL_FOUR
+
+
+def test_a_deleted_test_file_selects_nothing(tmp_path) -> None:
+    f = "tests_app/test_c.py"
+    assert _sel(tmp_path, [f], _gone(f)) == []
+
+
+def test_a_deleted_helper_selects_the_files_that_named_it_else_all(tmp_path) -> None:
+    assert _sel(tmp_path, ["tests_app/helper_one.py"], _gone("tests_app/helper_one.py")) == ["tests_app/test_a.py"]
+    gone = _sel(tmp_path, ["tests_app/unnamed.json"], _gone("tests_app/unnamed.json"))
+    assert len(gone) == ALL_FOUR
+
+
+def test_a_renamed_tests_app_file_fails_closed(tmp_path) -> None:
+    f = "tests_app/test_c.py"
+    diff = (f"diff --git a/tests_app/test_old.py b/{f}\nsimilarity index 100%\n"
+            f"rename from tests_app/test_old.py\nrename to {f}\n")
+    with pytest.raises(sel.DiffNotParsed):
+        _sel(tmp_path, [f], diff)
+
+
+def test_a_tests_app_file_missing_from_the_diff_fails_closed(tmp_path) -> None:
+    with pytest.raises(sel.DiffNotParsed):
+        _sel(tmp_path, ["tests_app/test_c.py"], "")
+
+
+def test_backend_and_tests_app_changes_select_the_union(tmp_path) -> None:
+    back = "backend/ofo_app/helperz.py"
+    d = _tree(tmp_path)
+    (d / "test_e.py").write_text("from ofo_app import helperz\n", encoding="utf-8")
+    t = "tests_app/test_c.py"
+    got = sel.select([back, t], _mod(back) + _mod(t), d, lambda r: "X = 1\n", [])
+    assert got == ["tests_app/test_c.py", "tests_app/test_e.py"]
+
+
+def test_the_cli_selects_a_failing_test_appended_to_a_tests_app_file_when_backend_is_unchanged(tmp_path) -> None:
+    """The app_fail seed: base commit, then a commit that only appends a test to a tests_app file."""
+    repo = tmp_path / "repo"
+    _tree(repo)
+
+    def git(*a):
+        subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=repo, check=True,  # noqa: S603, S607
+                       capture_output=True)
+
+    git("init", "-q", "-b", "main")
+    (repo / "backend").mkdir()
+    (repo / "backend" / "keep.txt").write_text("k", encoding="utf-8")
+    git("add", "-A")
+    git("commit", "-qm", "base")
+    git("update-ref", "refs/remotes/origin/main", "HEAD")
+    git("checkout", "-qb", "feature")
+    with open(repo / "tests_app" / "test_c.py", "a", encoding="utf-8") as fh:
+        fh.write("\n\ndef test_seed_fail():\n    assert False\n")
+    git("commit", "-qam", "seed app_fail")
+    cli = str(ROOT / "scripts" / "orchestrator" / "select_app_tests.py")
+    r = subprocess.run([sys.executable, cli, str(repo)], capture_output=True, text=True, check=False)  # noqa: S603
+    assert r.returncode == 0, r.stdout + r.stderr
+    assert r.stdout.splitlines() == ["1 files", "tests_app/test_c.py"]
+
+
+# ---- review round 2: test modules as helpers, quoted names, renames, __init__ ----
+EXIT_NOT_PARSED = 3
+
+
+def _two(tmp_path) -> pathlib.Path:
+    d = tmp_path / "tests_app"
+    d.mkdir()
+    (d / "test_store.py").write_text("def _user():\n    pass\n", encoding="utf-8")
+    (d / "test_user.py").write_text("from test_store import _user\n", encoding="utf-8")
+    (d / "test_other.py").write_text("x = 1\n", encoding="utf-8")
+    return d
+
+
+def test_s1_a_changed_test_module_selects_the_tests_importing_it(tmp_path) -> None:
+    d = _two(tmp_path)
+    f = "tests_app/test_store.py"
+    assert sel.select([f], _mod(f), d, lambda r: "", []) == ["tests_app/test_store.py", "tests_app/test_user.py"]
+
+
+def test_s2_a_deleted_test_module_selects_its_importers(tmp_path) -> None:
+    d = _two(tmp_path)
+    f = "tests_app/test_store.py"
+    (d / "test_store.py").unlink()
+    assert sel.select([f], _gone(f), d, lambda r: "", []) == ["tests_app/test_user.py"]
+
+
+def test_a_helper_chain_is_followed_to_a_fixed_point(tmp_path) -> None:
+    d = _two(tmp_path)
+    (d / "h_one.py").write_text("X = 1\n", encoding="utf-8")
+    (d / "h_two.py").write_text("import h_one\n", encoding="utf-8")
+    (d / "test_other.py").write_text("from h_two import y\n", encoding="utf-8")
+    f = "tests_app/h_one.py"
+    assert sel.select([f], _mod(f), d, lambda r: "", []) == ["tests_app/test_other.py"]
+
+
+def test_a_quoted_name_fails_closed() -> None:
+    with pytest.raises(sel.DiffNotParsed):
+        sel.names_from_git('"tests_app/test_caf\\303\\251.py"\ntests_app/test_a.py\n')
+    assert sel.names_from_git("tests_app/test_a.py\n") == ["tests_app/test_a.py"]
+    with pytest.raises(sel.DiffNotParsed):
+        sel.parse_diff('diff --git "a/tests_app/test_caf\\303\\251.py" "b/tests_app/test_caf\\303\\251.py"\n')
+
+
+def test_an_init_py_selects_its_subtree(tmp_path) -> None:
+    d = _tree(tmp_path)
+    (d / "sub" / "__init__.py").write_text("", encoding="utf-8")
+    f = "tests_app/sub/__init__.py"
+    assert sel.select([f], _mod(f), d, lambda r: "", []) == ["tests_app/sub/test_d.py"]
+
+
+def _git2(cwd, *a) -> None:
+    subprocess.run(["git", "-c", "user.email=t@t", "-c", "user.name=t", *a], cwd=cwd, check=True,  # noqa: S603, S607
+                   capture_output=True)
+
+
+def _repo(tmp_path, files: dict) -> pathlib.Path:
+    r = tmp_path / "r"
+    (r / "tests_app" / "sub").mkdir(parents=True)
+    for k, v in files.items():
+        (r / k).write_text(v, encoding="utf-8")
+    _git2(r, "init", "-q", "-b", "main")
+    _git2(r, "add", "-A")
+    _git2(r, "commit", "-qm", "base")
+    _git2(r, "update-ref", "refs/remotes/origin/main", "HEAD")
+    _git2(r, "checkout", "-q", "-b", "feat")
+    return r
+
+
+def _cli(r) -> tuple:
+    cli = str(pathlib.Path(sel.__file__))
+    p = subprocess.run([sys.executable, cli, str(r)], capture_output=True, text=True,  # noqa: S603
+                       encoding="utf-8", check=False)
+    return p.returncode, p.stdout
+
+
+def test_cli_rename_of_a_conftest_selects_the_old_subtree(tmp_path) -> None:
+    r = _repo(tmp_path, {"tests_app/sub/conftest.py": "# c\n", "tests_app/sub/test_d.py": "x = 1\n",
+                         "tests_app/test_c.py": "x = 2\n"})
+    _git2(r, "mv", "tests_app/sub/conftest.py", "tests_app/conftest_moved.py")
+    _git2(r, "commit", "-qam", "mv")
+    rc, out = _cli(r)
+    assert rc == 0 and "tests_app/sub/test_d.py" in out.splitlines()
+
+
+def test_cli_quoted_name_exits_3(tmp_path) -> None:
+    r = _repo(tmp_path, {"tests_app/test_c.py": "x = 2\n"})
+    (r / "tests_app" / "test_café.py").write_text("x = 1\n", encoding="utf-8")
+    _git2(r, "add", "-A")
+    _git2(r, "commit", "-qm", "u")
+    rc, out = _cli(r)
+    assert rc == EXIT_NOT_PARSED, out
+
+
+def test_cli_s1_and_s2(tmp_path) -> None:
+    r = _repo(tmp_path, {"tests_app/test_store.py": "def _user(): pass\n",
+                         "tests_app/test_user.py": "from test_store import _user\n"})
+    (r / "tests_app" / "test_store.py").write_text("def _user(): return 1\n", encoding="utf-8")
+    _git2(r, "commit", "-qam", "m")
+    rc, out = _cli(r)
+    assert rc == 0 and out.splitlines()[1:] == ["tests_app/test_store.py", "tests_app/test_user.py"]
+    _git2(r, "rm", "-q", "tests_app/test_store.py")
+    _git2(r, "commit", "-qm", "d")
+    rc, out = _cli(r)
+    assert rc == 0 and out.splitlines()[1:] == ["tests_app/test_user.py"]

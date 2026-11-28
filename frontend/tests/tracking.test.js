@@ -55,7 +55,7 @@ beforeEach(() => {
 // a row as its three cells: the Leg cell is the B/S chip then the instrument text
 const legRows = (w) => w.findAll('[data-testid="tracking-leg"]').map((r) => {
   const [leg, entry, ltp] = r.findAll('td')
-  return [`${leg.get('[data-testid="chip"]').text()} ${leg.get('[data-testid="instrument-text"]').text()}`, entry.text(), ltp.text()]
+  return [`${leg.get('[data-testid="chip"]').text()} ${leg.get('[data-testid="instrument-text"]').text()}`, entry.text(), ltp.get('[data-testid="tracking-leg-ltp"]').text()]
 })
 
 async function panel() {

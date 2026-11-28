@@ -40,7 +40,7 @@ const BODY = { error_class: 'USER_INPUT', code: 'USER_INPUT_149', what_happened:
 const refused = (data = BODY) => ({ reject: { response: { status: 409, data } } })
 const row = (rule_id, text, state = 'checked') => ({ rule_id, trigger_id: rule_id, threshold: null, amount: null, later: [], tightened_by: null, state, reason: null,
   text, after: null, reason_code: null })
-const check = (over = {}) => ({ strategy_id: 7, as_of: '2026-11-13T07:35:00Z', as_of_text: 'As of 01:05:00 PM IST', strategy_type: 'ic', type_name: 'Iron condor',
+const check = (over = {}) => ({ strategy_id: 7, as_of: '2026-11-13T07:35:00Z', as_of_text: 'As of 13:05:00 IST', strategy_type: 'ic', type_name: 'Iron condor',
   playbook: { source: 'system', id: 1, status: null, draft: false }, stage: { name: null, index: null }, withheld: null, results: [],
   limits: [row('T-07', 'Target: profit of 40 % of max profit, before charges')], paused: null, ...over })
 const NEVER = ['error_class', 'USER_INPUT_149', '{', '[object Object]', 'Something went wrong']

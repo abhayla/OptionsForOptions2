@@ -48,6 +48,29 @@ says how to run them. Kit commands and kit-owned files: `.claude/kit/GUIDE.md`.
   say "check against the REQ/ADR text, not this brief; hands-on attacks first". Commit an issue's tracker row the turn
   it is filed. Run independent work in parallel; never wait idle on CI.
 
+## Lanes (parallel cloud sessions)
+Full rules: the project skill `.claude/skills/lanes/SKILL.md`. Models: the task picks the model, never the session's
+default; Haiku for mechanical work, Sonnet for building, test runs and browser walk-throughs, Opus only for a Tier A
+review or a live-database write with "Why Opus" stated, and a lane's results file lists which model did each task.
+Context: a finished lane gets a next task in the same session only when it is a related follow-up in the same code;
+an unrelated task goes to a fresh lane with a self-contained brief, and the finished lane reports SAFE TO CLOSE.
+
+### Coordinating many lanes (28 Nov)
+Rules and cases: `.claude/skills/lanes/SKILL.md`, section "Coordinator: finish line, batches and waves".
+Wind-down mode (no new lanes, no new tasks, found findings are not assigned): lesson 21 in the lanes skill.
+The coordinator runs the work and does not decide for the owner (what the product does, rule clashes, real orders, main, outside the repo): lesson 22.
+Numbers: a full check is a median 23.6 minutes at `--jobs 2`; about 30 percent fail once; 5 items per push cost 6.7
+check-minutes per item against 16.9 at 2 items. So: targeted tests and a local commit per item, two pushes per lane
+(money-path items first), and the build lane merges in waves with one combined check per wave, not one per branch.
+Every report leads with burn-down (open, proven since last report, net).
+CI on the build (owner, 28 Nov about 20:00 IST; lesson 13 in the lanes skill): (1) one draft pull request for the build
+branch into main (this weekend pull 881), for CI only, never merged, never marked ready before the release decision;
+no pull request per lane. (2) CI runs on it after every merge wave; lanes do not wait; a red result goes to the lane that
+owns the failing file (a money-path item if it touches one); push once per wave, because a newer push cancels the older
+run. (3) A freeze needs a green CI run on the frozen commit, as well as the local check and the review, before a build
+goes to a test round. On a draft, `ci.yml` lint-and-test is skipped; domain-tests, coverage and the app-tests jobs (api,
+frontend, Execute-screen click-through, chosen by changed paths) run.
+
 ## Briefs and dispatch
 - Briefs use `docs/process/builder-brief.md` for the constant parts. Every builder/checker brief goes through
   `python scripts/orchestrator/dispatch.py <row> <measure.json> --kind build|fix|verify-r2 --out <brief>
@@ -74,12 +97,46 @@ frontend/dist is a build of this tree, mypy call/import mismatches in every chan
 calls), collect-only of both suites, and the repo-wide scans no per-item build runs. prepush runs it first and stops on
 a red one, so it never spends ~35 min on a merge the preflight would reject.
 One command, the whole list on a committed, clean tree: `python scripts/orchestrator/prepush.py` (`--full` after a
-large merge). It runs the preflight, ci_local, the ruff ratchet, the coverage check and the alembic guard, plus, when
-the change touches `frontend/`, `npm run build` FIRST (the domain tests' bundle scan reads `frontend/dist`), then
-`npm run lint` and vitest (the changed files' tests; all with `--full`) in
-`frontend/` (needs `frontend/node_modules`: a missing one is a FAIL). It writes the marker that `git push` and
+large merge). Order: the seconds-long checks first (ruff ratchet, coverage check, alembic guard; finding
+cheap-check-after-expensive-one), then, when the change touches `frontend/`, `npm run lint` and `npm run build` (the
+build before everything that reads `frontend/dist`: the preflight and the domain tests' bundle scan), then the
+preflight, ci_local, the domain tests, the app tests and vitest (the changed files' tests; all with `--full`) in
+`frontend/` (needs `frontend/node_modules`: a missing one is a FAIL). Every step runs even when an earlier one is red,
+except that a red preflight stops the run. `--jobs N` (or `PREPUSH_JOBS`; the option wins; default the CPU count; below 1
+or not a number is a usage error, exit 2) runs the preflight, ci_checks, domain tests, app tests and vitest side by side
+after the serial cheap checks and the frontend lint and build; `--jobs 1` is the plain serial reference. A red preflight
+then stops the steps not yet started and kills the running ones with their whole process tree. Every child gets its own
+temp root (`<tempdir>/ofo-prepush-tmp/<repo hash>/<step>`) in both modes. In a cloud container, unset the proxy
+variables for the gate: `env -u HTTPS_PROXY -u HTTP_PROXY -u https_proxy -u http_proxy -u ALL_PROXY -u all_proxy python
+scripts/orchestrator/prepush.py`; the owner's PC sets none (the gate prints a NOTICE naming any it finds). Docs-only lane (not with `--full`): when every path changed between the merge base and the start sha is a records file
+(`tools/change_scope.py` `path_is_docs`; added, modified or deleted; no rename, mode change or symlink; a change to
+`change_scope.py` itself or any doubt = full lane), the report and the marker say `docs-only (<n> files)`. The lane
+skips nothing: on a docs-only change today's selectors already run no code-only stage (domain tests narrow to the
+records tests, the code app selection is empty, no frontend step), so it removes nothing and only adds the `tests_app`
+files that read a docs-folder path.
+
+**Documentation-only path, ON by default (owner approved 28 Nov 2026, 09:55 IST: "turn on the faster path for
+documentation-only pushes"; this and nothing more).** No flag: `python scripts/orchestrator/prepush.py` takes it by itself
+when EVERY file changed since this branch's last passing FULL-run marker (not since `main`) is a markdown file inside a
+records folder (`docs/`, `spec/` incl. decision rows, `views/`, `knowledge/`, `work/`, `evidence/`, `releases/`, `plans/`,
+`owner-questions/`; added, modified or deleted; plain files; `strict_docs_path` in `prepush.py`, narrower than
+`tools/change_scope.py`). The report says `docs-since-pass (<n> files since <sha>)` and the marker names its `anchor`.
+It runs: ruff ratchet, coverage, alembic guard, ci_checks, the preflight WITHOUT its two Python-only layers (mypy
+interface, collect; every scan, the spec checks and the build check stay), the domain tests the kit selects against the
+anchor plus every `tests/` file that reads a docs path, the `tests_app` files that read a docs path, and the frontend steps
+as the full lane plans them. It skips: the other domain and app tests and those two preflight layers (measured 490 s
+against 1052 to 1138 s for a full push). It NEVER applies to: any other file (code, tests*/, scripts/, tools/, `.claude/`,
+`.github/`, alembic, frontend, backend, a root file such as `CLAUDE.md`, any `.json`/`.yaml`/`.csv`/`.html`/image file even
+under `docs/` or `spec/`), `--full`, a dirty tree, a change to `change_scope.py`, a branch with no earlier full-run marker
+(a fresh container) or a code commit in between that never passed (a failed run leaves no marker, and its code is in the
+diff): all of these take the full run. Switch it off with `--no-since-pass` or `PREPUSH_SINCE_PASS=0`. "Changed since the
+last pass" for CODE stays OFF (not built, not approved before Monday 30 Nov). Residual risk: a test that reads a records file
+by a route the reader scan cannot see (environment-variable path, computed glob, repo-wide `rglob`) is not selected on this
+path, so a documentation edit that breaks it shows only in CI. The repo_scan tests and every generated-view check still run.
+Ctrl-C kills every running child's process tree and writes no marker. It writes the marker that `git push` and
 `land.py` require for that exact HEAD only when every step passed, the tree was clean from start to end, HEAD did not
-move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/ (an amend needs a new run). A push
+move and no untracked file sits under backend/, tests*/, scripts/ or frontend/src/, and every planned step has a
+passing result (an amend needs a new run; the marker records `mode`: jobs and lane). A push
 whose folder the gate cannot find is refused. Bypass, with a reason:
 `PREPUSH_GATE_ALLOW=<reason> git push ...` or `land.py --skip-prepush <reason>`.
 Underneath, `python tools/ci_local.py` (`--full` after a large
@@ -87,6 +144,26 @@ merge) mirrors the kit's `ci.yml` only; `app-tests.yml` (tests_app, frontend lin
 CI. Add, when relevant: `python scripts/ruff_ratchet.py`; `python scripts/orchestrator/pr_close_check.py --pr N`;
 `python scripts/orchestrator/coverage.py . --check`; a migration or DB store runs its own test file (below); a
 regenerated file its `--check`. Red CI: read `gh run view <id> --log-failed`, fix, push again.
+
+**One gated run per push (owner, 2026-11-26).** The gate itself now runs the seconds-long checks first and the long stages
+side by side, so a red ruff, coverage, alembic or spec check shows in seconds and the separate fast pre-check is no longer the rule
+once a lane has adopted `chore/gate-speed-1126` (results: `docs/process/gate-speed-2026-11-26.md`). Run prepush in the
+background with a 2-hour limit and build the next item in another worktree meanwhile; batch related fixes into one gated
+push; a guard that needs a person's edit (reply_inventory notes, ROUTE_ORDER_EDGES, an allow-list) goes to the owner the
+moment it is known, not after the gate. Counter: prepush runs per push (target 1). To run the repo scans by hand use `python -m pytest tests -m repo_scan -q` (a bare `pytest` cannot import `tests`).
+
+**Before every pre-push check (28 Nov; steps in `.claude/skills/lanes/SKILL.md`).** (1) Once per container `git fetch --unshallow origin; git fetch origin main`: a cloud clone is shallow with no origin/main, so the ci_checks and app_tests stages fail in under a second, after the other stages ran 10 to 25 minutes. (2) Cheap rules first (ruff on changed files, `python scripts/ruff_ratchet.py`, `python -m pytest tests -m repo_scan -q`, the select_app_tests and broker-name guards, the route tests when a route changed). (3) Background run with timeout 7200000 and `--jobs 2`; on a failure read only the failing stage's log.
+A manual full `tests_app` run on one shared database needs `GITHUB_ACTIONS=true` and `OFO_TEST_DB_PER_FILE=1` (Lane TE: without the per-file clone, failures start at the 11th test, then a leaked advisory lock stalls the run; Lane Z2: `OFO_TEST_DB_PER_FILE=1` or `GITHUB_ACTIONS=true`, a fresh template database, one run at a time). The written `db_run.py` test command tests an old test copy of the database at revision 0030 (PC, 28 Nov), so it cannot test a new migration such as 0059; the PC re-ran on a fresh test database.
+
+## Test rounds: cloud first, PC only for what needs the PC
+Rule: `.claude/rules/project/cloud-first-testing.md` (owner, 28 Nov). Class every check CLOUD or PC ONLY; walk the plan in a cloud browser first. The full push check never runs on the PC: see "Before a push".
+Only the PC found these four on 28 Nov: (1) reads took 24 seconds over the real link to his database; (2) the seed command refused his real snapshot; (3) the frontend server was not restarted after a checkout; (4) the memory stop (1.7 GB free of 15.7).
+Set-up lessons from the PC:
+- After a checkout restart the frontend server and open one new route through it.
+- Test migrations on a fresh test database.
+- Select by strategy id; the alert tables are `paper_alerts` and `strategy_alert_style`.
+- Until the seed fix is on the PC, use the seed command's mapping for a real snapshot.
+- Memory: one browser window, one helper, stop below 3 GB free.
 
 ## Merge
 - Only `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full 40-char sha>` (or `land.py <worktree> --title T
@@ -110,8 +187,12 @@ regenerated file its `--check`. Red CI: read `gh run view <id> --log-failed`, fi
   `scripts/orchestrator/db_run.py`, which never prints them:
   `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`
   `python scripts/orchestrator/db_run.py . python -m pytest -q -rs -p no:cacheprovider -c pytest-app.ini tests_app/<file>.py`
+- `OFO_TEST_DB_PER_FILE=1` gives each `tests_app` file its own database clone (Lane Z2, `RESULTS-lane-z2.md` on `integration/weekend-r2-1128`; Lane TE: without it a manual full run fails from the 11th test, then a leaked advisory lock stalls it). Use it, or `GITHUB_ACTIONS=true`, for any manual run of more than one file on a shared database; with a fresh template database, one run at a time. Single-file runs through `db_run.py` do not need it.
 - Which `tests_app` files a backend change can break: `python scripts/orchestrator/select_app_tests.py <worktree>`
-  (exit 3 = diff not parsed; fails closed). Tests marked `network` hit Zerodha's public instrument list.
+  (exit 3 = diff not parsed; fails closed). It also selects a changed `tests_app` test file itself; every test that
+  imports (names) a changed or deleted `tests_app` module, test files included, followed transitively; a changed or deleted
+  conftest/`__init__` subtree; the tests naming a changed data file; all of them if nothing names a changed non-test file.
+  Renames count as delete + add; a git-quoted path name exits 3. It does not follow computed imports. Tests marked `network` hit Zerodha's public instrument list.
 - Background worker (REQ-115 AC-6, ADR-286): start it through the supervisor, which restarts it when it dies (1, 2, 4 .. 60 s
   backoff; gives up after 5 restarts in 10 minutes so the heartbeat watch says "stopped"; a clean exit 0 is not restarted):
   `python scripts/orchestrator/supervise_worker.py` (same as `-- python -m ofo_app.background`; run it with the env the worker needs). Stop the supervisor with `taskkill /PID <pid> /T /F`: without /T the worker it started keeps running (measured 12 Nov: the child outlived `taskkill /PID <supervisor> /F`).
@@ -123,6 +204,12 @@ regenerated file its `--check`. Red CI: read `gh run view <id> --log-failed`, fi
 Before any live Kite action (API orders need a static IP, ADR-100) plan entry AND exit through the product path, and
 validate a probe on a known-good state first. Kite API facts: the user-level `zerodha-expert` skill. Engine-math
 reviews: the project skill `options-math-review`.
+
+## Improving how we work
+Owner's rule (27 Nov 2026): find the fix for every problem and recommend it without being asked; the owner decides.
+- Log friction (a repeat, a long wait, a manual step done 3 times, a workaround): `docs/process/friction-log.md`.
+- Turn the log into ranked recommendations at session end or at a second occurrence: the `improve` skill, `.claude/skills/improve/SKILL.md`.
+- The rule that makes this a duty: `.claude/rules/project/improve-proactively.md` (extends kit `learning.md`).
 
 ## Reference
 - `docs/reference/chatgpt/`: the two chat transcripts (primary) and handoff files; reference only, never edited;

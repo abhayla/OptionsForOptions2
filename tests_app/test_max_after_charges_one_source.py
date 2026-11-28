@@ -13,7 +13,7 @@ import datetime
 from decimal import Decimal as D
 
 import pytest
-from ofo.adjustment.approaches import Position, PositionLeg
+from ofo.adjustment.approaches import ChainRow, Position, PositionLeg
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, paper_charges
 from ofo.engine.extremes import UNLIMITED, ContractTerms, book_extremes
@@ -36,7 +36,9 @@ RATES = ChargeRates(
     transaction_rates={"NSE_FO": D("0.0003553"), "BSE_FO": D("0.000325")}, sebi_rate=D("0.000001"),
     stamp_buy_rate=D("0.00003"), gst_rate=D("0.18"), read_on=datetime.date(2026, 10, 15),
     source_url="https://zerodha.com/charges")
-MARKET = route.MarketInputs((), {}, None, None, None, None, None,
+# D-14: the review prices the cost to close at the chain's live LTP, the price the page uses (50 for every leg)
+CHAIN = tuple(ChainRow(D(0), "CE", EXPIRY, "X" + str(i), D("50")) for i in range(1, 5))
+MARKET = route.MarketInputs(CHAIN, {}, None, None, None, None, None,
                             datetime.datetime(2026, 11, 2, 5, 0, tzinfo=datetime.UTC))
 SHAPE = (("PE", "BUY", -400), ("PE", "SELL", -300), ("CE", "SELL", 250), ("CE", "BUY", 300))  # type, side, offset
 
@@ -144,13 +146,15 @@ def test_a_futures_leg_cannot_be_priced_gives_the_before_figures() -> None:
     assert max_after_charges(view, terms, live, "NIFTY", RATES, D("10")) == book_extremes(view, terms, live)
 
 
-def test_prices_not_live_keeps_the_reason_and_the_after_charges_max() -> None:
+def test_prices_not_live_gives_the_before_max_never_an_average_price_exit() -> None:
+    # D-14: the cost to close is priced at the live price only (one exit cost with Total after); with no live price the
+    # max is before charges (the reply then says so) - never the average price standing in for the live one.
     orders, _live, terms = _condor(1, 22800, D("90"), False)
     view = net_positions(orders, {})
     got = max_after_charges(view, terms, {}, "NIFTY", RATES, _paid(orders).total)
     assert got.reason == "prices_not_live"
-    assert got.max_profit is not None
-    assert got.max_profit < book_extremes(view, terms, {}).max_profit
+    assert got == book_extremes(view, terms, {})
+    assert open_round_trip_charges(view, terms, "NIFTY", RATES, _paid(orders).total, {}) is None
 
 
 CLOSED = BookView((), D("-32.50"), D(0), D("-32.50"), D(0))  # booked -32.50, nothing open (strategy 141)
@@ -183,4 +187,7 @@ def test_unlimited_max_loss_stays_unlimited() -> None:
     orders = [PaperOrder("1", "SELL", LOT, D("100"), "open", T0)]
     _view, got = _page(orders, live, terms)
     assert got.max_loss is UNLIMITED
-    assert got.max_profit == D("6500.00") - open_round_trip_charges(net_positions(orders, live), terms, "NIFTY", RATES)
+    # placed book: paid exact + the exit at the live 90, rounded up once (D-14)
+    charges = open_round_trip_charges(net_positions(orders, live), terms, "NIFTY", RATES, _paid(orders).total, live)
+    assert charges is not None
+    assert got.max_profit == D("6500.00") - charges

@@ -46,6 +46,9 @@ PINNED_SLOT_TYPES = frozenset({
         "LegacyRecorded", "OpWords", "ActionWords", "MeasureWords", "DirectionWords", "FollowUpLabel", "InputLabel",
         # W-066 (outcome text from the catalogue)
         "Rupees", "Points", "ExceptLevels", "LevelRegions", "SignedAmount", "HourMinute", "ClockSeconds",
+        # D-17 (ADR-322 point 2, reviewed): ClockHms only formats one timezone-aware time as IST "HH:MM:SS"
+        # ("as of ..."): no user text, no number arithmetic
+        "ClockHms",
         "UnderlyingName", "InstrumentRef", "LegRef", "LegRefs", "HealthWord", "ExpiryDate", "DayMonth", "CellText", "OiCount", "WholePoints", "SignedPercent", "WholeRupees",  # noqa: E501 - long line kept whole
         "SignedPaisa", "SignedRupeesPaisa", "SignedWholeRupees",
         # GC-TP step 7a / 6a (reviewed 2026-10-29 session 2: both validate through Rupees / HourMinute, format only)

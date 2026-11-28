@@ -60,6 +60,8 @@ class UserBook:
     name: str | None
     underlying: str
     orders: tuple[StoredOrder, ...]
+    status: str = "draft"  # the row's stored status (draft | closed): with the orders, the status word's input
+    scenario_id: str | None = None  # D-68: the scenario marker of the strategy row (None = a real strategy)
 
 
 def order_from_row(r: Any) -> StoredOrder:
@@ -83,3 +85,15 @@ async def load_owned_many(conn: Any, user_ref: str, strategy_ids: list[int]) -> 
     for r in rows:
         out.setdefault(int(r.strategy_id), []).append(order_from_row(r))
     return {sid: tuple(v) for sid, v in out.items()}
+
+
+_SELECT_PLAN = text("SELECT definition -> 'legs' AS legs FROM public.strategies "
+                    "WHERE id = :id AND user_ref = :user_ref AND deleted_at IS NULL")
+
+
+async def load_plan_owned(conn: Any, user_ref: str, strategy_id: int) -> list[dict[str, Any]] | None:
+    """GC-ICLIVE-B D-15: the legs of the plan this strategy was saved with (contract id, action, units, planned entry
+    price), only when the strategy is ``user_ref``'s and not deleted (the owner check is in the query). None when it is
+    not found; a leg saved without an entry price has no ``planned_entry`` key."""
+    row = (await conn.execute(_SELECT_PLAN, {"id": strategy_id, "user_ref": user_ref})).one_or_none()
+    return None if row is None or not isinstance(row.legs, list) else row.legs

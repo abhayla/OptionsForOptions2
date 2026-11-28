@@ -19,7 +19,7 @@ from ofo.engine.extremes import UNLIMITED, BookExtremes, ContractTerms, Figure, 
 from ofo.engine.legs import Instrument
 from ofo.engine.orderbook import BookView
 
-__all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "max_after_charges",
+__all__ = ["AfterSplit", "BookAfterCharges", "after_split", "book_after_charges", "expiry_hold", "max_after_charges",
            "open_exit_charges", "open_round_trip_charges", "review_charge_lines", "sum_after_charges",
            "sum_booked_after", "with_charges"]
 
@@ -100,15 +100,19 @@ def sum_after_charges(rows: Sequence[BookAfterCharges]) -> BookAfterCharges:
                             total([r.paid for r in rows]), total([r.open_exit for r in rows]), None)
 
 
-def open_round_trip_charges(view: BookView, terms: Mapping[str, ContractTerms], underlying: str,
-                            rates: ChargeRates | None, paid_exact: Decimal | None = None) -> Decimal | None:
+def open_round_trip_charges(  # noqa: PLR0911, PLR0913 - each refusal names its own absent input
+        view: BookView, terms: Mapping[str, ContractTerms], underlying: str,
+        rates: ChargeRates | None, paid_exact: Decimal | None = None,
+        live: Mapping[str, Decimal] | None = None) -> Decimal | None:
     """The charges inside Max profit / Max loss, rounded UP once; None when nothing is open, no rates are set, or a
     contract cannot be priced (a futures leg): the figures then stay before charges and say so.
 
     Without ``paid_exact`` (a trade not yet placed, the builder): the ESTIMATE, a round trip of the open contracts at
     their average price. With it (a PLACED book, ADR-263): the charges really paid on every filled order (exact,
-    ``paper_charges(...).total``) plus the estimated charges to close the open contracts at their average price, so a
-    leg filled in two orders and the legs closed by an adjustment are counted as paid."""
+    ``paper_charges(...).total``) plus the estimated cost to close the open contracts NOW, at their LIVE price: the same
+    exit orders :func:`open_exit_charges` prices for Total after (D-14: one exit cost, not one at the average price
+    for the extremes and another at the live price for the total). A placed book with an open contract that has no
+    live price gives None (the figures stay before charges and say so; never the average price in its place)."""
     open_ = [p for p in view.positions if p.net_quantity != 0 and p.average is not None]
     if rates is None:
         return None
@@ -120,13 +124,20 @@ def open_round_trip_charges(view: BookView, terms: Mapping[str, ContractTerms], 
         segment = charge_segment(underlying)
     except ChargesNotComputable:
         return None
+    if paid_exact is not None and any((live or {}).get(p.instrument_id) is None for p in open_):
+        return None  # the cost to close now needs every open contract's live price
     orders = []
     for p in open_:  # ChargeOrder takes any price above 0; only the strategy ``Leg`` demands two decimals
         side, other = ("BUY", "SELL") if p.net_quantity > 0 else ("SELL", "BUY")
         if paid_exact is None:
             orders.append(ChargeOrder(segment, side, abs(p.net_quantity), p.average))  # type: ignore[arg-type]
-        orders.append(ChargeOrder(segment, other, abs(p.net_quantity), p.average))  # type: ignore[arg-type]
-    return to_paise_up((paid_exact or Decimal(0)) + charges_for_orders(orders, rates).total)
+            orders.append(ChargeOrder(segment, other, abs(p.net_quantity), p.average))  # type: ignore[arg-type]
+        else:
+            orders.append(ChargeOrder(segment, other, abs(p.net_quantity), live[p.instrument_id]))  # type: ignore[index]
+    try:
+        return to_paise_up((paid_exact or Decimal(0)) + charges_for_orders(orders, rates).total)
+    except ValueError:  # the calculator refusing a price (a live 0) -> no after figure, never a guess
+        return None
 
 
 def review_charge_lines(paid: Decimal, paid_exact: Decimal | None, own: Sequence[ChargeOrder],
@@ -144,7 +155,7 @@ def review_charge_lines(paid: Decimal, paid_exact: Decimal | None, own: Sequence
     return adjustment, exits
 
 
-def with_charges(got: BookExtremes,charges: Decimal | None) -> BookExtremes:
+def with_charges(got: BookExtremes, charges: Decimal | None) -> BookExtremes:
     """``got`` with the charges inside Max Profit and Max Loss (both move down by them); Profit left / Loss left are the
     open position's own range from the live price and stay as they are."""
     if charges is None:
@@ -164,7 +175,7 @@ def max_after_charges(  # noqa: PLR0913 - the book, its terms, live prices, unde
     ``routes.adjustment.price_after``, whose charge lines come from :func:`review_charge_lines` (the same total, rounded
     once) and whose booked figure stays exact."""
     return with_charges(book_extremes(view, terms, live),
-                        open_round_trip_charges(view, terms, underlying, rates, paid_exact))
+                        open_round_trip_charges(view, terms, underlying, rates, paid_exact, live))
 
 
 @dataclass(frozen=True)
@@ -204,7 +215,7 @@ def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying
         return AfterSplit(booked_after, unbooked_after, None, None, None)
     if not any(p.net_quantity for p in view.positions):
         return AfterSplit(booked_after, unbooked_after, got.profit_left, got.loss_left, None)
-    if open_round_trip_charges(view, terms, underlying, rates, paid_exact) is None:  # no mixing of bases (ADR-306 (6))
+    if open_round_trip_charges(view, terms, underlying, rates, paid_exact, live) is None:  # ADR-306 (6): one basis
         return AfterSplit(booked_after, unbooked_after, None, None, None)
     net, total = max_after_charges(view, terms, live, underlying, rates, paid_exact), after.total_after
 
@@ -213,3 +224,20 @@ def after_split(  # noqa: PLR0913 - the book, its terms, live prices, underlying
 
     return AfterSplit(booked_after, unbooked_after, left(net.max_profit), left(net.max_loss),
                       -total if total < 0 else None)
+
+
+def expiry_hold(before: BookExtremes, after: BookAfterCharges) -> tuple[Figure, Figure] | None:
+    """ADR-320 (2), expiry day only: (Max profit, Profit left) "If held to expiry". Settlement books no exit order, so
+    the held Max profit = Max profit before charges - the charges already PAID (``after.paid``, the figure Total after
+    deducts); Profit left held = that - Total after (the one Total on screen, ADR-306 (1), (3)). The "If exited now"
+    pair is the usual :func:`max_after_charges` / :func:`after_split` figures. None when any input is absent (no
+    mixing of bases, ADR-306 (6)). Exercise STT on a long leg settling in the money is not in it: the maximum of a
+    defined-risk short book (the condors of the 23 Nov test) has every long leg out of the money.
+    Real case C2 157: 484.25 - 97.24 = +387.01, the settlement; the screen read 484.25 - 193.76 = +290.49."""
+    top = before.max_profit
+    if top is None or after.paid is None or after.total_after is None:
+        return None
+    if top is UNLIMITED:
+        return UNLIMITED, UNLIMITED
+    held = top - after.paid  # type: ignore[operator]
+    return held, held - after.total_after

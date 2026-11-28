@@ -42,6 +42,7 @@ from typing import Any, Final
 
 from ofo import market_calendar
 from ofo.engine.legs import Instrument
+from ofo.errors.explanations import ExplanationText, render_explanation
 from ofo.instruments.models import INDEX_ROWS, ZERODHA
 from ofo.settings import calc
 from ofo.timeutil import IST, SESSION_CLOSE
@@ -54,7 +55,7 @@ from ofo_app import strategy_store as store
 log = logging.getLogger(__name__)
 
 SETTLE: Final = "settle"
-SETTLE_REASON: Final = "Paper - settled at expiry"
+SETTLE_REASON: Final = "Paper - settled at expiry"  # REQ-109 AC-7's label; the stored reason adds the close
 SKIP_REASON: Final = "settlement price not available"
 #: The close is read from the ``facts.paper_settle_from`` setting in force (default 15:45 IST: the exchange publishes
 #: the closing value after its 15:30 close). While a group had no close, the job retries every RETRY_MINUTES until the
@@ -130,6 +131,11 @@ def settle_price(instrument: Instrument, strike: Decimal, close: Decimal) -> Dec
     return close
 
 
+def settle_reason(underlying: str, close: Decimal) -> ExplanationText:
+    """D-71: the settle order's reason: the AC-7 label and the official close it was priced from."""
+    return render_explanation("paper_settle_reason", underlying=underlying, level=close)
+
+
 def settle_time(expiry: datetime.date) -> datetime.datetime:
     """A settle order is placed at the exchange's 15:30 IST close of the expiry day."""
     return datetime.datetime.combine(expiry, SESSION_CLOSE, IST)
@@ -171,7 +177,7 @@ async def _settle_strategy(conn: Any, due: Sequence[DueContract], closes: dict[t
         side = "BUY" if net < 0 else "SELL"
         price = settle_price(d.instrument, d.strike, closes[(d.underlying, d.expiry)])
         orders.append(paper_store.NewOrder(d.contract_id, side, abs(net), price, SETTLE, settle_time(d.expiry),
-                                           SETTLE_REASON))
+                                           str(settle_reason(d.underlying, closes[(d.underlying, d.expiry)]))))
         settled.append(Settled(d.strategy_id, d.contract_id, d.underlying, d.expiry, side, abs(net), price))
     if orders:
         # a settle: never a first fill

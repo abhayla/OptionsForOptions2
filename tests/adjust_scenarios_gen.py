@@ -637,9 +637,10 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
                     hand_take_profit()
             elif aid == "A-35":  # ADR-238 (5): on expiry day from the playbook's time exit
                 if exits["time_exit"] is None:
-                    raise HandRefused("Your playbook sets no time exit, so this approach is not built.")
+                    raise HandRefused("This approach is not built because your playbook sets no exit time.")
                 if not (today == expiry and exits["hhmm"] is not None and exits["hhmm"] >= exits["time_exit"]):
-                    raise HandRefused(f"The time exit is offered on expiry day from {exits['time_exit']}.")
+                    raise HandRefused(f"This approach opens on the expiry day, from {exits['time_exit']}; "
+                                      "it is not offered before then.")
                 trades, after, closed = close_every()
             elif aid == "A-25":  # ADR-238 (2): X% of every leg's lots, whole lots only
                 hand_take_profit()

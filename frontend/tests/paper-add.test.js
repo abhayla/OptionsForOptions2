@@ -7,6 +7,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import * as tracking from '@/lib/tracking'
+const { PAPER_PRICE_ZERO_REASON } = tracking
 
 const calls = []
 let answers = {}
@@ -96,7 +97,7 @@ describe('Add to Paper: price and lots', () => {
     await openList(w)
     await all(w, 'paper-price')[1].setValue(bad)
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
-    expect(all(w, 'paper-reason')[0].text()).toBe('Enter a price in steps of 0.05')
+    expect(all(w, 'paper-reason')[0].text()).toBe(bad === '0' ? PAPER_PRICE_ZERO_REASON : 'Enter a price in steps of 0.05') // D-58
     await t(w, 'paper-confirm-button').trigger('click')
     expect(posts()).toHaveLength(0)
     w.unmount()
@@ -241,7 +242,7 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
   it.each([0, -5, 101.03])('GC-TPD R-30: a numeric price %s is refused exactly as the text "%s" is (Confirm disabled, nothing emitted)', async (bad) => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: bad, kind: 'open' }] } })
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
-    expect(t(w, 'paper-reason').text()).toBe('Enter a price in steps of 0.05')
+    expect(t(w, 'paper-reason').text()).toBe(bad === 0 ? PAPER_PRICE_ZERO_REASON : 'Enter a price in steps of 0.05') // D-58
     await t(w, 'paper-confirm-button').trigger('click')
     expect(w.emitted('confirm')).toBeUndefined()
     w.unmount()

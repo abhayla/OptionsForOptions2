@@ -49,13 +49,22 @@ _CANCEL = text("UPDATE public.paper_triggers SET cancelled_at = clock_timestamp(
                "AND fired_at IS NULL AND cancelled_at IS NULL RETURNING id")
 _ALERT = text("INSERT INTO public.paper_alerts (strategy_id, trigger_id, title, body) "
               "VALUES (:sid, :tid, :title, :body) RETURNING id")
-_ALERTS = text("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at, s.name "
+#: D-29: the alert readers and the mark-read write see this process's own strategies only (``{scope}`` =
+#: ``scenario_mode.scope_clause("s")``): a live process never lists, counts or marks a scenario strategy's alert, and a
+#: scenario process only its own scenario's.
+_ALERTS_SQL = ("SELECT a.id, a.strategy_id, a.trigger_id, a.created_at, a.title, a.body, a.read_at, s.name "
                "FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
-               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL ORDER BY a.id DESC LIMIT :limit")
-_UNREAD = text("SELECT count(*) FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
-               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND a.read_at IS NULL")
-_READ_ALL = text("UPDATE public.paper_alerts AS a SET read_at = clock_timestamp() FROM public.strategies AS s "
-                 "WHERE s.id = a.strategy_id AND s.user_ref = :user_ref AND a.read_at IS NULL")
+               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND {scope} ORDER BY a.id DESC LIMIT :limit")
+_UNREAD_SQL = ("SELECT count(*) FROM public.paper_alerts AS a JOIN public.strategies AS s ON s.id = a.strategy_id "
+               "WHERE s.user_ref = :user_ref AND s.deleted_at IS NULL AND a.read_at IS NULL AND {scope}")
+_READ_ALL_SQL = ("UPDATE public.paper_alerts AS a SET read_at = clock_timestamp() FROM public.strategies AS s "
+                 "WHERE s.id = a.strategy_id AND s.user_ref = :user_ref AND a.read_at IS NULL AND {scope}")
+
+
+def _scoped(sql: str) -> tuple[Any, dict]:
+    from ofo_app.scenario_mode import scope_clause  # noqa: PLC0415 - the one isolation helper
+    clause, params = scope_clause("s")
+    return text(sql.format(scope=clause)), params
 
 
 @dataclass(frozen=True)
@@ -144,12 +153,15 @@ async def add_alert(conn: Any, strategy_id: int, trigger_id: int, title: str, bo
 
 async def alerts(conn: Any, user_ref: str, limit: int = 100) -> tuple[list[AlertRow], int]:
     """The user's newest alerts first (at most ``limit``) and the user's unread count."""
+    listing, scope = _scoped(_ALERTS_SQL)
+    counting, _ = _scoped(_UNREAD_SQL)
     rows = [AlertRow(int(r.id), int(r.strategy_id), int(r.trigger_id), r.created_at, r.title, r.body, r.read_at,
                      r.name)
-            for r in (await conn.execute(_ALERTS, {"user_ref": user_ref, "limit": limit})).all()]
-    unread = int((await conn.execute(_UNREAD, {"user_ref": user_ref})).scalar_one())
+            for r in (await conn.execute(listing, {"user_ref": user_ref, "limit": limit, **scope})).all()]
+    unread = int((await conn.execute(counting, {"user_ref": user_ref, **scope})).scalar_one())
     return rows, unread
 
 
 async def mark_all_read(conn: Any, user_ref: str) -> int:
-    return (await conn.execute(_READ_ALL, {"user_ref": user_ref})).rowcount
+    marking, scope = _scoped(_READ_ALL_SQL)
+    return (await conn.execute(marking, {"user_ref": user_ref, **scope})).rowcount

@@ -24,7 +24,7 @@ const t = (w, id) => w.find(`[data-testid="${id}"]`)
 describe('item 2: before-charges groups carry one label', () => {
   it('the paper panel: Booked / Unbooked / P&L columns and the closed list say "(before charges)"', () => {
     const pos = (id, qty) => ({ contract_id: id, contract_text: `NIFTY C${id}`, net_quantity: qty, average_text: '75.65', ltp_text: '76.80', booked_text: '0.00', unbooked_text: '1.00', total_text: '1.00', price_state: 'live' })
-    const w = mount(PaperBookPanel, { props: { book: { strategy_id: 1, state: 'LIVE', total_text: '+1.00', total_after_text: '+0.50', after_charges_reason: null, positions: [pos(1, -65), pos(2, 0)] }, net: [] } })
+    const w = mount(PaperBookPanel, { props: { book: { strategy_id: 1, state: 'LIVE', total_text: '+1.00', total_after_text: '+0.50', after_charges_reason: null, positions: [pos(1, -65), pos(2, 0)], closed: [{ contract_id: 2, contract_text: 'NIFTY C2', side: 'SELL', quantity: 65, lots: 1, average_entry_text: '75.65', average_exit_text: '76.80', booked_text: '0.00', opened_at: '2026-11-17T04:00:00Z' }] }, net: [] } })
     expect(t(w, 'net-basis').text()).toBe('(before charges)')
     expect(t(w, 'closed-basis').text()).toContain('(before charges)')
   })
@@ -52,7 +52,7 @@ describe('item 2: before-charges groups carry one label', () => {
 
 describe('item 3: the server charges_paid_text, never the raw string', () => {
   it('the Completed row shows "Charges paid: 1,403.45"', async () => {
-    answer = () => Promise.resolve({ data: { strategies: [{ id: 139, underlying: 'NIFTY', status: 'closed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z',
+    answer = () => Promise.resolve({ data: { strategies: [{ id: 139, underlying: 'NIFTY', status: 'closed', status_word: 'Completed', created_at: '2026-10-18T04:00:00Z', updated_at: '2026-10-18T04:00:00Z',
       final_pnl_text: '-159.25', total_after: '-511.65', total_after_text: '-511.65', charges_paid: '1403.45', charges_paid_text: 'Charges paid: 1,403.45', after_charges_reason: null }] } })
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/s', component: MyStrategiesPage, meta: { title: 'Completed Strategies', parent: 'Strategies', completedOnly: true } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
     await router.push('/s')
