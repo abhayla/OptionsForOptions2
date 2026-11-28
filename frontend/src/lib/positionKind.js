@@ -19,8 +19,6 @@ export const REAL_STORED_NOT_REFRESHED_TEXT = 'Stored in the app. Not sent to Ze
 export const REAL_EXIT_STORED_TEXT = 'Exit stored. Not sent to Zerodha. Place it in Kite. This position stays open here until Zerodha shows it closed.'
 export const REAL_STOPS_TEXT = 'Stop stored for this real position. When it is reached you get an alert. Nothing is sent to Zerodha. Place the exit in Kite.'
 export const REAL_ROW_TEXT = 'Real position. Zerodha shows its quantity and P&L. Exits and stops you store here are not sent. Place them in Kite.'
-export const REAL_MONITORING_TEXT = 'Watching this real position. An alert only; nothing is sent.'
-export const REAL_ADD_STORED_TEXT = 'Add stored. Not sent to Zerodha. Place it in Kite.'
 
 /** The row's own line for a real position: the server's line when it sent one, else REAL_ROW_TEXT; none for paper and none-kind rows. */
 export const rowLineOf = (row) => (isRealKind(row) ? (typeof row.position_kind_text === 'string' && row.position_kind_text.trim() ? row.position_kind_text : REAL_ROW_TEXT) : null)

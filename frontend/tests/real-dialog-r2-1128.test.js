@@ -53,7 +53,7 @@ describe('the done line and the sentence set', () => {
     expect(exitEndText('done', [], { orders: [{ id: 5 }], sent: 1 })).toContain(EXIT_DONE_TEXT)
   })
   it('every real sentence says nothing is sent or only stored; none says placed, executed or sent to Zerodha without a "not"', () => {
-    const sentences = [K.REAL_EXIT_DIALOG_TEXT, K.REAL_ADD_DIALOG_TEXT, K.REAL_EXIT_STORED_TEXT, K.REAL_STOPS_TEXT, K.REAL_ROW_TEXT, K.REAL_MONITORING_TEXT, K.REAL_ADD_STORED_TEXT, K.REAL_STORED_NOT_REFRESHED_TEXT]
+    const sentences = [K.REAL_EXIT_DIALOG_TEXT, K.REAL_ADD_DIALOG_TEXT, K.REAL_EXIT_STORED_TEXT, K.REAL_STOPS_TEXT, K.REAL_ROW_TEXT, K.REAL_STORED_NOT_REFRESHED_TEXT]
     for (const s of sentences) {
       expect(s).not.toMatch(/\b(placed|executed|filled)\b/i)
       expect(/(not sent|nothing is sent|does not place|are not sent|only)/i.test(s) || /^Watching/.test(s) || /^Stored in the app/.test(s)).toBe(true)
