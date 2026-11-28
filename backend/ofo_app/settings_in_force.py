@@ -351,6 +351,11 @@ def _figures(trig: Mapping, expiry_kind: str, stage: int) -> tuple[Decimal, tupl
     return figure, tuple(later)
 
 
+def _no_stage_reason(at: StageAt | str | None) -> str:
+    """#866: why no stage is known: the trade's expiry kind is empty (say THAT), else the stage itself is unknown."""
+    return sl.EXPIRY_KIND_UNKNOWN if isinstance(at, StageAt) and not at.expiry_kind else STAGE_UNKNOWN
+
+
 def _trigger_line(body: Mapping, kind: str, base: Decimal | Any | None,  # noqa: PLR0911 - one return per answer state
                   at: StageAt | str | None, source: str | None) -> StopInForce | None:
     """ADR-252: the line of ``kind`` = its trigger's value at the current stage; on/off = that trigger's switch only.
@@ -370,9 +375,7 @@ def _trigger_line(body: Mapping, kind: str, base: Decimal | Any | None,  # noqa:
         return StopInForce(kind, True, None, None, source, STOP_VALUE_UNREADABLE)
     where = _stage_index(body, at)
     if where is None:
-        if isinstance(at, StageAt) and not at.expiry_kind:  # #866: the trade's expiry kind is not known: say that
-            return StopInForce(kind, True, None, None, source, sl.EXPIRY_KIND_UNKNOWN)
-        return StopInForce(kind, True, None, None, source, STAGE_UNKNOWN)
+        return StopInForce(kind, True, None, None, source, _no_stage_reason(at))
     try:
         figure, later = _figures(trig, *where)
     except (ValueError, TypeError, KeyError, IndexError):

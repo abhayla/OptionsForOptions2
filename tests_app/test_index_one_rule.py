@@ -68,7 +68,7 @@ async def test_entry_facts_take_a_live_quote_without_confirmation():
     assert facts is not None and facts.entry_spot == D("24100.55")
 
 
-# ---- Lane FR item 6 (K2 finding F1): a ticked first fill with the feed down still stores its entry facts ---------------
+# ---- Lane FR item 6 (K2 F1): a ticked first fill with the feed down still stores its entry facts ---------------
 def _down(quote):
     ctx = _ctx(quote)
     ctx.provider.status = lambda: SimpleNamespace(connected=False)
@@ -99,7 +99,7 @@ async def test_the_first_fill_reader_holds_an_index_nobody_subscribed_yet(monkey
     monkeypatch.setattr("ofo_app.chain_push.index_id_of", lambda _c, _u: "256265")
     held: list = []
 
-    async def read_quotes(feed, ids, read, ready, connected, wait, poll):
+    async def read_quotes(feed, ids, read, *_rest):
         held.append(ids)
         book.append(_quote(D("24100.55")))
         return read()

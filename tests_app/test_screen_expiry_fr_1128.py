@@ -7,7 +7,6 @@ Real case: a calendar trade listed far-leg-first (sold 28 Dec call before the bo
 """
 from __future__ import annotations
 
-import dataclasses
 import datetime
 
 from ofo.marketdata.shared_compute import FeedScope

@@ -10,6 +10,7 @@ import pytest
 import test_background_worker as bw
 from ofo_app import adjustment_readers
 from ofo_app.adjustment_readers import read_tracked
+from sqlalchemy import text
 from test_background_worker import app_db_url  # noqa: F401 - the fixture
 
 NEAR = datetime.date(2026, 11, 9)
@@ -45,6 +46,5 @@ async def test_no_record_or_an_empty_one_reads_the_catalogue(app_db_url, monkeyp
 
 
 async def _sid(url) -> int:
-    from sqlalchemy import text
     async with url.begin() as conn:
         return (await conn.execute(text("SELECT id FROM public.strategies ORDER BY id DESC LIMIT 1"))).scalar_one()

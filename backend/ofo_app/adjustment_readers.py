@@ -160,7 +160,7 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None,
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg", closed_at=closed_at_of(orders))
     fresh = entry_stop_base(orders, found, _ENTRY_SOURCE)  # ADR-330 (1): from the entry orders only
-    kind = await _stored_kind_or_empty(db, underlying, legs, kinds)  # R3: "" = not known; read BEFORE the backfill write
+    kind = await _stored_kind_or_empty(db, underlying, legs, kinds)  # R3: "" = not known; read BEFORE the backfill
     base = await stop_base_in_force(db, strategy_id, fresh)  # (a failed catalogue read rolls the session back)
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
         return Tracked(Position(underlying, lot, kind, datetime.date.min, tuple(legs)), book.booked, None,
