@@ -46,19 +46,3 @@ async def test_fd5_the_kind_read_asks_the_store_for_one_underlying_only(rig, mon
     monkeypatch.setattr(adjustment_readers, "load_catalogue", spy)
     await rig.get(rig.urls(sid)["adjustment-plan"])
     assert asked and all(name == "NIFTY" for name in asked), asked
-
-
-async def test_fd5_nine_rows_of_one_plan_watch_batch_share_one_catalogue_read_for_their_kind(rig, monkeypatch):  # noqa: F811
-    """FD5 (W-02 / W-03, 9 trades took 24 s on the PC, one catalogue read per row over the tunnel): the batch route
-    shares the expiry kind of one underlying and expiry across its rows."""
-    ids = rig.ids[:9]
-    await _warm(rig, ids[0])
-    real = adjustment_readers.load_catalogue
-    asked: list[object] = []
-
-    async def spy(db, name=None):
-        asked.append(name)
-        return await real(db, name)
-    monkeypatch.setattr(adjustment_readers, "load_catalogue", spy)
-    await rig.get("/api/plan-watch?strategy_ids=" + ",".join(str(i) for i in ids))
-    assert len(asked) <= 1, asked  # was one per row (9)

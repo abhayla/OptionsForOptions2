@@ -19,7 +19,6 @@ from fastapi import APIRouter, Depends, Query
 from ofo.charges import ChargeRates
 
 from ofo_app.api_models import ApiModel, CatalogueText
-from ofo_app.adjustment_readers import kind_memo
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, refuse_request, row_answer
 from ofo_app.routes.adjustment import (
@@ -86,24 +85,16 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         prefs: UserPreferences, user_values: UserValuesIn) -> PlanWatchBatchOut:
     items: list[dict] = []
     deadline = time.monotonic() + BATCH_BUDGET_S
-    with kind_memo():  # FD5: the rows of one underlying and expiry share ONE catalogue read for their kind
-        await _read_rows(items, _ids_of(strategy_ids), deadline, dict(
-            db=db, user_ref=user_ref, tracked_reader=tracked_reader, market_reader=market_reader,
-            rest_reader=rest_reader, margin_of=margin_of, ctx=ctx, rates=rates, prefs=prefs, user_values=user_values))
-    as_of = max((i["watch"].as_of for i in items if i["state"] == "ok"), default=None)
-    return PlanWatchBatchOut.model_validate({"as_of": as_of, "items": items})
-
-
-async def _read_rows(items: list[dict], ids: list[int], deadline: float, deps: dict[str, Any]) -> None:
-    db = deps["db"]
-    for sid in ids:
+    for sid in _ids_of(strategy_ids):
         left = deadline - time.monotonic()
         if left <= 0:  # the budget is spent: this row is not read (never guessed, never waited for)
             items.append({"strategy_id": sid, "state": "not_read"})
             continue
         try:
             watch = await asyncio.wait_for(
-                watch_of(sid, **deps), left)
+                watch_of(sid, db=db, user_ref=user_ref, tracked_reader=tracked_reader, market_reader=market_reader,
+                         rest_reader=rest_reader, margin_of=margin_of, ctx=ctx, rates=rates, prefs=prefs,
+                         user_values=user_values), left)
             items.append({"strategy_id": sid, "state": "ok", "watch": watch})
         except asyncio.CancelledError:
             raise
@@ -117,3 +108,5 @@ async def _read_rows(items: list[dict], ids: list[int], deadline: float, deps: d
             if rollback is not None:  # a failed statement leaves the shared session unusable for the next row
                 await rollback()
         await asyncio.sleep(0)  # let the loop serve a stop, an alert or another request between two checks
+    as_of = max((i["watch"].as_of for i in items if i["state"] == "ok"), default=None)
+    return PlanWatchBatchOut.model_validate({"as_of": as_of, "items": items})

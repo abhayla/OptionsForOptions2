@@ -21,13 +21,11 @@
 """
 from __future__ import annotations
 
-import contextlib
-import contextvars
 import dataclasses
 import datetime
 import json
 import logging
-from collections.abc import Callable, Iterable, Iterator, Mapping
+from collections.abc import Callable, Iterable, Mapping
 from decimal import Decimal
 from types import SimpleNamespace
 from typing import Any
@@ -180,22 +178,6 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None,
                    entry_position=entry_position_of(orders, found), stop_base=base, entry_stop_base=fresh)
 
 
-#: FD5 (plan watch of 9 rows): set by a batch route for the length of ONE request, so the rows of one underlying and
-#: expiry share one catalogue read; None (the default) = no sharing, every position read asks the store
-_KIND_MEMO: contextvars.ContextVar[dict[tuple[str, datetime.date], str] | None] = contextvars.ContextVar(
-    "ofo_kind_memo", default=None)
-
-
-@contextlib.contextmanager
-def kind_memo() -> Iterator[None]:
-    """One request's shared expiry-kind answers (see ``_KIND_MEMO``); a failed read is never kept."""
-    token = _KIND_MEMO.set({})
-    try:
-        yield
-    finally:
-        _KIND_MEMO.reset(token)
-
-
 async def _stored_kind_or_empty(db: Any, underlying: str, legs: Any,
                                 kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> str:
     """The position's expiry kind from the worker's record when it has one for the nearest leg (``kinds``, #864: the
@@ -204,16 +186,10 @@ async def _stored_kind_or_empty(db: Any, underlying: str, legs: Any,
     nearest = min(x.expiry for x in legs)  # the check's own day: the nearest leg
     if kinds is not None and (kind := kinds.get((underlying, nearest))):
         return kind
-    memo = _KIND_MEMO.get()  # FD5: a batch request (plan watch of a list) reads one kind per (underlying, expiry)
-    if memo is not None and (underlying, nearest) in memo:
-        return memo[(underlying, nearest)]
     try:
-        found = await stored_kind(db, underlying, nearest)
+        return await stored_kind(db, underlying, nearest)
     except CatalogueUnreadable:
-        return ""  # never memoised: the next row tries again
-    if memo is not None:
-        memo[(underlying, nearest)] = found
-    return found
+        return ""
 
 
 async def nearest_expiry(db: Any, strategy_id: int) -> datetime.date | None:
