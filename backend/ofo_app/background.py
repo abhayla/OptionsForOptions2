@@ -117,6 +117,7 @@ import dataclasses
 import datetime
 import enum
 import functools
+import inspect
 import logging
 import sys
 from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping
@@ -1003,7 +1004,8 @@ class Worker:
                  margin_of: MarginOf | None = None,
                  before_cycle: Callable[[], Awaitable[None]] | None = None,
                  daily_iv: DailyIvRecorder | None = None,
-                 rest_spot: Callable[[str], Awaitable[SourceReading]] | None = None) -> None:
+                 rest_spot: Callable[[str], Awaitable[SourceReading]] | None = None,
+                 kinds: dict[tuple[str, datetime.date], Any] | None = None) -> None:
         if max_per_cycle < 1:
             raise ValueError("max_per_cycle must be at least 1")
         self._provider_for, self._lister, self._clock = provider_for, lister, clock
@@ -1029,6 +1031,9 @@ class Worker:
         self._signature: dict[int, tuple] = {}
         self._last_check: dict[int, datetime.datetime] = {}
         self._checked_body: dict[int, Any] = {}  # J3: the plan body each strategy's last check ran with
+        #: FE2 item 7 (#864): the expiry kind of each (underlying, nearest expiry) the checks use; the lister gives it
+        #: the reader (``reader_kinds_kwargs``) so the catalogue is not read per strategy on every re-read
+        self.kinds: dict[tuple[str, datetime.date], Any] = {} if kinds is None else kinds
         self._cursor = 0
         self._rebuilt_at: datetime.datetime | None = None
         self._stop = False
@@ -1111,6 +1116,8 @@ class Worker:
                 # must not hold the first check with the NEW plan: a stop saved already crossed alerts at once (47)
         old = {w.strategy_id: w for w in self.monitors}
         today = self._clock().astimezone(IST).date()
+        for past in [k for k in self.kinds if k[1] < today]:  # FE2 item 7: no record of an expiry that has gone by
+            del self.kinds[past]
         await self._lapse_expired_all(monitors, today)
         await self._raise_side_closed_all(monitors)
         for w in monitors:
@@ -1539,6 +1546,9 @@ class Worker:
             self._pause(sid, PriceState.CHECK_FAILED, now)
             return self._skipped(sid, "no_gate_read" if load is None else "no_alert_values")
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
+        known = market.expiry_kind or w.tracked.position.expiry_kind  # the kind the check uses (``state_of``'s rule)
+        if known:  # a kind that is not known ("") is never recorded: the reader then reads the catalogue
+            self.kinds[(w.tracked.position.underlying, primary_expiry(w.tracked.position))] = known
         self._queue_daily_iv(daily_iv_of(w, read, market, now))
         # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside
         # state_of; with no user read path there is no user layer (None), never the admin values posing as the user's
@@ -2136,8 +2146,18 @@ def listable(marker: str | None, mode: str | None) -> bool:
     return scenario_mode.in_scope(marker, mode)
 
 
+def reader_kinds_kwargs(reader: Callable[..., Any], kinds: Mapping | None) -> dict[str, Any]:
+    """FE2 item 7 (#864): the worker's record of expiry kinds as the reader's keyword, only when the reader accepts
+    ``kinds`` (``adjustment_readers.read_tracked`` takes it once its owner lane has made the change: RESULTS-lane-fe2);
+    a reader without it is called as before, so the list never fails on a missing keyword."""
+    if kinds is None or "kinds" not in inspect.signature(reader).parameters:
+        return {}
+    return {"kinds": kinds}
+
+
 async def owner_lister(provider: Any, gate: Any = None,
-                       rates_of: Callable[[], Awaitable[Any]] | None = None) -> Listed:
+                       rates_of: Callable[[], Awaitable[Any]] | None = None,
+                       kinds: Mapping | None = None) -> Listed:
     """Every strategy of the V1 owner (ADR-051) that is tracked (open paper legs, or real Zerodha trades and adopted
     holdings when it has no paper order: ADR-276) and has a playbook; its type is read
     against the provider's instrument list and spot (as the screen's check). ``gate`` (the role's ``db_gate``) is held
@@ -2173,7 +2193,7 @@ async def owner_lister(provider: Any, gate: Any = None,
             continue  # IC e2e decision 4: a live worker never checks a scenario strategy, and the reverse
         try:
             async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
-                tracked = await read_tracked(s.id, rates)
+                tracked = await read_tracked(s.id, rates, **reader_kinds_kwargs(read_tracked, kinds))
                 if tracked is None:  # nothing traded: a definite answer, not a failed read (those raise below)
                     raise _NothingTraded  # handled outside the hold (the lapse takes its own)
                 stype = check.entry_type(tracked, provider.instrument_master())  # D-04
@@ -2272,8 +2292,9 @@ async def _serve_scenario() -> int:  # pragma: no cover - the process wiring; ea
     if not await cache.refresh():
         log.error("background: the first settings load failed; no check runs until a poll loads them")
     log.info("background: scenario %s (test data, no Kite) for %s", scn.scenario_id, OWNER_REF)
-    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates)  # #661 item 1
-    worker = Worker(provider_for=lambda _owner: provider, lister=lister,
+    kinds: dict[tuple[str, datetime.date], Any] = {}  # the worker's record of expiry kinds, shared with its lister
+    lister = functools.partial(owner_lister, provider, gate=gate, rates_of=load_charge_rates, kinds=kinds)
+    worker = Worker(kinds=kinds, provider_for=lambda _owner: provider, lister=lister,
                     clock=scn.clock, settings=cache.at, preferences=preferences, db_gate=gate,
                     side_tasks=(cache.poll_loop,), user_values=user_values, before_cycle=before_cycle)
     await worker.run()
