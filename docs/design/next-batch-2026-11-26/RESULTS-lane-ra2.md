@@ -1,4 +1,4 @@
-STATUS 22:15 | batch 1 pushed (dc1aeebd8, TOTAL PASS); batch 2 built: F-3, adx log once, unreadable slot; gate + Opus review running | not done: market-open clock, D-TG2-2, O-P-03 | blocker: none
+STATUS 22:55 | batch 1 pushed (dc1aeebd8); batch 2 review fixes built, gate running | not done: market-open clock, D-TG2-2, O-P-03 | blocker: none
 
 # Lane RA2: the standing backend leftovers lane (base fix/r3-leftovers-1128 a5259db50)
 
@@ -65,6 +65,13 @@ Oct, close Fri 9 Oct 15:29:58.
 | D-TG2-2 T-09 title has no amount | not built | the label "A short leg's premium falls to Rs or below (close for pennies)" is data in `system_playbooks.json` (10 copies, stored in plans, pinned): the amount must come from the rule's threshold when the title is built; needs a playbook version or a title builder change and an owner read of the wording. |
 | Stored close, option (b) | done | see above; open: leg `price_state` reads live for a stored close. |
 
+## Opus review of batch 2 (read-only, 39 tool calls): REVISE, fixed in this push
+- F1 MAJOR: the F-3 fallback answered 201 with an EMPTY list, which the page shows as "No stops set." beside a stored stop. Now it answers a truthful refusal (409): "Your stop was saved, but the list of stops could not be read just now." / "Nothing was lost and nothing needs to be set again." / "Showing the saved stops." / "Reload this page to see the list." (new id `paper_trigger_saved_list_unread`, STRATEGY_VALIDATION_590, pending owner read). Decided: a sentence, not a new response field (no frontend change needed; the page already prints a refusal's text).
+- F2 MAJOR: a bad slot whose `at` parses stayed up to an hour (only a missing or old `at` was removed): `_write_field` now also removes a slot of a shape the reader cannot read (`_slot_readable`); test added. Display only: the monitor never reads this report; it cannot block or fire a stop (reviewer confirmed).
+- F3 MAJOR: guard test 2 stopped at the calendar. Added `test_guard_2b_on_an_open_day_a_stored_close_fires_nothing_but_a_live_price_does`: 10:00 on a trading day, stale prices: 0 fires; the same book with live prices fires 2 stop orders (positive control).
+- F6: only this module's own ValueError messages are logged with their text (a parsing error can carry a slice of a Kite row): the rest log the class only; test added.
+- Left, listed: F4 the retry's rollback is not proven by a test (the fake raises in Python, the transaction is never aborted); the cancel and keep routes have no test for the failed read. F5 (older class): a `commit()` that raises after the server committed still answers 500 for a stored stop. F7 `_TOLD` is never cleared, so a failure that returns later in the same process is not logged again (bounded: 4 inputs). F8 test-double path only.
+
 ## Items 2, 3, 9 (real cases and decisions)
 - Item 2: the log line is `background: strategy <id> loss rule true, nothing alerted: <rule> <reason>`, once per change of reason
   (reasons: entry_hold, alert_already_open, not_rearmed, cooldown, held, waiting_for_candle_close, no_event), for the plan's
@@ -113,6 +120,7 @@ Verdict REVISE; Change 3 (item 8) production code: nothing wrong. Fixed in commi
 ## New wording for the owner to read
 (pending owner read; pins carry `reviewed: pending owner read`)
 - `exit_market_closed_entries`: "The market is closed. Orders can be placed from 09:15 on <day>." and `exit_market_closed_entries_no_day`: "The market is closed. Orders can be placed when it opens."
+- `paper_trigger_saved_list_unread`: "Your stop was saved, but the list of stops could not be read just now." / "Nothing was lost and nothing needs to be set again." / "Showing the saved stops." / "Reload this page to see the list."
 - `execution_return_changed`: "Something changed on this strategy while you were away at Kite, so nothing was recorded." / "Nothing was recorded and nothing was sent; Zerodha was not asked to change anything." / "Recording the result of your Kite orders." / "Press Return again."
 - `paper_exit_fired_loss`: "After the exit, maximum loss was {before} before and {after} after."; `paper_exit_fired_less_protected`: "A sold option was left with less protection: {legs}."
 - No new on-screen word from items 1, 2, 3, 4 (the worker log line is not shown to a user).

@@ -1104,6 +1104,12 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This took too long, so no order was stored.",
           "Nothing was stored and the strategy was not changed; pressing again places the orders once.",
           "Placing these paper orders.", "Press Place again."),
+    # Lane RA2 (Opus review of F-3), new wording, pending the owner's read: the stop WAS saved, only the list read after
+    # the save failed twice. Never worded as a failure; never an empty list that reads "no stops".
+    _gate("paper_trigger_saved_list_unread", _SV, 590,
+          "Your stop was saved, but the list of stops could not be read just now.",
+          "Nothing was lost and nothing needs to be set again.",
+          "Showing the saved stops.", "Reload this page to see the list."),
     # Lane RA2 item 9 (FE3's Return-door sentence), new wording, pending the owner's read: the Return found that the
     # strategy's recorded plans changed while the user was at Kite (another press or tab). Nothing was recorded.
     _gate("execution_return_changed", _SV, 589,

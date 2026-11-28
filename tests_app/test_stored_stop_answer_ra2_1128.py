@@ -1,7 +1,8 @@
 """Lane RA2, Opus review F-3 of Lane RA (a stop that WAS stored is never reported as failed): a read AFTER the commit
 of a trigger route (the trigger list, the contracts, the book) that fails answered 500 for a stop that is stored and
-armed. Now the answer is built once more on a clean transaction; if that also fails the route answers the success it
-is (201 with an empty list; the page reloads the list), never an error. Nothing is stored twice: a repeat press is
+armed. Now the answer is built once more on a clean transaction; if that also fails the route answers the truth
+("Your stop was saved, but the list could not be read"), never an error and never an empty list.
+Nothing is stored twice: a repeat press is
 answered ``already_set``.
 Real case: the stop "above 23,100" on strategy 1 of the replay book: the list read after its commit fails once."""
 from __future__ import annotations
@@ -41,12 +42,15 @@ async def test_core_a_failed_read_after_the_commit_is_retried_and_the_stop_is_an
     assert len(await _stored(db, stored.id)) == 1
 
 
-async def test_a_read_that_keeps_failing_still_answers_the_stop_as_stored_never_an_error(db, notified, monkeypatch):  # noqa: F811
+async def test_a_read_that_keeps_failing_says_the_stop_was_saved_never_an_error_never_an_empty_list(
+        db, notified, monkeypatch):  # noqa: F811
     app, stored, _ids = await _open(db)
     _close_the_market(app)
     _fail_after_commit(monkeypatch, times=99)
     async with _client(app) as c:
         reply = await c.post(_url(stored), json=BODY)
-    assert reply.status_code == HTTPStatus.CREATED, reply.text
-    assert reply.json()["triggers"] == [] and reply.json()["already_set"] is False
+    body = reply.json()
+    assert reply.status_code == HTTPStatus.CONFLICT, reply.text
+    assert body["what_happened"] == "Your stop was saved, but the list of stops could not be read just now."
+    assert body["next_action"] == "Reload this page to see the list."
     assert len(await _stored(db, stored.id)) == 1, "the stop is stored and armed"

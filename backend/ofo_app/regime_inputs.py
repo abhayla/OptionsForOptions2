@@ -74,6 +74,10 @@ _LIVE_DAILY = DailyCandles(_LIVE_FETCH)  # one per process: at most one read per
 #: (input, class, text) already told: an input that cannot be read for the same reason is logged ONCE (Lane RA2, W-09: a
 #: scenario with no day candles logged "adx not read" on every cycle)
 _TOLD: set[tuple[str, str, str]] = set()
+#: the openings of this module's and ``marketdata.regime``'s own messages: only these are logged with their text
+#: (Opus F6:
+#: a ValueError from parsing a Kite row can carry a slice of the response)
+_OWN_TEXTS: Final = ("needs ", "a day candle has no range", "a bar's low", "no true range", "period must")
 
 
 def _attempt(what: str, read: Any) -> Any:
@@ -82,7 +86,7 @@ def _attempt(what: str, read: Any) -> Any:
     except _READ_ERRORS as exc:
         # a ValueError is this module's own arithmetic or shape message ("needs 28 daily bars, got 0"): safe and plain;
         # a Kite or margin error may carry a token or a body, so only its class is ever logged
-        text = str(exc) if type(exc) is ValueError else ""
+        text = str(exc) if type(exc) is ValueError and str(exc).startswith(_OWN_TEXTS) else ""
         key = (what, type(exc).__name__, text)
         if key not in _TOLD:
             _TOLD.add(key)

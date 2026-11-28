@@ -43,3 +43,15 @@ async def test_every_active_trade_reads_paused_unreadable_while_a_bad_slot_is_st
 async def _fresh(*_a, **_k):
     from ofo_app import feed_bus  # noqa: PLC0415
     return feed_bus.FRESH
+
+
+async def test_the_next_write_removes_a_bad_slot_even_when_its_time_reads_fine():
+    """Opus review F2: a slot with a good ``at`` but no ``watching`` list was never removed (only a missing or old
+    ``at`` was), so the report stayed unreadable for an hour. Now the next write of a live monitor removes it."""
+    import fakeredis  # noqa: PLC0415
+
+    client = fakeredis.FakeAsyncRedis()
+    await client.hset(monitoring_state.exit_slots_key(), "old", json.dumps({"at": NOW.isoformat(), "not_run": {}}))
+    assert await monitoring_state.ExitsPublisher(client, "new").publish([1], {}, NOW) is True
+    owners = [k.decode() for k in await client.hkeys(monitoring_state.exit_slots_key())]
+    assert owners == ["new"]

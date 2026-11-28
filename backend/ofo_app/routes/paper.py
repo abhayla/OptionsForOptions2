@@ -2143,10 +2143,11 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
 
 async def _answer_after_commit(db: Any, strategy_id: int, **kwargs: Any) -> TriggersOut:
     """Lane RA2 (Opus F-3 of Lane RA): the answer of a trigger route is built AFTER its commit. A read that fails then
-    (the list, the contracts, the book) must never report a stop that WAS stored as failed: the answer is
-    built once more
-    on a clean transaction; if that fails too the route answers the success it is, with an empty list (the page reloads
-    the list). Nothing is stored twice either way: a repeat press is answered ``already_set``."""
+    (the list, the contracts, the book) must never report a stop that WAS stored as failed: the answer is built once
+    more on a clean transaction. If that fails too the route says so truthfully: "Your stop was saved, but the list
+    could
+    not be read" (a refusal with that sentence), never an error that reads as "not saved" and never an empty list that
+    reads "no stops" (Opus review). Nothing is stored twice either way: a repeat press is answered ``already_set``."""
     for attempt in (1, 2):
         try:
             return await _triggers_out(db, strategy_id, **kwargs)
@@ -2157,8 +2158,7 @@ async def _answer_after_commit(db: Any, strategy_id: int, **kwargs: Any) -> Trig
                 await db.rollback()
             except Exception:  # noqa: BLE001 - nothing is pending after the commit; a failed rollback changes nothing
                 _LOG.error("rollback after a failed triggers answer failed", exc_info=True)
-    return TriggersOut.model_validate({"already_set": kwargs.get("already_set", False),
-                                       "already_armed": list(kwargs.get("already_armed", ())), "triggers": []})
+    raise StrategyRefused("paper_trigger_saved_list_unread", Failure.CONFLICT)
 
 
 @router.get("/paper/strategies/{strategy_id}/triggers", response_model=TriggersOut)

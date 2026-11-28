@@ -484,6 +484,16 @@ def encode_exits(not_run: Mapping[int, str], at: datetime.datetime) -> str:
                       sort_keys=True)
 
 
+def _slot_readable(raw: Any) -> bool:
+    """Whether a stored slot has the shape ``_slots`` reads (the clean-up removes one that has not)."""
+    try:
+        slot = json.loads(_text(raw))
+    except (ValueError, TypeError, AttributeError):
+        return False
+    return (isinstance(slot, dict) and _time(slot.get("at")) is not None and isinstance(slot.get("not_run"), dict)
+            and isinstance(slot.get("watching"), list))
+
+
 def _slots(body: Any) -> dict[str, dict[str, Any]] | None:
     """The monitors' slots of a stored report (FE2 item 1: one slot per monitor, never one shared answer), or None
     when it is not our shape or ANY slot cannot be read (never dropped: it is not known what it claimed)."""
@@ -496,7 +506,7 @@ def _slots(body: Any) -> dict[str, dict[str, Any]] | None:
         if at is None or not isinstance(slot.get("not_run"), dict) or not isinstance(slot.get("watching"), list):
             return None  # Lane RA2 (FE3's deferred issue): a slot that cannot be read may be a monitor that WAS
             # evaluating index exits: skipping it let its trades read "judged". The whole report is unreadable then
-            # (the caller fails closed: ``state_unreadable``); the next write of a live monitor removes the bad slot
+            # (the caller fails closed: ``state_unreadable``); the next write of a live monitor removes it
         out[str(owner)] = {"at": at, "not_run": slot["not_run"], "watching": slot["watching"]}
     return out
 
@@ -606,8 +616,8 @@ class ExitsPublisher:
                 at = _time(json.loads(_text(raw)).get("at"))
             except (ValueError, TypeError, AttributeError):
                 at = None
-            if at is None or abs((now - at).total_seconds()) > OWNER_KEEP_S:
-                gone.append(owner)
+            if at is None or abs((now - at).total_seconds()) > OWNER_KEEP_S or not _slot_readable(raw):
+                gone.append(owner)  # RA2 (Opus F2): a slot of a shape this reader cannot read goes at the next write
         if gone:
             await self._remove_dead(gone, fields)
         return mine == text
