@@ -198,6 +198,7 @@ import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
+import { useRequestKeys, withRequestKey } from '@/lib/requestKey'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -521,6 +522,7 @@ function ask(g, rows) {
 }
 
 // the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text
+const requestKeys = useRequestKeys() // order path: one key per exit action, the same key on a resend of it (lib/requestKey.js)
 async function doExit(orders) {
   const c = confirm.value
   if (!c) return endExit('changed', [])
@@ -531,15 +533,17 @@ async function doExit(orders) {
   dialogState.value = PAPER_STATE.READY
   let reply = null
   try {
-    reply = await addToPaper(api, c.id, orders) // no suggestion ids: the body is exactly { orders }
+    reply = await addToPaper(withRequestKey(api, requestKeys.keyFor(c.id, JSON.stringify(orders))), c.id, orders) // no suggestion ids: the body is { orders, client_request_id }
   } catch (e) {
     const outcome = paperPostOutcome(e)
     dialogState.value = outcome
     if (outcome === PAPER_STATE.UNKNOWN) exitRec.settle(c.id, attempt, 'unknown', '', { readSeq })
+    if (outcome === PAPER_STATE.REFUSED) requestKeys.done(c.id) // a definite answer: nothing stored, the next attempt is a new action
     if (outcome === PAPER_STATE.REFUSED) exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // 400/409/422: nothing stored; all four parts + the legs
     busy.value = false
     return
   }
+  requestKeys.done(c.id) // stored: the action is over
   // STORED (201): the server answered, so the order exists: placed replaces whatever the page guessed meanwhile (unknown / not stored / changed)
   if (confirm.value && String(confirm.value.id) === String(c.id)) confirm.value = null
   ticks.value = { ...ticks.value, [c.id]: [] }
