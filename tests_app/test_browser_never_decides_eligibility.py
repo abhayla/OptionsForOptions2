@@ -55,6 +55,7 @@ async def test_a_browser_claim_on_execute_is_refused_and_no_basket_is_made(repla
     # CI's api job sets only TEST_DATABASE_URL, so Settings() cannot be built: every dependency that reads settings or
     # the database is replaced by a stub; the body is validated before any of them is used.
     app.dependency_overrides[route.get_db] = lambda: None
+    app.dependency_overrides[route.guard_real_outcome] = lambda: None  # B2: the block reads the database; none here
     app.dependency_overrides[route.get_kite_session] = lambda: None
     app.dependency_overrides[route.get_quote_reader] = lambda: None
     app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: None)

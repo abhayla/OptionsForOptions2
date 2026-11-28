@@ -29,21 +29,26 @@ const garbageSeen = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null } // R
 const dirty = { [LOCK_KEY]: false, [ADD_KEY]: false, [KEYS_KEY]: false } // true once a write was refused: then what this page wrote is merged over what storage holds (never instead of it)
 
 const monoNow = () => { try { const n = globalThis.performance?.now?.(); return Number.isFinite(n) ? n : null } catch { return null } }
+const sentMono = new Map() // wall send time -> monotonic time of that send (sentNow); the newest 64
+/** FJ2 F-C (Opus review): the time a read is SENT, in wall ms as before, with the monotonic time of the send remembered for decideLock. Every read that decides a lock takes its `sentAt` here. */
+export function sentNow() {
+  const w = Date.now()
+  const m = monoNow()
+  if (m !== null) { sentMono.set(w, m); if (sentMono.size > 64) sentMono.delete(sentMono.keys().next().value) }
+  return w
+}
 const stamps = new Map() // `${store}|${id}|${at}` -> monotonic stamp of this page instance (never stored: it means nothing in another page)
 const stampKey = (name, id, at) => `${name}|${id}|${at ?? ''}`
-/** A stamp that makes the lock look `wallAgeMs` old now (the wall age is trusted ONCE, clamped to 0..window + 1 s, at first sight or write; never again). */
-const stampFor = (wallAgeMs) => {
-  const m = monoNow()
-  if (m === null) return null
-  const cap = UNKNOWN_EXIT_READ_AFTER_MS + 1000
-  const age = !Number.isFinite(wallAgeMs) || wallAgeMs < 0 ? 0 : wallAgeMs > cap ? cap : wallAgeMs
-  return m - age
-}
+/** The monotonic stamp of a lock for THIS page instance: taken when the lock is written here or FIRST SEEN here, and always as "age 0 now". The wall age is never trusted, not even once
+ *  (Lane W2 D-W2-1, Opus review R2-3: a clock moved forward before a reload released a lock after 46 real seconds). A reloaded page therefore counts the window from its own first sight, by the
+ *  monotonic clock only: the lock outlives a reload for up to one more window, never less. No monotonic source: null (the wall rule stays, as it must). */
+const stampFor = () => monoNow()
 /** Monotonic ms the lock has aged when the read was sent: null when no stamp or no source (then the wall rule counts). A read whose wall `sentAt` is ahead of now counts as sent now; one behind
  *  now counts as sent that long ago (only ever younger, never older). */
 function monoAgeAtSend(stamp, sentAt) {
   const m = monoNow()
   if (m === null || !Number.isFinite(stamp)) return null
+  if (sentMono.has(sentAt)) return sentMono.get(sentAt) - stamp // FJ2 F-C: the monotonic time at which THIS read left (taken by sentNow): a wall clock moved while the answer was out changes nothing
   const behind = Date.now() - sentAt
   return m - stamp - (behind > 0 ? behind : 0)
 }
@@ -218,16 +223,15 @@ function makeLocks(name, kind) {
   const seenKey = (id, seen) => stampKey(name, `${id}#seen`, seen)
   /** The lock with this page instance's monotonic stamps: found, or taken now from the wall age of this first sight (once). */
   const withStamps = (id, l) => {
-    const now = Date.now()
     const out = { ...l }
     if (l.at !== null) {
       const k = atKey(id, l.at)
-      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.at))
+      if (!stamps.has(k)) stamps.set(k, stampFor())
       out.mono = stamps.get(k)
     }
     if (l.seen !== null) {
       const k = seenKey(id, l.seen)
-      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.seen))
+      if (!stamps.has(k)) stamps.set(k, stampFor())
       out.seenMono = stamps.get(k)
     }
     return out
@@ -262,8 +266,8 @@ function makeLocks(name, kind) {
     const all = entriesOf(name)
     all[String(id)] = { at: rec.at ?? null, before: rec.before ?? null, expected: rec.expected ?? null, names: rec.names ?? [], units: rec.units ?? null, key: rec.key ?? null, sig: rec.sig ?? null, waiting: rec.waiting ?? null, out: rec.out === true, seen: rec.seen ?? null, move: rec.move === true, adds: rec.adds ?? null }
     writeAll(name, all)
-    if (Number.isFinite(rec.at) && !stamps.has(atKey(id, rec.at))) stamps.set(atKey(id, rec.at), stampFor(Date.now() - rec.at)) // a lock written here: the wall age counts once, then only the monotonic time
-    if (Number.isFinite(rec.seen) && !stamps.has(seenKey(id, rec.seen))) stamps.set(seenKey(id, rec.seen), stampFor(Date.now() - rec.seen))
+    if (Number.isFinite(rec.at) && !stamps.has(atKey(id, rec.at))) stamps.set(atKey(id, rec.at), stampFor()) // a lock written here: the wall age counts once, then only the monotonic time
+    if (Number.isFinite(rec.seen) && !stamps.has(seenKey(id, rec.seen))) stamps.set(seenKey(id, rec.seen), stampFor())
   }
   return {
     save: writeLock,
@@ -349,6 +353,9 @@ export function orderKeyFor(id, ordersText, dialogKey, action = 'exit') {
   writeAll(KEYS_KEY, all)
   return dialogKey
 }
+/** FJ2 F-B (Opus review): the text a request key is held for. An entry row's price is left out (it moves with every price tick, so a resend of the same add would get a new key the
+ *  server cannot de-duplicate); a resend whose body differs under the held key meets the server's 581, which the page treats as unknown (lock and key stay). Exit rows are unchanged. */
+export const keySigOf = (orders) => JSON.stringify((Array.isArray(orders) ? orders : []).map((o) => (o && typeof o === 'object' && o.kind !== 'exit' ? { ...o, price: '' } : o)))
 export function dropOrderKey(id, action = 'exit') {
   const slot = keySlot(id, action)
   const all = entriesOf(KEYS_KEY)

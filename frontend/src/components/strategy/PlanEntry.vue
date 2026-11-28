@@ -15,11 +15,6 @@
       <template v-else>
         <p v-if="read.plan" data-testid="plan-entry-playbook">{{ read.labels.playbook }}: {{ read.plan.playbookName }}</p>
         <p v-else data-testid="plan-entry-none">{{ read.labels.no_plan }}</p>
-        <!-- FJ2-9 (O-R-09 / W-01): the plan's own target and stop with their units (the server's words; else its figure with %), or that none is set -->
-        <template v-if="read.plan && !limitRowsUp">
-          <p data-testid="plan-entry-target">{{ read.labels.target }}: {{ levelText(read.plan.targetWords, read.plan.target) }}</p>
-          <p data-testid="plan-entry-stop">{{ read.labels.stop }}: {{ levelText(read.plan.stopWords, read.plan.stop) }}</p>
-        </template>
         <p v-if="checkStatus === 'loading'" data-testid="plan-entry-limits-loading">{{ LIMITS_LOADING_TEXT }}</p>
         <p v-else-if="!limits && checkRefusal" data-testid="plan-entry-limits-refused">{{ checkRefusal }}</p>
         <LoadFailed v-else-if="!limits" :text="LIMITS_LOAD_FAILED_TEXT" prefix="plan-entry-limits" @retry="$emit('retry-check')" />
@@ -27,11 +22,17 @@
         <p v-else-if="!limits.rows.length" data-testid="plan-entry-limits-none">{{ LIMITS_NONE_TEXT }}</p>
         <template v-else>
           <template v-for="row in limits.rows" :key="row.id">
-            <p v-if="row.text" :class="row.muted ? 'text-ink-muted' : ''" :data-testid="`plan-entry-limit-${row.id}`">{{ row.text }}</p>
+            <template v-if="mergedIds.has(row.id)"></template><!-- its sentence is on the level's own line above (I-197 re-fix) -->
+            <p v-else-if="row.text" :class="row.muted ? 'text-ink-muted' : ''" :data-testid="`plan-entry-limit-${row.id}`">{{ row.text }}</p>
             <LoadFailed v-else :text="LIMITS_LOAD_FAILED_TEXT" :prefix="`plan-entry-limit-${row.id}`" @retry="$emit('retry-check')" />
           </template>
         </template>
         <!-- GC-ICFIX u141: the check's own read time (the server's text; an older server sends none -> nothing shown) -->
+        <!-- I-197: the plan's own stop and target (percent and rupees, the server's figures) or the reason none is set; shown for a level
+             the check's lines do not carry (market closed, check failed, no row for it); a level the check printed is not printed twice -->
+        <template v-if="read.plan && checkStatus !== 'loading'">
+          <p v-for="lv in planLevels" :key="lv.id" :data-testid="`plan-entry-${lv.id}`">{{ lv.text }}</p>
+        </template>
         <p v-if="limits && check.as_of_text" class="text-xs text-ink-muted" data-testid="plan-entry-limits-as-of">{{ check.as_of_text }}</p>
         <p v-if="limits && checkStale" class="text-xs text-red-700" data-testid="plan-entry-limits-stale">{{ checkStaleLine(checkRefusal) }}</p>
         <p v-if="read.plan" data-testid="plan-entry-guards">
@@ -75,11 +76,6 @@ const props = defineProps({
   exitsMode: { type: String, default: 'paper' }, // I-24: 'real' = a real-mode trade (no exits route yet): one plain line instead of the exits
 })
 defineEmits(['retry-check'])
-const LEVEL_NOT_SET_TEXT = 'not set' // new wording, pending owner read
-// the server's own words for a level ("25.00 % of max loss"); else its figure with the percent unit; neither: not set (never a blank or a 0)
-const levelText = (words, figure) => (words ? words : figure ? `${figure} %` : LEVEL_NOT_SET_TEXT)
-// the rule check's own limit rows already carry the target and stop (GC-ICFIX u111-u114, pinned): the plan's own lines show only when those rows are not showing (paused, loading, refused, failed or none)
-const limitRowsUp = computed(() => !!limits.value && !limits.value.paused && limits.value.rows.length > 0)
 const exitsView = computed(() => exitsViewOf(props.exitsMode, props.exits, props.exitsFailed))
 const read = ref(null)
 const loading = ref(false)
@@ -94,8 +90,42 @@ const limits = computed(() => {
   // an empty list means "no rules" only where the server says there is no playbook; any other empty answer is not one we can read
   if (!c.limits.length && c.playbook?.source !== 'none') return null
   const rows = c.limits.map((l) => ({ id: l.rule_id, text: KNOWN_STATES.includes(l.state) && typeof l.text === 'string' ? l.text : null,
-    muted: l.state === 'already_true' })) // ADR-296: an already-true line is grey, never red
+    muted: l.state === 'already_true', // ADR-296: an already-true line is grey, never red
+    level: l.trigger_id === 'T-07' ? 'target' : 'stop', notChecked: l.state === 'not_checked', reason: typeof l.reason === 'string' ? l.reason.trim() : '' }))
   return { paused: null, rows }
+})
+
+// I-197: what the check's lines already print (a row with a sentence); T-07 is the target row, any other row is the stop
+const printed = computed(() => {
+  const rows = Array.isArray(props.check?.limits) && props.checkStatus === 'ok' && !props.check?.paused ? props.check.limits : []
+  // W-30: a row that says "not being checked" carries the reason, not the figure: the plan's stored figure is still printed beside it
+  const has = (l) => (l.state === 'checked' || l.state === 'already_true') && typeof l.text === 'string' && l.text !== ''
+  return { target: rows.some((l) => has(l) && l.trigger_id === 'T-07'), stop: rows.some((l) => has(l) && l.trigger_id !== 'T-07') }
+})
+// I-197 re-fix (walker W2): the stored figure is always shown and the reason it is not being checked follows it on the SAME line (the server's reason, as sent);
+// the row's own "Stop: not being checked: ..." sentence is then not printed a second time. A not-checked row with no reason keeps its sentence.
+const reasonOf = (level) => limits.value?.rows.find((r) => r.level === level && r.notChecked && r.text && r.reason)?.reason ?? ''
+const mergedIds = computed(() => new Set((limits.value?.rows ?? []).filter((r) => r.notChecked && r.reason && read.value?.plan && reasonOf(r.level) === r.reason).map((r) => r.id)))
+const NOT_CHECKED_LEAD = ', not being checked: ' // the server's own phrase for the same state (limit_stop_off)
+const NO_STOP_TEXT = 'No stop is set for this trade.' // pending owner read
+const NO_TARGET_TEXT = 'No target is set for this trade.' // pending owner read
+function levelText(label, rupeeLabel, percent, rupees, none) {
+  const pct = (percent ?? '').trim()
+  const rs = (rupees ?? '').trim()
+  if (pct && rs) return `${label}: ${pct} % (Rs ${rs})`
+  if (pct) return `${label}: ${pct} %`
+  if (rs) return `${rupeeLabel}: Rs ${rs}`
+  return none
+}
+const planLevels = computed(() => {
+  const plan = read.value?.plan
+  const labels = read.value?.labels ?? {}
+  if (!plan) return []
+  const out = []
+  const withReason = (level, text, set) => (set && reasonOf(level) ? `${text}${NOT_CHECKED_LEAD}${reasonOf(level)}` : text)
+  if (!printed.value.stop) out.push({ id: 'stop', text: withReason('stop', levelText(labels.stop || 'Stop', labels.stop_rupees || 'Stop (Rs)', plan.stop, plan.stopRupees, NO_STOP_TEXT), !!(plan.stop || plan.stopRupees)) })
+  if (!printed.value.target) out.push({ id: 'target', text: withReason('target', levelText(labels.target || 'Target', labels.target_rupees || 'Target (Rs)', plan.target, plan.targetRupees, NO_TARGET_TEXT), !!(plan.target || plan.targetRupees)) })
+  return out
 })
 
 const heldPlanFor = (id) => { try { return !!getActivePinia() && useBuilderHold().hasPlan(id) } catch { return false } }

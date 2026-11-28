@@ -199,7 +199,7 @@ import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
-import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock } from '@/lib/unknownLocks'
+import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -412,7 +412,7 @@ function show({ data, token }) {
     if (dialogState.value === PAPER_STATE.REFUSED) dialogState.value = PAPER_STATE.READY // a good read unlocks a refused, unchanged Confirm; the server's text stays
     lastGoodAt.value = typeof data?.answered_at === 'string' ? data.answered_at : null // UX-A01: the time of the prices the page still shows
     goodReadToken.value = token // the token travels with the answer from the read that made it
-    settle(items.value, token?.seq ?? 0, token?.sentAt ?? Date.now())
+    settle(items.value, token?.seq ?? 0, token?.sentAt ?? NaN) // Opus round 2 (R2-6): no send time = no decision (decideLock keeps the lock), never the answer's time
     openExitFromLink(exitId)
     if (!hadExit && !props.exitOnlyFor) openStopsFromLink()
   }
@@ -474,7 +474,7 @@ function fail(e) {
 
 const { refresh, refreshNow } = usePaperRefresh({
   key: () => 'list',
-  read: async () => { const token = { seq: ++readSeq, sentAt: Date.now() }; return { data: (await api.get('/paper/strategies')).data, token } },
+  read: async () => { const token = { seq: ++readSeq, sentAt: sentNow() }; return { data: (await api.get('/paper/strategies')).data, token } },
   onData: show,
   onError: fail,
 })
@@ -485,7 +485,7 @@ function onRetry() { try { refreshNow() } catch { /* the list says its own read 
 function onStopsChanged() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 
 // a read that changes the open contracts of the group being exited ends the exit's open question
-function settle(now, seq = 0, sentAt = Date.now()) {
+function settle(now, seq = 0, sentAt = NaN) {
   adoptLocks(now, seq)
   decideUnresolved(now, seq, sentAt)
   const c = confirm.value
@@ -498,7 +498,7 @@ function settle(now, seq = 0, sentAt = Date.now()) {
 }
 // a good read that started after the unknown reply decides it: stored (every exited leg reduced), unchanged, or something else.
 // A "not stored" is only the page's guess: a later good read showing the legs reduced replaces it with placed (the server is the authority).
-function decideUnresolved(now, seq, sentAt = Date.now()) {
+function decideUnresolved(now, seq, sentAt = NaN) {
   for (const r of Object.values(exitRec.recs)) {
     if ((r.state !== 'unknown' && r.state !== 'not_stored') || seq <= r.readSeq) continue // started before the reply: it may predate the exit
     const id = r.key
@@ -542,12 +542,25 @@ function adoptLock(id, seq, now) {
   return true
 }
 function adoptLocks(now, seq) { for (const id of new Set([...exitLockIds(), ...(now ?? []).map((g) => String(g.id))])) adoptLock(id, seq, now) } // every listed strategy too: an unreadable store locks them all
+// Lane W2 (I-139): another tab DECIDED a lock this page was holding (its POST answered, or its read decided it) and removed it from the store: the store is the authority, so the record this page
+// kept for it ends too, at once and not after the window. What is on screen is old (the exit may have been stored), so an open dialog of that strategy closes with the changed-elsewhere note and the
+// list is read again before anything is offered. A page's own decisions never come here (the storage event reaches only OTHER tabs).
+function releaseForeignDecided() {
+  const gone = (items.value ?? []).map((g) => String(g.id)).filter((id) => exitRec.cur(id)?.state === 'unknown' && !exitLockFor(id))
+  if (!gone.length) return
+  for (const id of gone) {
+    if (confirm.value && String(confirm.value.id) === id) endExit('changed', confirm.value.names, null, id)
+    else exitRec.drop(id)
+  }
+  try { refreshNow() } catch { /* the list says its own read failed */ }
+}
 let offLocks = null
 onMounted(() => {
   offLocks = onExitLocksChanged(() => { // another tab of this browser wrote a lock: it holds here too, an open dialog of that strategy turns to the unknown sentence at once
     if (!items.value) return
     adoptLocks(items.value, readSeq + 1)
     if (confirm.value && isUnknown(confirm.value.id)) dialogState.value = PAPER_STATE.UNKNOWN
+    releaseForeignDecided()
   })
 })
 onBeforeUnmount(() => { offLocks?.() })
@@ -620,7 +633,7 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
       saveExitLock(c.id, gave)
       exitRec.settle(c.id, attempt, 'unknown', '', { readSeq, at: gaveUp, lock: exitLockFor(c.id) ?? gave })
     }
-    if (outcome === PAPER_STATE.REFUSED) { // a definite answer (a 4xx, 580 / 581 / 583 too): nothing stored, the lock and the key end; the next attempt is a new action
+    if (outcome === PAPER_STATE.REFUSED) { // a definite answer (a 4xx, 580 / 583 too; a 581 is UNKNOWN, see paperPostOutcome): nothing stored, the lock and the key end; the next attempt is a new action
       dropExitLock(c.id, { key, at: lock.at }); dropOrderKey(c.id, 'exit')
       exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // all four parts + the legs
     }
