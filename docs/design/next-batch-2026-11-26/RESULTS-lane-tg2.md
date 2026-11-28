@@ -1,4 +1,4 @@
-STATUS 20:45 | HAND-OVER (context at about 55 percent): push 4 carries W-11 and item 6; left: D-TG-2 re-check (needs fix/r3-leftovers-2-1128 and fix/r3-frontend-2-1128 on origin), T1-20/T1-21/T2-06/T2-09/T2-21/T3-15/T4-04, W-30 monthly half, W-15 builder box, T3-17 #749 | build a1d704225 | blocker: none (send_message refused: session trust)
+STATUS 22:10 | FINAL: SAFE TO CLOSE (head a1d704225 walked; left list and set-up notes below) | next push: none | blocker: none (send_message refused: session trust; the coordinator reads this STATUS line)
 
 # Lane TG2 results: weekend test plan, cloud checks on the round 3 build (28 Nov 2026)
 
@@ -80,3 +80,21 @@ PostgreSQL 16 (roles as in `app-tests.yml`: `ofo_app` as the app role, `postgres
 ## Not done
 Hand-over list: see STATUS line. Also not done: item 5 D-TG-2 (branches missing), T1-20, T1-21, T2-06, T2-09, T2-21, T3-15, T4-04, W-30 monthly half, W-15 builder Save-draft box, T3-17 case 749 (no stop-closed leg), W-07 Monday rows.
 W-11, W-07, W-27/W-25 parts, W-35, AF-05, AF-06, items 3 (rest), 4, 5 and 6 of the queue; item 5 waits for the fix lanes' branches (not on origin).
+
+
+## HAND-OVER (for Lane T and any later walker)
+Left, exactly (none started):
+1. Item 5: D-TG-2 (Review dialog stop sentence) and a re-look at D-TG-1 and D-TG-3 on a head that holds `fix/r3-leftovers-2-1128` (940fb2240) and `fix/r3-frontend-2-1128` (d93fce449). Seen on a1d704225: D-TG-5 PASS, D-TG-1 still FAIL, D-TG-3 still FAIL.
+2. Section 5 rows not walked: T1-14 and T1-16 (Monday by the plan), T1-18, T1-20, T1-21, T2-06, T2-09, T2-21, T3-15, T4-04; T4-01 and T2-17 need their figures compared (screenshots taken); T3-13 Delete/Cancel on an own playbook.
+3. W-30 monthly half (no monthly Iron Condor trade: seed a monthly one by SQL fills), W-15 builder Save-draft box (server words done), T3-17 case 749 (needs a trade with a leg closed by a stop).
+4. W-09 other cases: % stop, target, time exit, stop already crossed at entry (only the rupee stop was run).
+5. Findings to route are in the sections above (D-TG2-1 and the W-29 Plan watch heading to Lane F2, D-TG2-2 to Lane RA2, plan faults to Lane X2; "Acted on" never shown after Confirm: coordinator).
+
+## Set-up notes (this container, repeatable)
+- `tests_browser/r3_plan_walk_2_1128/`: `env.sh` (placeholders only), `api_start.sh tg|dev`, `worker_start.sh tg|dev`, seeds (`seed_catalogue.py`, `closes17.json`, `seed_strategies.py`, `seed_orders.sql`). Order: Postgres 16 and roles as in `app-tests.yml`; database `ofo_tg` migrated as the owner; `seed_catalogue.py`; `python -m ofo_app.last_close_store seed closes17.json`; start the API; `seed_strategies.py` (creates five drafts; the routes refuse entries with the market closed), then `seed_orders.sql`; plans by `POST /api/strategies/<id>/adjustment-plan {"playbook_id": <prefill id>}` for #1 and #2; a leg stop by `POST /paper/strategies/1/triggers`; the worker; `vite preview` on 4173.
+- Scenario mode: the database must be named `ofo_dev` (the seed refuses any other); `load_cat.py PATH-01 PATH-10`, `seed_scenario.py PATH-10`; API and worker with `OFO_SCENARIO=PATH-10` and `TEST_CATALOGUE_DATE=2026-11-06` (the scenario day; without it the contract list is empty and Compare cannot build a basket); own Redis database per stack (/0 tg, /1 dev); vite 4174 with `OFO_API_TARGET=http://127.0.0.1:8001`. The scenario database cannot be wiped (insert-only guard on `strategy_alert_style`): keep a migrated template database (`ofo_tpl`) and `CREATE DATABASE ofo_dev TEMPLATE ofo_tpl`, then grant CONNECT to `ofo_app`.
+- Redis: start with `--dir <outside the repo> --save ""` or it writes `dump.rdb` into the working tree. Run `npm ci` in `frontend/` of the tree you push from (the gate's frontend steps need it). Do not change tracked files while the gate runs.
+- A session resume stops Postgres, Redis and every server: restart them, migrate to head, rebuild the frontend if the head moved.
+- The pre-push gate takes about 25 minutes (full suites); run it in the background and push only after `TOTAL PASS` for the same commit.
+
+SAFE TO CLOSE (head a1d704225 walked, branch test/r3-plan-walk-2-1128; left: the list above)
