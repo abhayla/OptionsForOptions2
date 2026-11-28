@@ -87,10 +87,6 @@ EXIT_NOT_RUN_KIND: Final = "stop_fired"
 INDEX_WAIT_SECONDS: Final = 1.0
 
 
-#: Lane FE3 item 6: the wordings of the line of a leg stop that HAS fired (past tense, the figure at the fill), for
-#: reading a stored line back (``actionable_alerts.inform`` ``restore``); the list in ``paper_alert`` is not
-#: this lane's.
-FIRED_LINE_TEMPLATES: Final = ("paper_leg_stop_fired", "paper_leg_stop_fired_unlimited", "paper_leg_stop_fired_unknown")
 #: Lane FE3 item 2: a reload that could not read the book (armed triggers, position kinds, orders) is tried again this
 #: soon, and the last known watch list is kept for at most ``BOOK_UNREAD_MAX_S`` of failure (the same two minutes as the
 #: heartbeat rule, ``monitoring_state.SNAPSHOT_STALE_S``): past it no exit is judged and every trade is reported
@@ -160,10 +156,6 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
 #: Lane R1 (ADR-330 (73)): a REAL position's stops are judged like a paper one's (an alert and a record, no order), so
 #: only a kind that could not be read is left unjudged.
 _NOT_APPLICABLE_WHY: dict[str, str] = {}
-
-
-class BookUnreadError(RuntimeError):
-    """A read of the book (armed triggers, position kinds, orders) answered nothing usable: the last watch is kept."""
 
 
 class PaperMonitor:
@@ -307,11 +299,10 @@ class PaperMonitor:
         evaluated or fired: it is left as it is and told once as not applicable. One read for every armed strategy."""
         from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: the one kind rule and its reader
         kinds = await strategy_store.kinds_of(session, sorted({a.trigger.strategy_id for a in armed}))
-        if armed and self._ever_loaded and all(k == position_kind.UNKNOWN for k in kinds.values()):
-            # Lane FE3 (review F3): ``kinds_of`` answers "unknown" for every id when its read FAILS (it swallows the
-            # error until Lane FD4 makes it raise); every kind unknown after a list was known is that failure, not a new
-            # fact: the last list is kept (and the age rule applies), never replaced by an empty one
-            raise BookUnreadError("the position kinds of every armed strategy could not be read")
+        # Lane RA2 item 8: a failed read RAISES from ``kinds_of`` (Lane FD4) and the last watch is kept
+        # (``reload`` catches it). "Every kind unknown" was a guess at a failure: it is also what ONE missing
+        # strategy row looks like, and it blinded every reload for ever. A missing row reads unknown for ITS trade
+        # only (not watched, not fired, told once); every other trade keeps its watch.
         keep: list[triggers.ArmedTrigger] = []
         self._real_strategies = {sid for sid, k in kinds.items() if position_kind.takes_records(k)}
         self._na_strategies = {}
@@ -675,7 +666,7 @@ class PaperMonitor:
             await actionable_alerts.inform(
                 session, a.user_ref, t.strategy_id, "stop_fired",
                 "stop_fired_note" if line is None else "stop_fired_note_with_line", values, at=now,
-                restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES + FIRED_LINE_TEMPLATES})
+                restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
 

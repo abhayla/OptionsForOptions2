@@ -10834,6 +10834,25 @@
             "title": "Position Count",
             "type": "integer"
           },
+          "position_kind": {
+            "enum": [
+              "paper",
+              "real",
+              "unknown",
+              "none"
+            ],
+            "title": "Position Kind",
+            "type": "string"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
+          },
           "positions": {
             "items": {
               "$ref": "#/components/schemas/PaperNetOut"
@@ -10913,6 +10932,16 @@
             ],
             "title": "Profit Left Text"
           },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "recover": {
             "anyOf": [
               {
@@ -10952,6 +10981,18 @@
             ],
             "title": "Status Word",
             "type": "string"
+          },
+          "stored_not_sent": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored Not Sent"
           },
           "strategy_id": {
             "title": "Strategy Id",
@@ -11091,7 +11132,8 @@
           "underlying",
           "status_word",
           "open_count",
-          "position_count"
+          "position_count",
+          "position_kind"
         ],
         "title": "PaperStrategyOut",
         "type": "object"
@@ -15259,6 +15301,27 @@
           },
           "name": {
             "title": "Name"
+          },
+          "position_kind": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
           },
           "revision": {
             "title": "Revision",

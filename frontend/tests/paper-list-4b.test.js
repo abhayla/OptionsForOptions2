@@ -317,7 +317,7 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     const f = await show()
     expect(has(f, 'paper-totals')).toBe(false)
     expect(has(f, 'paper-group')).toBe(false)
-    expect(has(f, 'paper-error-what')).toBe(true)
+    expect(has(f, 'paper-error-retry')).toBe(true)
   })
 })
 

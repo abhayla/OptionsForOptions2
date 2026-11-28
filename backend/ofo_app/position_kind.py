@@ -4,7 +4,7 @@ Paper and real are one rule with one tag: a real position gets the same Exit, St
 screens as a paper trade; what the user stores for it is a record in the app (``real_action_records``) and nothing is
 sent to the broker. The row shows the broker's quantity and P&L and ONE line (position_kind_real).
 
-The tag is the STORED fact (``strategy_position_tags``, migration 0063; written once at the first order, never
+The tag is the STORED fact (``strategy_position_tags``, migration 0065; written once at the first order, never
 updated), never the name: a held entry (ADR-292: a condor held at the broker is a REAL position stored as practice
 orders) -> real; else the stored tag, paper or real; no order -> none (a draft: no row to protect); an order and no
 stored tag, or any fact that could not be read -> unknown (fail closed: no action is stored, and the line says why).

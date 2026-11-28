@@ -20,7 +20,7 @@ def test_no_book_or_pnl_reader_counts_a_record():
                "backend/ofo_app/paper_limit.py", "backend/ofo_app/paper_monitor.py",
                "backend/ofo_app/routes/alerts.py", "backend/ofo_app/routes/strategies.py",
                "backend/ofo_app/routes/tracking.py", "backend/ofo_app/routes/plan_watch.py",
-               "backend/ofo_app/alembic/versions/0063_position_tags.py", "backend/ofo_app/position_kind.py"}
+               "backend/ofo_app/alembic/versions/0065_position_tags.py", "backend/ofo_app/position_kind.py"}
     hits = {str(p.relative_to(ROOT)).replace("\\", "/") for p in (ROOT / "backend").rglob("*.py")
             if any(w in p.read_text(encoding="utf-8") for w in ("real_action_records", "real_action_store"))}
     assert hits <= allowed, sorted(hits - allowed)

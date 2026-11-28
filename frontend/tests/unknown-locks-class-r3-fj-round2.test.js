@@ -254,11 +254,13 @@ describe('F3: the add lock is written BEFORE the post', () => {
     await adv(WINDOW + 20000)
     expect(t(w, 'add-to-paper').attributes('disabled')).toBeUndefined()
   })
-  it('a post that went out an hour ago: the first good read sent past the window decides it', async () => {
+  it('a post that went out an hour ago (a reloaded page): the window counts from this page\'s FIRST SIGHT by the monotonic clock (Lane W2 D-W2-1: the wall age is never trusted), then a good read decides it', async () => {
     answers['GET /paper/strategies/172'] = book404
     L.saveAddLock(172, { at: Date.now() - 3600000, before: '', out: true, key: 'k1', sig: '[]' })
     const w = await bar()
     await adv(20000)
+    expect(t(w, 'add-to-paper').attributes('disabled')).toBeDefined()
+    await adv(WINDOW + 20000)
     expect(t(w, 'add-to-paper').attributes('disabled')).toBeUndefined()
   })
 })
@@ -277,10 +279,12 @@ describe('F4: a lock adopted from another tab takes the newer `at`; a closed tab
     await adv(80000)
     expect(L.exitLockFor(1)).toBeNull()
   })
-  it('Positions: a lock whose post went out an hour ago: a good read sent past the window decides it (Group A R1 (b): from its `at`)', async () => {
+  it('Positions: a lock whose post went out an hour ago: after a reload the window counts from this page\'s first sight (Lane W2 D-W2-1), then a good read decides it', async () => {
     L.saveExitLock(1, { at: Date.now() - 3600000, out: true, before: L.bookOfPositions(S1.positions.map((p) => ({ contractId: p.contract_id, units: p.net_quantity }))).key, units: [{ id: 776, units: 260 }], names: ['x'], key: 'k', sig: '[]' })
     await showPositions()
     await adv(20000)
+    expect(L.exitLockFor(1)).not.toBeNull()
+    await adv(WINDOW + 20000)
     expect(L.exitLockFor(1)).toBeNull()
   })
   it('Positions: a lock whose post went out just now: kept until a read sent 130 s after it', async () => {

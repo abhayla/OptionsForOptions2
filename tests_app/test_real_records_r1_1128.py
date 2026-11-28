@@ -272,3 +272,40 @@ async def test_the_paper_list_reads_unknown_for_a_row_whose_kind_is_unknown(db, 
     monkeypatch.setattr(strategy_store, "kinds_of", unknown)
     row = (await _paper_list(app))[stored.id]
     assert row["position_kind"] == "unknown" and row["position_kind_text"]
+
+
+# ---- Lane B2's unknown-outcome block (code 590) applies to a record exactly as to an order -----------------------
+
+async def _attempt_states(db, sid: int) -> list[str]:
+    rows = (await db.execute(text("SELECT state FROM public.order_attempts WHERE strategy_id = :s ORDER BY id"),
+                             {"s": sid})).all()
+    return [r[0] for r in rows]
+
+
+async def test_a_record_passes_the_same_unknown_outcome_block_an_open_attempt_refuses_it(db, notified):
+    from ofo_app import order_outcome  # noqa: PLC0415
+    app, stored, ids = await _sent_basket(db)
+    await order_outcome.open_attempt(db, stored.user_ref, stored.id, "paper")  # an earlier request, outcome unknown
+    reply = await _post(app, stored.id, [_new(ids[0], "BUY", 65, "30", "exit")])
+    assert reply.status_code == HTTPStatus.CONFLICT and "no known result yet" in reply.text, reply.text[:300]
+    assert await _records(db, stored.id) == [] and await _count(db, stored.id) == 0
+    assert await _attempt_states(db, stored.id) == ["open"]  # the refused request opened nothing
+
+
+async def test_a_stored_record_closes_its_attempt_so_the_next_request_is_not_blocked(db, notified):
+    app, stored, ids = await _sent_basket(db)
+    first = await _post(app, stored.id, [_new(ids[0], "BUY", 65, "30", "exit")])
+    assert first.status_code == HTTPStatus.CREATED, first.text[:300]
+    assert "open" not in await _attempt_states(db, stored.id)  # the outcome is known: stored
+    second = await _post(app, stored.id, [_new(ids[0], "SELL", 65, "39.15", "add")])
+    assert second.status_code == HTTPStatus.CREATED, second.text[:300]
+    assert [r[0] for r in await _records(db, stored.id)] == ["exit", "add"]
+
+
+async def test_a_record_refused_by_the_market_closed_rule_leaves_no_open_attempt(db, notified):
+    app, stored, ids = await _sent_basket(db)
+    saturday = datetime.datetime(2026, 11, 28, 5, 30, tzinfo=datetime.UTC)
+    app.dependency_overrides[get_answer_clock] = lambda: lambda: saturday
+    reply = await _post(app, stored.id, [_new(ids[0], "BUY", 65, "30", "exit")])
+    assert reply.status_code >= HTTPStatus.BAD_REQUEST, reply.text[:300]
+    assert "open" not in await _attempt_states(db, stored.id)  # a clean refusal: nothing was stored, nothing is unknown

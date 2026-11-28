@@ -165,11 +165,11 @@ describe('item 1c: a second tab', () => {
 describe('item 1e: the server answers of fd2', () => {
   const code = (status, error_code) => () => Promise.reject({ message: 'x', status, error_code, parts: { what_happened: 'W.', impact: 'I.', what_is_blocked: 'B.', next_action: 'N.' } })
   const exitTwice = async (w) => { await openExit(w); await press(w); await adv(1000); await openExit(w); await press(w) }
-  it('paperPostOutcome: 582 is unknown (not a refusal), 583 and 580 / 581 are refused, a bare 503 stays unknown', () => {
+  it('paperPostOutcome: 582 and 581 are unknown (not a refusal; FJ2 F-A: 581 = same key, other body, the first may still be placed), 583 and 580 are refused, a bare 503 stays unknown', () => {
     expect(paperPostOutcome({ status: 409, error_code: 'STRATEGY_VALIDATION_582' })).toBe(PAPER_STATE.UNKNOWN)
     expect(paperPostOutcome({ status: 503, error_code: 'STRATEGY_VALIDATION_583' })).toBe(PAPER_STATE.REFUSED)
     expect(paperPostOutcome({ status: 409, error_code: 'STRATEGY_VALIDATION_580' })).toBe(PAPER_STATE.REFUSED)
-    expect(paperPostOutcome({ status: 409, error_code: 'STRATEGY_VALIDATION_581' })).toBe(PAPER_STATE.REFUSED)
+    expect(paperPostOutcome({ status: 409, error_code: 'STRATEGY_VALIDATION_581' })).toBe(PAPER_STATE.UNKNOWN)
     expect(paperPostOutcome({ status: 503 })).toBe(PAPER_STATE.UNKNOWN)
     expect(paperPostOutcome({ status: null })).toBe(PAPER_STATE.UNKNOWN)
   })
@@ -180,8 +180,8 @@ describe('item 1e: the server answers of fd2', () => {
     expect(posts()).toHaveLength(1)
     expect(exitLockFor(1)).not.toBeNull()
   })
-  it('583 (could not check) and 580 / 581: refused, nothing stored, the lock ends and the next exit is a new action with a new key', async () => {
-    for (const [status, c] of [[503, 'STRATEGY_VALIDATION_583'], [409, 'STRATEGY_VALIDATION_580'], [409, 'STRATEGY_VALIDATION_581']]) {
+  it('583 (could not check) and 580: refused, nothing stored, the lock ends and the next exit is a new action with a new key', async () => {
+    for (const [status, c] of [[503, 'STRATEGY_VALIDATION_583'], [409, 'STRATEGY_VALIDATION_580']]) {
       calls.length = 0
       mounted.splice(0).forEach((x) => x.unmount())
       globalThis.localStorage.clear()
@@ -192,6 +192,13 @@ describe('item 1e: the server answers of fd2', () => {
       expect(posts(), c).toHaveLength(2)
       expect(keys()[1], c).not.toBe(keys()[0])
     }
+  })
+  it('581 (same key, another body: the first request may still be placed; FJ2 F-A): the lock and the key stay, no second post is sent', async () => {
+    answers[`POST ${URL}`] = code(409, 'STRATEGY_VALIDATION_581')
+    const w = await show()
+    await exitTwice(w)
+    expect(posts()).toHaveLength(1)
+    expect(exitLockFor(1)).not.toBeNull()
   })
   it('a repeat of the same key answered 201: the lock ends as placed, no lock and no key are left', async () => {
     let n = 0

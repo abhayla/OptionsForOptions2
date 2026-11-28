@@ -1,4 +1,4 @@
-"""The record book of a REAL position (Lane R1; ADR-330 (73), ADR-281, ADR-016 to ADR-019). Schema: migration 0063.
+"""The record book of a REAL position (Lane R1; ADR-330 (73), ADR-281, ADR-016 to ADR-019). Schema: migration 0065.
 
 What a user stores for a real position (open, add, exit, stop) and what the worker stores when a stop is reached
 (stop_fired) is one append-only row here, NEVER a paper order: the position, its quantity and its P&L stay the

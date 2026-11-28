@@ -153,7 +153,7 @@ def status_word(status: str | None, has_order: bool) -> StatusWord:
     return "Unknown"
 
 
-#: Lane R1: the stored tag (insert-only table, migration 0063); no row = no tag stored yet
+#: Lane R1: the stored tag (insert-only table, migration 0065); no row = no tag stored yet
 _TAG_SQL = "(SELECT t.tag FROM public.strategy_position_tags t WHERE t.strategy_id = s.id)"
 _KINDS = text(
     f"SELECT s.id AS id, {_HAS_ORDER_SQL} AS has_order, {_TAG_SQL} AS tag, {_HELD_SQL} AS held "  # noqa: S608

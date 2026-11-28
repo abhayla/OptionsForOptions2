@@ -144,7 +144,7 @@ describe('Positions page by the state of the Zerodha read', () => {
     answers['GET /broker/status'] = status('disconnected')
     const w = await page('/p')
     expect(pressed(w)).toEqual(['all'])
-    expect(t(w, 'positions-error-what').text()).toContain('Connect your Zerodha account')
+    expect(t(w, 'positions-error-error').text()).toContain('Connect your Zerodha account')
   })
   it('the read failed for another reason (server error, broker connected): state read_failed and the error', async () => {
     answers['GET /positions'] = () => Promise.reject({ status: 500, parts: { what_happened: 'Server error', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })

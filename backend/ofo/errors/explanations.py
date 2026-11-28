@@ -1581,8 +1581,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # Lane FD4 hand-over (28 Nov 2026), pending owner read: the same line for ORDERS (the Add to Paper dialog; it must not
     # say "Exits"); ``ofo_app/exit_market.entries_sentence`` renders them beside ``exit_market_closed``
     ExplanationTemplate("exit_market_closed_entries", "values_seen",
-                        "Orders can be placed from 09:15 on {day}.", {"day": DayLabel}),
-    ExplanationTemplate("exit_market_closed_entries_no_day", "values_seen", "Orders can be placed when it opens."),
+                        "The market is closed. Orders can be placed from 09:15 on {day}.", {"day": DayLabel}),
+    ExplanationTemplate("exit_market_closed_entries_no_day", "values_seen",
+                        "The market is closed. Orders can be placed when it opens."),
     ExplanationTemplate("closed_prices_mixed_one", "values_seen",
                         "Market closed. Prices are from {frozen}; 1 leg as of {later}.",
                         {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated}),
@@ -2189,6 +2190,13 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("plan_final_line", "values_seen", "{plan} {end}", {"plan": Explained, "end": Explained}),
     ExplanationTemplate("paper_exit_less_protected", "values_seen",
                         "Sold option with less protection: {legs}.", {"legs": Explained}),
+    # Lane RA2 item 9 (new wording, pending the owner's read): the same two lines for an index exit that HAS fired, in the
+    # past tense (the preview above says "After these orders"; a fired exit's record says what happened)
+    ExplanationTemplate("paper_exit_fired_loss", "values_seen",
+                        "After the exit, maximum loss was {before} before and {after} after.",
+                        {"before": Explained, "after": Explained}),
+    ExplanationTemplate("paper_exit_fired_less_protected", "values_seen",
+                        "A sold option was left with less protection: {legs}.", {"legs": Explained}),
     ExplanationTemplate("paper_exit_warning_join", "values_seen", "{first} {second}",
                         {"first": Explained, "second": Explained}),
     ExplanationTemplate("paper_trigger_level", "values_seen", "{level}", {"level": IndexLevel}),

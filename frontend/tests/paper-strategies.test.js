@@ -118,13 +118,13 @@ describe('PaperStrategies: answer states', () => {
     await t(w, 'ce-above').setValue('29980')
     fail = true
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
-    expect(has(w, 'paper-error-what')).toBe(true)
+    expect(has(w, 'paper-error-retry')).toBe(true)
     expect(has(w, 'paper-group')).toBe(true)
     expect(has(w, 'paper-stops')).toBe(true)
     expect(t(w, 'ce-above').element.value).toBe('29980')
     fail = false
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
-    expect(has(w, 'paper-error-what')).toBe(false)
+    expect(has(w, 'paper-error-retry')).toBe(false)
     expect(t(w, 'ce-above').element.value).toBe('29980')
   })
   it('D-05 r3: a refresh failure after a good read shows NO figure, keeps cards, legs, the open Stops panel and its typed level', async () => {
@@ -184,11 +184,11 @@ describe('PaperStrategies: answer states', () => {
     fail = true
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(has(w, 'paper-total')).toBe(true)
-    expect(has(w, 'paper-error-what')).toBe(true)
+    expect(has(w, 'paper-error-retry')).toBe(true)
     fail = false
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
     expect(t(w, 'paper-total').text()).toBe('+71.50')
-    expect(has(w, 'paper-error-what')).toBe(false)
+    expect(has(w, 'paper-error-retry')).toBe(false)
   })
   it('re-reads every TRACKING_REFRESH_MS and stops after unmount', async () => {
     answers['GET /tracking'] = ok(REAL_REPLY)

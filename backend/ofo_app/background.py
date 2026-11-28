@@ -119,7 +119,7 @@ import enum
 import functools
 import logging
 import sys
-from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping
+from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping, Sequence
 from dataclasses import dataclass, field
 from decimal import Decimal
 from typing import Any, Final
@@ -161,6 +161,8 @@ from ofo_app.regime_inputs import RegimePerList
 from ofo_app.routes.adjustment import MarketInputs
 
 log = logging.getLogger("ofo_app.background")
+#: the worker log words of a loss rule that is past its line while nothing is alerted (Lane RA2 item 2)
+SILENT_LOSS_RULE: Final = "loss rule true, nothing alerted"
 
 __all__ = ["GATE_POLL", "GATE_REBUILD", "GATE_WRITER", "DbGate"]  # the role's one gate (``db_gate``)
 
@@ -1137,6 +1139,7 @@ class Worker:
                 # its expiry does); the gate memory and queued events of the old position are dropped and the gate
                 # restores from the store (open records included) at the next check
                 self._gate.pop(w.strategy_id, None)
+                self._forget_silence(w.strategy_id)
                 self._gate_events.pop(w.strategy_id, None)
         self._drop_stale_writes(monitors)
         for user in dict.fromkeys(w.user_ref for w in monitors):  # once per user, never per check (finding 3)
@@ -1153,6 +1156,9 @@ class Worker:
         # paused silently and its candle lost); a NEW strategy whose gate read failed waits for the next rebuild
         self.monitors = [w for w in monitors if w.strategy_id in old or w.strategy_id in self._gate_load]
         self._rebuilt_at = self._clock()
+        # RA2 item 3 (F8): the list was read (a failed read raised above): a kept pause start of a strategy that is not
+        # in it (deleted while the worker was down) is dropped; strategies whose own read failed did not leave the list
+        self._monitoring.forget_unlisted({w.strategy_id for w in monitors} | set(getattr(monitors, "unread", ())))
         log.info("background: %s strategies monitored", len(self.monitors))
 
     async def _lapse_expired_all(self, monitors: list[Watched], today: datetime.date) -> None:
@@ -1232,6 +1238,7 @@ class Worker:
             self._gate_load[sid] = load
             if sid in self._gate and self._gate_body.get(sid) != w.body:
                 self._gate.pop(sid, None)  # plan change: restored at the next check against the new ladder
+                self._forget_silence(sid)
             state = self._gate.get(sid)
             if state is None:
                 continue
@@ -1887,6 +1894,45 @@ class Worker:
             self._gate_events.setdefault(sid, collections.deque()).append(
                 GateBatch(w, tuple(events), now))
             self._write_wake.set()
+        try:  # the log line never affects an alert: after the events are queued, and never raises into the check
+            self._note_silent_loss_rules(w, new, events, readings, now, hold, preset.cooldown)
+        except Exception as exc:  # noqa: BLE001 - a log helper
+            log.warning("background: the silence note of strategy %s failed: %s", sid, type(exc).__name__)
+
+    _silence_told: dict[int, dict[str, str]] | None = None  # strategy -> rule -> the reason already logged
+
+    def _forget_silence(self, sid: int) -> None:
+        """The gate of ``sid`` was reset (position or plan changed): its next silence is told afresh."""
+        if self._silence_told is not None:
+            self._silence_told.pop(sid, None)
+
+    #: loss rules the silence log names besides the plan's own loss stops: T-14 (the repricing loss risk, ic-e2e-paper)
+    _SILENCE_EXTRA_RULES: Final = frozenset({"T-14"})
+
+    def _note_silent_loss_rules(self, w: Watched, state: alert_gate.GateState, events: Sequence[Any],  # noqa: PLR0913
+                                readings: Mapping[str, gate_readings.Reading], now: datetime.datetime,
+                                hold: datetime.datetime | None,
+                                cooldown: datetime.timedelta | None = None) -> None:
+        """Lane RA2 item 2 (issue 876: a loss past its line for 22 minutes and no alert, and the log said nothing
+        per strategy and rule): whenever a loss rule or guard is past its line at this check and this step raised
+        nothing for it, ONE line names the strategy, the rule and why (``alert_gate.silent_reason``). Said again only
+        when the reason changes; said afresh once the rule is back inside its line. No price and no figure of a feed
+        is in it."""
+        sid = w.strategy_id
+        if self._silence_told is None:  # lazy: some tests build the worker without __init__
+            self._silence_told = {}
+        told = self._silence_told.setdefault(sid, {})  # rule -> the reason already logged
+        loss = sl.loss_stop_rule_ids(w.body) | self._SILENCE_EXTRA_RULES
+        spoken = {e.rule_id for e in events if hasattr(e, "rule_id")}
+        for rule_id in sorted(loss & readings.keys()):
+            spec, value = readings[rule_id]
+            why = None if rule_id in spoken else alert_gate.silent_reason(
+                state, rule_id, spec, value, now=now, cooldown=cooldown, entry_hold_until=hold)
+            if why is None:
+                told.pop(rule_id, None)
+            elif told.get(rule_id) != why:
+                told[rule_id] = why
+                log.info("background: strategy %s %s: %s %s", sid, SILENT_LOSS_RULE, rule_id, why)
 
     async def _write_gate_batch(self, sid: int) -> bool:
         """The oldest queued gate step of ``sid`` in one transaction, holding the gate first in its order of service.

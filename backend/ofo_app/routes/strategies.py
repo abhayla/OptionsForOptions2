@@ -46,7 +46,7 @@ from pydantic import BaseModel, ConfigDict, Field, model_validator
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import open_legs, paper_store, playbook_store, real_action_store, tracked_contracts
+from ofo_app import open_legs, paper_store, playbook_store, position_kind, real_action_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
@@ -192,6 +192,8 @@ class StrategyOut(ApiModel):
     updated_at: datetime.datetime
     definition: DefinitionOut  # the ACTIVE definition (after the first execution, the active version's)
     versions: list[VersionOut] = Field(default_factory=list)  # W-144: empty before the first execution
+    position_kind: Optional[Identifier] = None  # noqa: UP045 - ADR-330 (64): the list row's own field (RA2 item 4)
+    position_kind_text: Optional[CatalogueText] = None  # noqa: UP045 - the real / unknown line; None for paper, none
 
 
 class FirstLegOut(ApiModel):
@@ -388,13 +390,26 @@ async def _with_tokens(db: Any, *docs: dict) -> None:
             leg["exchange_token"] = None if feed_id is None else feed_id.exchange_token
 
 
+async def _kind_of(db: Any, strategy_id: int) -> str:
+    """ADR-330 (64): the strategy's position kind, from the one reader the list uses. A failed read is "unknown" (fail
+    closed: neither Exit nor Stops), in its own savepoint so the request's transaction stays usable."""
+    try:
+        async with db.begin_nested():
+            return (await store.kinds_of(db, [strategy_id])).get(strategy_id, position_kind.UNKNOWN)
+    except SQLAlchemyError:
+        log.error("position kind of strategy %s unreadable", strategy_id, exc_info=True)
+        return position_kind.UNKNOWN
+
+
 async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
     doc = _definition_out(stored.saved)
     version_docs = [_definition_out(await store.version_saved(db, v)) for v in stored.versions]
     await _with_tokens(db, doc, *version_docs)
+    kind = await _kind_of(db, stored.id)
     return StrategyOut.model_validate({
         "id": stored.id, "name": sf.shown_name(stored.name), "status": stored.status, "revision": stored.revision,
         "status_word": store.status_word(stored.status, await store.has_order(db, stored.id)),
+        "position_kind": kind, "position_kind_text": position_kind.line_of(kind),
         "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc,
         "versions": [{"number": v.number, "state": v.state, "based_on": v.based_on, "created_at": v.created_at,
                       "confirmed_at": v.confirmed_at, "reconciled_at": v.reconciled_at, "outcome": v.outcome,
@@ -496,7 +511,6 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
                           shown_date: Annotated[datetime.date, Depends(get_shown_date)]) -> StrategyListOut:
     async def work():
         rows = await store.list_strategies(db, user_ref)
-        from ofo_app import position_kind  # noqa: PLC0415 - ADR-330 (64)
         from ofo_app.routes.adjustment_history import closed_figures_many  # noqa: PLC0415 - it imports routes.paper
         from ofo_app.routes.paper import current_legs_many  # noqa: PLC0415 - routes.paper imports this module
         rates_ok = rates if isinstance(rates, ChargeRates) else None

@@ -246,6 +246,18 @@ class Publisher:
         self._kept, self._restored_at = dict(self._previous), now
         return await self._write_restart_snapshot(now)
 
+    def forget_unlisted(self, listed: Iterable[int]) -> list[int]:
+        """Lane RA2 item 3 (F8): after a SUCCESSFUL read of the strategy list, a kept pause start of a strategy that
+        is not in it (the trade was deleted while the worker was down) is dropped, so an id listed later never shows
+        the old "since". The caller never asks after a failed read (a failed read names nobody, so it would drop
+        every kept start). Returns the ids dropped."""
+        keep = set(listed)
+        dropped = sorted(set(self._kept) - keep)
+        for sid in dropped:
+            self._kept.pop(sid, None)
+            self._previous.pop(sid, None)
+        return dropped
+
     async def retry_restore(self, now: datetime.datetime) -> bool:
         """FE3 item 3 (F6): a restart whose empty snapshot could not be written leaves the dead worker's answers
         standing; the worker calls this before every cycle until the write has landed (or a real snapshot has).
@@ -518,6 +530,14 @@ def decode_exits(raw: Any, now: datetime.datetime) -> dict[int, str] | None:
         return None
 
 
+#: Lane RA2 item 3 (F7): HDEL each (field, text) pair only when the field still holds that exact text (one atomic step)
+_DELETE_IF_UNCHANGED = (
+    "local n = 0 "
+    "for i = 1, #ARGV, 2 do "
+    "if redis.call('HGET', KEYS[1], ARGV[i]) == ARGV[i + 1] then n = n + redis.call('HDEL', KEYS[1], ARGV[i]) end "
+    "end return n")
+
+
 class ExitsPublisher:
     """The paper monitor's one write path of the index-exit report: which strategies have an armed index exit being
     evaluated (``watching``) and which do not (``not_run``, with the why). Every monitor (every API worker process)
@@ -587,8 +607,20 @@ class ExitsPublisher:
             if at is None or abs((now - at).total_seconds()) > OWNER_KEEP_S:
                 gone.append(owner)
         if gone:
-            await self._client.hdel(exit_slots_key(), *gone)
+            await self._remove_dead(gone, fields)
         return mine == text
+
+    async def _remove_dead(self, gone: list[Any], fields: Mapping[Any, Any]) -> None:
+        """Lane RA2 item 3 (F7): one atomic step when the client runs scripts: a field is deleted only if it still holds
+        the exact text that was judged long dead, so a monitor that wrote a fresh slot between our read and this delete
+        keeps it. A client with no ``eval`` (the bare test doubles) keeps the two-step delete."""
+        if not hasattr(self._client, "eval"):
+            await self._client.hdel(exit_slots_key(), *gone)
+            return
+        args: list[Any] = []
+        for owner in gone:
+            args.extend((owner, fields[owner]))
+        await self._client.eval(_DELETE_IF_UNCHANGED, 1, exit_slots_key(), *args)
 
     async def _has_slot(self, at_text: str) -> bool:
         """Whether the stored report holds this monitor's slot as just written."""
