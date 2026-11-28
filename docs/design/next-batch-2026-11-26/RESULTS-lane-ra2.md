@@ -1,4 +1,4 @@
-STATUS 21:50 | batch 1: stored-close guard tests added (option b, 3 named tests), gate running | next: F-3 stored stop reported failed, adx ValueError, unreadable slot, D-TG2-2 (batch 2, 01:30) | blocker: none
+STATUS 22:15 | batch 1 pushed (dc1aeebd8, TOTAL PASS); batch 2 built: F-3, adx log once, unreadable slot; gate + Opus review running | not done: market-open clock, D-TG2-2, O-P-03 | blocker: none
 
 # Lane RA2: the standing backend leftovers lane (base fix/r3-leftovers-1128 a5259db50)
 
@@ -54,6 +54,16 @@ Oct, close Fri 9 Oct 15:29:58.
   from `kinds_of` itself, so the guess is removed (and the now unused `BookUnreadError` class). The missing trade is not
   watched, not fired and told once as not applicable; a second trade with a row keeps its watch and its fire; a failed read
   of the whole list still keeps the last watch (the FE3 test).
+
+## Batch 2 (coordinator's list of 28 Nov, 18:45 to 21:09 IST)
+| Item | State | Evidence |
+|---|---|---|
+| F-3 stored stop reported failed | built | tests_app/test_stored_stop_answer_ra2_1128.py: 2 passed (red before: a read after the commit answered 500 for a stored stop); `routes/paper.py::_answer_after_commit`: the answer is built once more on a clean transaction, else 201 with an empty list; test_paper_triggers_routes 70 passed. |
+| W-09 adx ValueError every cycle | built | tests_app/test_regime_log_once_ra2_1128.py: 3 passed. Cause: the PATH scenarios carry no day candles (only ADJ-60 has `market.daily`), so ADX(14) has 0 of 28 bars and `regime.adx` raises "needs 28 daily bars, got 0"; the input stays None = not checked (right). The log now says the plain reason once per input and reason; Kite errors keep class-only. |
+| Unreadable index-exit slot | built | tests_app/test_unreadable_slot_ra2_1128.py: 3 passed; the FE2 test `test_review_f5_...` pinned "skip a bad slot" and is rewritten (a bad slot makes the whole report unreadable, every ACTIVE trade reads paused `state_unreadable`; a live monitor's next write removes the bad slot). |
+| Frame 6 crossed T-01 with only not_checked outcomes (TG) | cannot say | The outcomes listed (gap_after_open, missing_margin, no_stage_value, switched_off) are other rules' reasons; T-01 is not a loss rule, so the new log line does not name it. If T-01 was on and crossed, the log line is the thing to widen next; I did not run PATH-01 here. |
+| D-TG2-2 T-09 title has no amount | not built | the label "A short leg's premium falls to Rs or below (close for pennies)" is data in `system_playbooks.json` (10 copies, stored in plans, pinned): the amount must come from the rule's threshold when the title is built; needs a playbook version or a title builder change and an owner read of the wording. |
+| Stored close, option (b) | done | see above; open: leg `price_state` reads live for a stored close. |
 
 ## Items 2, 3, 9 (real cases and decisions)
 - Item 2: the log line is `background: strategy <id> loss rule true, nothing alerted: <rule> <reason>`, once per change of reason
