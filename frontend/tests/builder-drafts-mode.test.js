@@ -137,7 +137,7 @@ describe('Drafts Mode edits are pending paper orders until Confirm', () => {
     await flushPromises()
     const posts = calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/63/orders')
     expect(posts).toHaveLength(1)
-    expect(posts[0].body).toEqual({ orders: [{ contract_id: 5576, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] }) // GC-ICGUIDE g21: the server prices an exit; the sent price is ignored
+    expect(posts[0].body).toEqual({ orders: [{ contract_id: 5576, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }], client_request_id: expect.any(String) }) // GC-ICGUIDE g21: the server prices an exit; the sent price is ignored
     expect(got(PAPER)).toBe(2)
     expect(legCount(w)).toBe(3)
     expect(t(w, 'paper-pending-count').text()).toBe('0 pending changes')

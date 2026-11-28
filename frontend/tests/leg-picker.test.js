@@ -399,7 +399,7 @@ describe('legs added quickly in sequence are all kept', () => {
       expect(w.findAll('[data-testid="leg-row"]')).toHaveLength(i + 1)
     }
     // the race is real: a shape read went out after the 2nd, 3rd and 4th adds, and an outcome after every add
-    expect(calls.filter((c) => c.url === '/strategies/leg-edit').map((c) => c.body.legs.length)).toEqual([2, 3, 4])
+    expect(calls.filter((c) => c.url === '/strategies/leg-edit').map((c) => c.body.legs.length)).toEqual([2, 2, 3, 3, 4, 4]) // Lane FB2: one read when the leg shows, one when its entry is in
     expect(calls.filter((c) => c.url === '/strategies/outcome').length).toBeGreaterThanOrEqual(4)
     while (held.length) held.pop()() // the stale replies land newest first, the oldest last
     await flushPromises()
@@ -473,7 +473,7 @@ describe('the Builder page', () => {
       both_views: true, // GC-UI b1: the chart asks both curves, the SD bands and the OI bars (REQ-083)
       sd_bands: true,
       open_interest: true,
-      seq: 2, // REQ-119: rises with every call; the mount's empty-draft call (no request) took 1
+      seq: 3, // REQ-119: rises with every call; the mount's empty-draft call (no request) took 1, the leg shown before its entry (no request) took 2 (Lane FB2)
     })
     expect(t(w, 'strategy-builder').attributes('data-state')).toBe('not-connected')
     expect(t(w, 'status-label').text()).toBe(NOT_CONNECTED_LABEL)
@@ -1049,7 +1049,7 @@ describe('REQ-080 strikes tab (W-147)', () => {
     await t(w, 'picker-done').trigger('click')
     await flushPromises()
     expect(w.props('legs').map((l) => [l.instrument_id, l.action])).toEqual([['NSE_FO:44000', 'BUY'], ['NSE_FO:44002', 'SELL'], ['NSE_FO:44005', 'BUY']])
-    expect(w.emitted('update:legs')).toHaveLength(1)
+    expect(w.emitted('update:legs')).toHaveLength(2) // Lane FB2: the three legs at once, then their entries
     expect(t(w, 'picker-count').text()).toBe('0 legs selected')
   })
 

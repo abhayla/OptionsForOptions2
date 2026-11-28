@@ -6,6 +6,7 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import StrategyBuilderPage from '@/pages/StrategyBuilderPage.vue'
 import REAL from './fixtures/paper-book-63.json'
 import { legacy } from './_paperList'
+import { UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
 
 const calls = []
 let answers = {}
@@ -106,10 +107,13 @@ describe('ADR-017: an unknown-outcome exit is never sent twice', () => {
     expect(S(w).paper.net.some((l) => l.contract_id === OPEN_IDS[0])).toBe(false)
     expect(S(w).exitBlocked).toBe(false)
   })
-  it('the re-read shows the trade unchanged: too early (under 5 s) it stays locked; after 5 s the exit is NOT left staged, the lock is gone, a fresh Exit click posts once more', async () => {
+  it('the re-read shows the trade unchanged: too early (inside the commit window of the server) it stays locked; after the window the exit is NOT left staged, the lock is gone, a fresh Exit click posts once more', async () => {
     const w = await unknownThen(BOOK)
     expect(S(w).exitBlocked).toBe(true)
     await vi.advanceTimersByTimeAsync(5100)
+    await flushPromises()
+    expect(S(w).exitBlocked).toBe(true) // Lane Z review F1: 5 s is not enough; the server may still commit (see exit-unknown-window-r2-fb.test.js)
+    await vi.advanceTimersByTimeAsync(UNKNOWN_EXIT_WINDOW_MS + 6000)
     await flushPromises()
     expect(orderPosts()).toHaveLength(1)
     expect(kindsOf(S(w).pendingOrders)).toEqual([])
@@ -165,14 +169,14 @@ describe('Tier A round 1 findings', () => {
     await flushPromises()
     expect(S(w).paper.net.some((l) => l.contract_id === OPEN_IDS[0])).toBe(false)
   })
-  it('F5: unknown with leg 2 staged, the re-read (after 5 s) shows nothing stored: leg 2\'s add is put back, the exit is NOT staged', async () => {
+  it('F5: unknown with leg 2 staged, the re-read (after the commit window) shows nothing stored: leg 2\'s add is put back, the exit is NOT staged', async () => {
     const w = await builder()
     S(w).setLegs(S(w).paper.net.map((l, i) => (i === 1 ? { ...l, lots: 2 } : { ...l })))
     await flushPromises()
     answers['POST /paper/strategies/86/orders'] = () => Promise.reject({ status: 503, message: 'x', parts: null })
     answers['GET /paper/strategies/86'] = BOOK
     await exit1(w, OPEN_IDS[0])
-    await vi.advanceTimersByTimeAsync(5100)
+    await vi.advanceTimersByTimeAsync(UNKNOWN_EXIT_WINDOW_MS + 11000)
     await flushPromises()
     expect(kindsOf(S(w).pendingOrders)).toEqual([['add', OPEN_IDS[1]]])
     expect(S(w).exitBlocked).toBe(false)

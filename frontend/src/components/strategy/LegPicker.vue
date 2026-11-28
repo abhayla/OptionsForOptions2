@@ -548,30 +548,49 @@ async function save() {
     return
   }
   resetForm()
-  try {
-    // A priced leg keeps its captured entry while its contract is unchanged (only buy/sell or lots changed).
-    const pricing = old && old.instrument_id === id && old.planned_entry != null
-      ? { planned_entry: old.planned_entry, captured_at: old.captured_at, source: old.source, reason_code: null, close_at: old.close_at ?? null }
-      : await capture(id, und)
-    const leg = {
-      id: old ? old.id : nextId++,
-      underlying: und,
-      instrument_id: id,
-      contract_id: c ? c.contract_id : old.contract_id, // W-071: what Save Draft sends (ADR-057)
-      symbol: c ? c.symbol : old.symbol,
-      expiry: c ? c.expiry : old.expiry,
-      instrument_type: c ? c.instrument_type : old.instrument_type,
-      strike: c ? c.strike : old.strike,
-      lot_size: c ? c.lot_size : old.lot_size,
-      action: act,
-      lots: lotCount,
-      ...pricing,
-    }
-    emit('update:legs', old ? props.legs.map((l) => (l.id === old.id ? leg : l)) : [...props.legs, leg])
-    emit('done') // a leg added or saved by contract also hands the page back (the Builder closes the drawer)
-  } finally {
-    busy.value = false
+  // A priced leg keeps its captured entry while its contract is unchanged (only buy/sell or lots changed).
+  const keep = old && old.instrument_id === id && old.planned_entry != null
+  // Lane FB2 (I-49, T2-11): a leg that needs a price is shown AT ONCE, marked `capturing`; the planned-entry reply fills it in (fillCaptures)
+  const pricing = keep
+    ? { planned_entry: old.planned_entry, captured_at: old.captured_at, source: old.source, reason_code: null, close_at: old.close_at ?? null }
+    : { planned_entry: null, captured_at: null, source: null, reason_code: null, capturing: true }
+  const leg = {
+    id: old ? old.id : nextId++,
+    underlying: und,
+    instrument_id: id,
+    contract_id: c ? c.contract_id : old.contract_id, // W-071: what Save Draft sends (ADR-057)
+    symbol: c ? c.symbol : old.symbol,
+    expiry: c ? c.expiry : old.expiry,
+    instrument_type: c ? c.instrument_type : old.instrument_type,
+    strike: c ? c.strike : old.strike,
+    lot_size: c ? c.lot_size : old.lot_size,
+    action: act,
+    lots: lotCount,
+    ...pricing,
   }
+  emit('update:legs', old ? props.legs.map((l) => (l.id === old.id ? leg : l)) : [...props.legs, leg])
+  busy.value = false
+  emit('done') // a leg added or saved by contract also hands the page back (the Builder closes the drawer)
+  if (pricing.capturing) void fillCaptures([{ legId: leg.id, instrumentId: id, und, reprice: false }])
+}
+
+/** Lane FB2 (I-49): the planned-entry reply for legs already shown. Each leg still marked `capturing` gets its price (or, on a failed
+ *  capture, its own reason: the leg says so, nothing else is touched). A price the user typed meanwhile is never replaced, and a leg
+ *  removed meanwhile stays removed. Never an order. */
+async function fillCaptures(items) {
+  const results = await Promise.all(items.map((x) => capture(x.instrumentId, x.und)))
+  const byId = new Map(items.map((x, i) => [x.legId, { r: results[i], reprice: x.reprice, instrumentId: x.instrumentId }]))
+  let hit = false
+  const next = props.legs.map((l) => {
+    const m = byId.get(l.id)
+    if (!m || l.capturing !== true || l.instrument_id !== m.instrumentId) return l
+    hit = true
+    // eslint-disable-next-line no-unused-vars
+    const { capturing, ...rest } = l
+    if (rest.planned_entry != null) return rest // the user typed a price meanwhile: it stays
+    return { ...rest, ...m.r, ...(m.reprice && m.r.planned_entry == null ? { reason_code: 'needs_reprice' } : {}) }
+  })
+  if (hit) emit('update:legs', next)
 }
 
 function remove(leg) {
@@ -615,8 +634,8 @@ async function resolveDuplicates(chosen) {
 async function addChosen(chosen, und) {
   try {
     if (!chosen.length) return
-    const pricing = await Promise.all(chosen.map((x) => capture(x.id, und)))
-    const added = chosen.map((x, i) => ({
+    // Lane FB2 (I-49): the legs show at once (marked `capturing`); the planned-entry replies fill them in
+    const added = chosen.map((x) => ({
       id: nextId++,
       underlying: und,
       instrument_id: x.id,
@@ -628,10 +647,10 @@ async function addChosen(chosen, und) {
       lot_size: x.c.lot_size,
       action: x.action,
       lots: x.lots,
-      ...pricing[i],
-      reason_code: pricing[i].planned_entry == null ? 'needs_reprice' : null,
+      planned_entry: null, captured_at: null, source: null, reason_code: null, capturing: true,
     }))
     emit('update:legs', [...props.legs, ...added])
+    void fillCaptures(added.map((l) => ({ legId: l.id, instrumentId: l.instrument_id, und, reprice: true })))
   } finally {
     busy.value = false
   }
@@ -991,7 +1010,7 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
     >
       <span class="font-medium" data-testid="picker-count">{{ pickedCount }} {{ pickedCount === 1 ? 'leg' : 'legs' }} selected</span>
       <span v-if="legs.length" class="text-ink-muted" data-testid="picker-draft-count">{{ DRAFT_HOLDS_TEXT(legs.length) }}</span>
-      <button type="button" class="ml-auto text-accent underline" data-testid="picker-pick-chain" @click="view = 'ltp'">Pick from Option Chain</button>
+      <button type="button" class="ml-auto text-accent underline" data-testid="picker-pick-chain" @click="view = 'ltp'; showStrikes()">Pick from Option Chain</button>
       <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
       <button type="button" data-testid="picker-done" class="rounded bg-accent px-3 py-1 font-semibold text-white hover:bg-accent-hover disabled:opacity-50" :disabled="busy || !pickedCount" @click="done">Done</button>
       <span v-if="doneError" class="w-full text-error" data-testid="done-error">{{ doneError }}</span>

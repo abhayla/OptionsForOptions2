@@ -106,7 +106,7 @@ describe('ADR-330 (59): Exit all with a staged change', () => {
     expect(orderPosts()).toHaveLength(1)
     expect(orderPosts()[0].body.orders.every((o) => o.kind === 'exit')).toBe(true)
     expect(orderPosts()[0].body.orders).toHaveLength(OPEN_IDS.length)
-    expect(Object.keys(orderPosts()[0].body).sort()).toEqual(['orders'])
+    expect(Object.keys(orderPosts()[0].body).sort()).toEqual(['client_request_id', 'orders'])
     expect(t(w, 'staged-not-kept').text()).toMatch(/^The change waiting on .+ was discarded\.$/)
     expect(S(w).pendingOrders).toEqual([])
     expect(router.currentRoute.value.query.acted).toBeUndefined() // the discarded change's acted / basket / approach do not outlive it
@@ -141,7 +141,7 @@ describe('ADR-330 (59): Exit all with a staged change', () => {
     expect(orderPosts()).toHaveLength(1)
     expect(t(w, 'staged-not-kept').text()).toMatch(/^The change waiting on .+ was not sent; it is kept until the exit's outcome is known\.$/)
     answers['GET /paper/strategies/86'] = BOOK
-    await vi.advanceTimersByTimeAsync(6000) // the user comes back later; not-stored needs a read 5 s or more after the reply
+    await vi.advanceTimersByTimeAsync(121000) // the user comes back later; not-stored needs a read after the server's commit window (Lane Z review F1)
     await S(w).openPaperOrderbook()
     await flushPromises()
     expect(S(w).exitBlocked).toBe(false)

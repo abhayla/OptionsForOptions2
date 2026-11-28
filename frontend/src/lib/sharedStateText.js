@@ -137,3 +137,28 @@ export const CHAIN_ROWS_MISSING_TEXTS = Object.freeze({
 export const CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT = 'The underlying price is missing right now: option prices are shown, but the ATM strike, moneyness, IV and Greeks are not.'
 export const CHAIN_NO_STRIKES_MATCH_TEXT = 'No strikes match the filters.'
 export const CHAIN_EXPIRIES_UNREADABLE_TEXT = 'The expiries could not be read, so no chain is shown.'
+
+// pending owner read (28 Nov 2026), I-50 (REQ-078, ADR-330 (58)): the ONE loading line of a leg while the outcome is worked out; the same words
+// for every leg and for the opening card. Replaced by the real figure (the leg's price time) when the reply arrives.
+export const LEG_WORKING_TEXT = 'Working out the outcome...'
+
+// pending owner read (28 Nov 2026), Opus review F2 (ADR-016..019): shown when "Review and add" is pressed after an add got no answer
+export const ADD_UNKNOWN_TEXT = 'The last paper order got no answer and may be stored. It is not sent again until the Paper book has been read: open the strategy again to check.'
+
+// Lane Z review F1 (ADR-017, ADR-016..019): after an exit whose outcome is unknown the server may still commit it. The paper orders route has no
+// idempotency key and no overall deadline: a 30 s pool wait at each of two connection checkouts, then up to 30 s waiting for the strategy row lock
+// (Opus review of this fix, F2: 90 s before the inserts even run). A book read that shows the trade UNCHANGED decides "not stored" only when taken
+// longer than this after the client gave up (90 s worst case + 30 s margin). A browser timer is still a guess: the real fix is an idempotency key or a
+// server deadline (For the owner lane in RESULTS-lane-fb.md). A book that MOVED decides at once.
+export const UNKNOWN_EXIT_WINDOW_MS = 120000
+
+// UX-AF1 (27 Nov PC test, B-P3): during "Updating the numbers..." the closed-market banner read "Prices are from ... 15:35:41" (the index's last tick) and
+// 10 s later "... 15:30:00" (the server's close sentence). Two sources, two times. While an answer is out the banner keeps the last SETTLED one; with none
+// yet it says only "Market closed." (no time that may change). `fresh` = { at, text } from the current sources; `loading` = an outcome is out.
+export const closedBannerFor = (loading, fresh, settled) => {
+  if (!fresh) return null
+  if (loading) return settled ?? { at: null, text: null }
+  return fresh
+}
+/** The one existing "updating" wording (LegList, PlanWatch); the summary figures hold it while their leg set is not known (UX-B25). */
+export const UPDATING_NUMBERS_TEXT = 'Updating the numbers...'
