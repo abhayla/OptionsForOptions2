@@ -146,7 +146,8 @@ function noteServerTime(data) {
   openedAtMs.value = Date.now()
 }
 const ageNowMs = computed(() => props.nowMs || clockReadingMs(serverClock.value, openedAtMs.value))
-const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: ageNowMs.value, notLive: !!props.notLiveLine }))
+// FJ2-9 (O-P-01): a blocked exit says the page's one reason; FJ2-6 (ADR-330 (60), (63)): with the market closed the dialog says ONE thing, the server's closed line; "the server prices the exit when you confirm" would promise a confirm that cannot happen
+const ageLine = computed(() => (marketState.value === 'closed' || props.blocked ? { state: '', text: '' } : priceAgeLine(rows.value, { nowMs: ageNowMs.value, notLive: !!props.notLiveLine })))
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => paperDialogTitle(props.orders, props.kind))
@@ -211,7 +212,9 @@ async function askExitRisk() {
   // the WHOLE basket (exits and entries) is judged on the legs after all of it; rows not yet valid wait for the user's edit
   const basket = props.open && props.strategyId && rows.value.some((r) => r.kind === 'exit') ? rows.value : []
   if (!basket.length) { exitState.value = ''; exitWarning.value = ''; return }
-  if (basket.some((r) => !paperLotsOk(r.lots) || (r.kind !== 'exit' && !paperPriceOk(r.price)))) { exitState.value = 'checking'; exitWarning.value = ''; return }
+  // FJ2-4 (D-TG-2): a row not yet valid (an Add with no usable price: a leg moved to another expiry has no live or planned price) means no judgment can be asked yet;
+  // the row's own reason says what to fix and Confirm is off by `ready`, so the dialog says nothing here instead of "Checking..." for ever
+  if (basket.some((r) => !paperLotsOk(r.lots) || (r.kind !== 'exit' && !paperPriceOk(r.price)))) { exitState.value = ''; exitWarning.value = ''; return }
   exitState.value = 'checking'
   let state = 'unchecked'
   let line = ''
@@ -235,7 +238,10 @@ const armedUnchecked = ref(false)
 let armedSeq = 0
 async function askArmedExits() {
   const seq = ++armedSeq
-  const basket = props.open && props.strategyId && rows.value.length && ready.value ? rows.value : []
+  // FJ2-4: the stop lines depend on the legs EXITED, so rows with a valid size (and, for an Add, a valid price) are asked even while another Add still has no price;
+  // it is asked again, with every row, as soon as the user fixes that row
+  const valid = rows.value.filter((r) => paperLotsOk(r.lots) && (r.kind === 'exit' || paperPriceOk(r.price)))
+  const basket = props.open && props.strategyId && valid.length ? valid : []
   let lines = []
   let unchecked = false
   if (basket.length) {

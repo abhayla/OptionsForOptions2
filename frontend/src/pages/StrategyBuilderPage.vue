@@ -67,6 +67,7 @@ import { sameLegs } from '@/lib/legDoor'
 import { useLegDoor } from '@/composables/useLegDoor'
 import DuplicateLegDialog from '@/components/strategy/DuplicateLegDialog.vue'
 import { netKeyOf, useBuilderHold } from '@/stores/builderHold'
+import { STOP_MAY_BE_GONE_TEXT } from '@/lib/stopMoveText'
 import { useChainSelection } from '@/stores/chainSelection'
 import { unsavedCount, useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
@@ -783,13 +784,14 @@ const paperFills = computed(() => (paper.value ? paper.value.net.map(paperFillKe
 // re-reads say otherwise), a leg without a stop, or a failed read: no offer, nothing claimed.
 const stopOffer = ref(null) // { strategyId, legs: [{ index, label, contractId }] } | null
 const stopOfferLeg = ref(null) // the offered leg whose control is open
+const stopMayBeGone = ref(false) // F5 (FJ2 item 11): an unknown move answer with an armed leg stop read before it: the hedged sentence, until the first decided read of the stops
 let moveCheck = null // { id, stops, net }: what the page held before a Confirm whose answer is not yet known
 // Lane FJ item 2 (review F3, page half; ADR-330 (48)): the stops a move cancelled, from the order reply alone. `cancelledStops` = the reply's list ([] = none, null = absent);
 // `stopsReplyUnreadable` = the exit's 2xx reply was not an object. Both go to the dialog and, because a good exit closes it, are printed again in the stop-offer block.
 const cancelledStops = ref(null)
 const stopsReplyUnreadable = ref(false)
 const cancelledStopTexts = computed(() => cancelledStopLines(cancelledStops.value))
-const clearStopOffer = () => { stopOffer.value = null; stopOfferLeg.value = null; moveCheck = null; cancelledStops.value = null; stopsReplyUnreadable.value = false }
+const clearStopOffer = () => { stopOffer.value = null; stopOfferLeg.value = null; stopMayBeGone.value = false; moveCheck = null; cancelledStops.value = null; stopsReplyUnreadable.value = false }
 async function readStops(id) {
   try { return triggerListOf((await api.get(triggersPath(id))).data) } catch { return null } // a failed read is "unknown", never "empty"
 }
@@ -798,6 +800,7 @@ const ltpTextOf = (contractId) => { const p = paper.value?.book?.positions?.find
 async function offerAfterMove(check) {
   if (!check?.stops?.length || !paper.value || paper.value.id !== check.id) return
   const now = await readStops(check.id)
+  if (now) stopMayBeGone.value = false // the first decided read of the stops list (a failed read is not a decision)
   if (!now || !legStopsGone(check.stops, now).length) return
   const legs = paper.value.net.filter((l) => !check.net.includes(l.contract_id) && l.lots > 0)
     .map((l) => ({ index: l.contract_id, label: contractName(l), contractId: String(l.contract_id), ltpText: ltpTextOf(l.contract_id) }))
@@ -860,6 +863,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
       if (!sendsExit) saveAddLock(id, { at: Date.now(), out: false, before: addBeforeOf(book), adds: addsOf(orders, book), expected: lockBase.expected, key, sig: lockBase.sig, seen: book ? null : Date.now() }); holdAdd(id) // `at` is now when the client gave up; R5 N1 (a): this page now holds the add in memory
       exitRec.settle(EXIT_KEY, attempt, 'unknown')
       moveCheck = check // the re-reads decide, not this guess
+      if (check?.stops?.some((x) => x.kind === 'leg_stop' && x.state === 'armed')) stopMayBeGone.value = true // F5 text A: hedged, no offer yet
       if (orders.some((o) => o?.kind === 'exit')) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it (any post that carries an exit row, wherever the click came from)
         const gaveUp = Date.now()
         saveExitLock(id, { ...lockBase, at: gaveUp, out: false, seen: book ? null : gaveUp }) // F1 second path: the lock outlives this page instance (see lib/unknownLocks.js); `at` is now when the client gave up
@@ -1686,7 +1690,8 @@ const leaveGuard = useLeaveBuilder({
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <!-- #774 (ADR-330 (48), owner 27 Nov): the stop went with the moved leg; offer a new one on each new leg (pending owner read) -->
-        <div v-if="paper && (stopOffer || cancelledStopTexts.length || stopsReplyUnreadable)" class="mb-2 text-sm" data-testid="stop-offer">
+        <div v-if="paper && (stopOffer || cancelledStopTexts.length || stopsReplyUnreadable || stopMayBeGone)" class="mb-2 text-sm" data-testid="stop-offer">
+          <p v-if="stopMayBeGone" class="mb-1 font-medium text-warn" role="status" data-testid="stop-may-be-gone">{{ STOP_MAY_BE_GONE_TEXT }}</p>
           <ul v-if="cancelledStopTexts.length" class="mb-1 font-medium text-warn" role="status" data-testid="stop-offer-cancelled"><li v-for="line in cancelledStopTexts" :key="line">{{ line }}</li></ul>
           <p v-if="stopsReplyUnreadable" class="mb-1 font-medium text-warn" role="status" data-testid="stop-offer-reply-unreadable">{{ STOP_REPLY_UNREADABLE_TEXT }}</p>
           <div v-if="stopOffer" class="flex flex-wrap items-center gap-2">
