@@ -34,7 +34,7 @@ Deviation from the brief, stated plainly: this core test runs the worker in the 
 ## Issue 876 (the PC's T1-06 of 27 Nov, strategy 207): reproduced or not
 Test: `tests_app/test_no_pin_chain_fe3_1128.py::test_m_...`: worker as a separate OS process on a real PostgreSQL database; no style pin; the plan (whole system rule list, "Loss reaches 5 % of max loss") accepted before the loss begins; PATH-94 (loss about 10 %, twice the level, from 11:41) held 14 minutes. **Not reproduced**: the alert row is there at the first check after the loss and is still exactly one open row 14 minutes later, no "has no alert preset" line in the worker log, no order placed.
 - On this head the "no pin" path cannot make the style step raise: `alert_presets.style_for(kind, days, None)` raises only for an unknown kind or days that are absent or past; with a known kind and days it answers the automatic style. Lane J3's "unknown kind" handling (`UNKNOWN_KIND_TIMING_STYLE`) is in this head. On the Friday code (206a9f0) the same unknown-kind input raised `StyleRefused`, paused the trade `CHECK_FAILED` and returned before any rule was evaluated, but that path logs "has no alert preset" and a "check skipped: no_preset" line each cycle, and the PC saw 0 skipped lines, so it does not match the stored facts.
-- Not done in this push: running test m on the Friday code to say whether 206a9f0 fails it (listed under Not done). Until that run, the cause of the PC's 22 quiet minutes is **unknown**; this is a negative result on this head, not a proof that the PC's code was fine.
+- Running test m on the Friday code (206a9f0): **not possible as such**. At 206a9f0 the chain harness does not exist (no `_worker_chain.py`, no PATH scenario files; with the harness copied in, the seed refuses: `no scenario file frame-000.json`), so porting it would test the port, not the Friday code. By reading: the only no-pin path that stops rule evaluation on 206a9f0 is the unknown-kind / absent-days `StyleRefused` (paused `CHECK_FAILED`, return before `evaluate`), fixed by Lane J3's `UNKNOWN_KIND_TIMING_STYLE` (in this head); it logs a warning and a skipped line each cycle, which the PC saw none of. The cause of the PC's 22 quiet minutes is **unknown**; this is a negative result on this head, not a proof that the PC's code was fine. Next evidence to ask the PC for: the worker log lines `has no alert preset` / `check skipped` for strategy 207, and the stored plan body of strategy 207 (which rules are on).
 
 ## Evidence
 | Claim | Evidence (command run this turn + result line) |
@@ -82,7 +82,7 @@ None. No two of the owner's rules clashed.
 ## Not done
 - Opus review of items 1 to 4 (brief: required): not yet run. This push is before it; the next push carries its findings.
 - Item 1's core as a separate OS process (see Core / Proof).
-- Issue 876: the same test on the Friday code (206a9f0) to say whether it failed there, and the cause in one sentence. Not run.
+- Issue 876: the same test on the Friday code (206a9f0): impossible without porting the harness (see Issue 876); cause unknown.
 - Chain cases b to g, i, j re-run; `tests_app/test_worker_attaches_confirming_check.py`.
 - `tests_app/test_d36_adjustment_counts.py` (FC3's PC step, unchanged by this lane).
 
