@@ -68,11 +68,11 @@
       <!-- I-18 (ADR-017): while the post runs; the line is about sending, never about done ("Exit placed on paper" stays the only done sentence) -->
       <p v-if="busy && state !== 'placed' && rows.some((r) => r.kind === 'exit')" class="text-sm text-ink-muted" role="status" data-testid="paper-placing">{{ EXIT_PLACING_TEXT }}</p>
       <p v-else-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
-      <p v-else-if="marketLine" class="text-sm text-red-700" role="alert" data-testid="paper-market-closed">{{ marketLine }}</p>
       <p v-else-if="state === 'unknown' || lockWindowOver" class="text-sm text-red-700" role="alert" data-testid="paper-unknown" :data-window-over="lockWindowOver ? 'yes' : 'no'">
         {{ lockWindowOver ? EXIT_UNKNOWN_AFTER_WINDOW_TEXT : PAPER_UNKNOWN_TEXT }}
         <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
       </p>
+      <p v-else-if="marketLine" class="text-sm text-red-700" role="alert" data-testid="paper-market-closed">{{ marketLine }}</p>
       <p v-else-if="error" class="text-sm text-red-700" role="alert" data-testid="paper-error">{{ error }}</p>
       <!-- Lane FA2 item 1 (ADR-330 (48)): the stops the move cancelled, told from the order reply alone (pending owner read) -->
       <ul v-if="stopLines.length" class="mt-1 text-sm font-medium text-warn" role="status" data-testid="paper-cancelled-stops">
@@ -176,14 +176,14 @@ async function askMarket(background = false) {
     if (seq !== marketSeq) return
     if (data?.closed === false) { marketState.value = 'open'; marketSentence.value = '' }
     else if (data?.closed === true && typeof data.sentence === 'string' && data.sentence) { marketState.value = 'closed'; marketSentence.value = data.sentence }
-    else if (!background) marketState.value = 'unreadable' // ambiguous or without its sentence: never a guess
-  } catch { if (seq === marketSeq && !background) marketState.value = 'unreadable' }
+    else if (!background || marketState.value === 'checking') marketState.value = 'unreadable' // ambiguous or without its sentence: never a guess
+  } catch { if (seq === marketSeq && (!background || marketState.value === 'checking')) marketState.value = 'unreadable' }
 }
 let marketTimer = null
 const stopMarketTimer = () => { clearInterval(marketTimer); marketTimer = null }
 watch(() => props.open && rows.value.some((r) => r.kind === 'exit'), (on) => {
   stopMarketTimer()
-  if (on) marketTimer = setInterval(() => askMarket(true), MARKET_REASK_MS)
+  if (on) marketTimer = setInterval(() => { openedAtMs.value = Date.now(); askMarket(true) }, MARKET_REASK_MS) // the age line is told against the latest tick
 }, { immediate: true })
 onBeforeUnmount(stopMarketTimer)
 const exitWarning = ref('')
@@ -277,7 +277,7 @@ async function confirm() {
   }
   // third argument: the not-live line was shown AND ticked (ADR-330 (28)); false otherwise
   const ticked = !!props.notLiveLine && notLiveAck.value === true
-  // FA2 item 3 (ADR-017): ONE request key per Confirm (a UUID); the page sends it as `client_request_id` and re-sends only this same key for this Confirm
+  // FA2 item 3 (ADR-017): ONE request key per Confirm (a UUID); the page is to send it as `client_request_id` and re-send only this same key for this Confirm (no page forwards it yet: RESULTS, For the owner lane 2)
   const requestKey = newRequestKey()
   if (heldActive.value) emit('confirm', rows.value.map(orderOf), heldBlock(heldAt.value, heldBroker.value), ticked, requestKey)
   else emit('confirm', rows.value.map(orderOf), null, ticked, requestKey)

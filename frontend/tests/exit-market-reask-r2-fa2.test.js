@@ -57,9 +57,7 @@ describe('#872: the open dialog asks the market state again', () => {
     queue = [open(), open(), open()]
     const w = mountIt(); await flushPromises()
     await w.setProps({ open: false }); await flushPromises()
-    const n = marketCalls
-    await tick(60000)
-    expect(marketCalls).toBe(n)
+    expect(vi.getTimerCount()).toBe(0) // review S2: the interval itself is gone, not just its calls
     w.unmount()
   })
 })
@@ -74,6 +72,20 @@ describe('#873: guards with a test that fails when the guard is removed', () => 
     late({ data: { closed: true, sentence: SENT } }); await flushPromises()
     expect(btnOff(w)).toBe(false)
     expect(w.find('[data-testid="paper-market-closed"]').exists()).toBe(false)
+    w.unmount()
+  })
+  it('review S1: unknown outcome + locked, a timed answer "closed" keeps the unknown line and its Orderbook button', async () => {
+    queue = [open(), closed()]
+    const w = mountIt({ state: 'unknown', locked: true }); await flushPromises()
+    await tick()
+    expect(w.find('[data-testid="paper-unknown"]').exists()).toBe(true)
+    expect(w.find('[data-testid="paper-open-orderbook"]').exists()).toBe(true)
+    w.unmount()
+  })
+  it('review N1: a timed ask that fails while the first ask hangs turns Confirm off with the unreadable line', async () => {
+    queue = [() => new Promise(() => {}), fail()]
+    const w = mountIt(); await tick()
+    expect(w.get('[data-testid="paper-market-closed"]').text()).toBe('The market status could not be read. Try again in a moment.')
     w.unmount()
   })
   it('re-ask when the orders change: a new list is asked again at once', async () => {

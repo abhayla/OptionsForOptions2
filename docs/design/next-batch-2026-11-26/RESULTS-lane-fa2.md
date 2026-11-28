@@ -1,4 +1,4 @@
-STATUS 05:40 | 1 F3 dialog half Passed in cloud (paper-cancelled-stops-r2-fa2, 5) | 2 not-live tick Passed in cloud (paper-not-live-tick-r2-fa2, 2) | 3 wording + request key Passed in cloud (paper-exit-request-key-r2-fa2, 2) | 4 leg cost Passed in cloud (paper-stops-leg-cost-r2-fa2, 1) | 5 D2 Passed in cloud (one-date-formatter-d57.r2-1128, 3) | 6 D-12 Passed in cloud (paper-unchecked-confirm-r2-fa2, 2) | 7 #870 Passed in cloud (exit-lock-window-r2-fa2, 3), #872 Passed in cloud (exit-market-reask-r2-fa2, 6), #873 Passed in cloud (3 guards, mutation-checked), #874 already Passed in FA (exit-closed-entry-points-r2-fa, 3) | 8 header Fixed | Opus review: see "Review" | browser check: Not run (see Not done) | next push: at review end | blocker: none
+STATUS 06:05 | 1 F3 dialog half Passed in cloud (paper-cancelled-stops-r2-fa2, 5) | 2 not-live tick Passed in cloud (paper-not-live-tick-r2-fa2, 2) | 3 wording + request key Passed in cloud (paper-exit-request-key-r2-fa2, 2) | 4 leg cost Passed in cloud (paper-stops-leg-cost-r2-fa2, 1) | 5 D2 Passed in cloud (one-date-formatter-d57.r2-1128, 3) | 6 D-12 Passed in cloud (paper-unchecked-confirm-r2-fa2, 2) | 7 #870 Passed in cloud (exit-lock-window-r2-fa2, 3), #872 Passed in cloud (exit-market-reask-r2-fa2, 6), #873 Passed in cloud (3 guards, mutation-checked), #874 already Passed in FA (exit-closed-entry-points-r2-fa, 3) | 8 header Fixed | Opus review REVISE then fixed (see Review) | browser check: Not run (see Not done) | next push: now (first push) | blocker: none
 
 # Lane FA2: Exit dialog and stops panel, second batch
 Branch fix/r2-exit-stops-2-1128 from origin/fix/r2-exit-stops-1128 (5884a9b). Paper only. Spec basis: ADR-330 (48), (49), (56), (58), (60); ADR-017; ADR-212; REQ-049.
@@ -32,7 +32,7 @@ Every item: failing test seen red first, then the fix, then green (counts below 
 4. #870: the lock is never cleared by the dialog. After 120 s of `locked` the dialog's unknown-outcome line (`paper-unknown`) says the 120-second sentence instead of the first one, with the same Orderbook button (also when the page's `state` is no longer 'unknown' but the lock stands). Basis: ADR-017 (no unlock on a guess).
 5. D-12: when the could-not-check line stands beside a greyed Confirm it ends before "You can still confirm." (a short form). Basis: ADR-330 (60).
 6. The request key is a UUID from `crypto.randomUUID()` (a random fallback where it is missing). Basis: the brief, ADR-017.
-7. Leg cost: "Costs now <price as the server sent it>" or "Costs now: not priced" (null, empty or absent); the browser forms no money (ADR-008).
+7. Leg cost: "Costs now <price as the server sent it>" or "Costs now: not priced" (the leg's `ltpText` is null or empty); a parent that passes no `ltpText` field gets no line at all (review S4: otherwise every live leg would read "not priced" until the parent change lands); the browser forms no money (ADR-008).
 
 ## New wording for the owner to read
 - "The stop on <leg> (level <level>) was removed with the move; set a new one on the new leg." (the level part is dropped when the reply has none)
@@ -58,14 +58,31 @@ Live market:
 6. Make an exit whose answer times out (FD2's test mode): Confirm stays off; after two minutes the dialog says the outcome is not known and offers the Orderbook.
 
 ## Review
-Pending: one Opus review of the whole diff against origin/integration/weekend-1127 (see below once it returns).
+Opus (reviewer agent, whole diff against origin/integration/weekend-1127, includes FA's I-17, I-18, I-29): REVISE, no blocker. Fixed in this push:
+| Finding | Result |
+|---|---|
+| S1 the timed re-ask ("closed") hid the unknown-outcome line and its Orderbook button | Fixed: the unknown/locked line sits above the market line. Test: exit-market-reask-r2-fa2 "review S1" |
+| S2 test "closing stops the asking" could not fail | Fixed: asserts `vi.getTimerCount()` is 0 |
+| S3 test "a new lock starts a new window" could not fail | Fixed: advances the second 120 s and expects the sentence |
+| S4 "Costs now: not priced" on every live leg (parents pass no price) | Fixed: no line unless the parent passes the field (Decided 7) |
+| S5 age line stale while open | Fixed: the 15 s tick refreshes the age clock |
+| S6 request key made and dropped; comment said a page sends it | Comment corrected; page half is "For the owner lane" 2; to file |
+| N1 stuck grey, no line, when a timed ask fails while the first ask hangs | Fixed: it turns the market state unreadable (line shown). Test "review N1" |
+| N2 tick holds across a new order list in one opening | Not changed (Decided 2; entry dialogs only) |
+| N3 stale comment in PaperStops (last close) and "last close shown" in the leg-stop-only offer with no close | Not changed; listed |
+| N4 "no second exit is sent" holds per page, not per strategy (each page has its own exit record) | Not changed; to file |
+Outside the diff (to file): the builder's `decideUnknownExit` (StrategyBuilderPage.vue:793, `EARLY_MS = 5000`) says "not stored, you can try again" and unlocks after 5 s when a re-read shows the book unchanged. If the server's commit window really is 120 s that unlock is a guess (ADR-017) and the 120 s figure needs checking with Lane FD2. A new press carries a new key, so a forwarded key would not stop that duplicate either.
+Not covered by the review: backend routes, SaveDraftBar held-basket path with the key, I-18 scroll, AlertsPage, any browser walk-through. A quote under 1 s in the future reads "0 seconds ago" (priceAgeLine, not changed).
 
 ## Models and minutes
 | task | model | minutes |
 |---|---|---|
 | items 1 to 8, tests, mutation checks | Sonnet (main) | about 45 |
-| review of the whole diff | Opus (reviewer agent) | pending |
+| review of the whole diff | Opus (reviewer agent) | 7 |
 
 ## To file as deferred issues
+- Builder 5 s unlock after an unknown outcome vs a 120 s commit window (ADR-017); confirm the window with FD2.
+- A request key must also cover a new press after an unknown outcome (server-side idempotency design).
+- Exit record is per page, not per strategy (N4).
 - Positions Exit ticks vanish when prices pause (UX-A01, PaperStrategies.vue).
 - Page halves of F3, `client_request_id` and the leg cost (see "For the owner lane" 1 to 3).

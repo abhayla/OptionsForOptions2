@@ -39,6 +39,8 @@ describe('#870', () => {
     expect(w.find('[data-testid="paper-unknown"]').exists()).toBe(false)
     await w.setProps({ locked: true, state: 'unknown' }); await adv(60000)
     expect(w.get('[data-testid="paper-unknown"]').text()).not.toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
+    await adv(60000) // review S3: the new lock's own 120 s
+    expect(w.get('[data-testid="paper-unknown"]').text()).toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
     w.unmount()
   })
 })
