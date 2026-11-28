@@ -61,6 +61,12 @@ The file held four `it` cases (the coordinator counted three): each is covered b
 - "No target is set for this trade." (PlanEntry)
 - Plan block lines: "Stop: 15.38 % (Rs 400.00)", "Target: 50 % (Rs 1950.00)", "Stop (Rs): Rs 400.00" (the labels are the server's plan-sheet labels; the figures the server's)
 
+## Found, not assigned (owner's order of 28 Nov 23:35: written here, not fixed, not handed on)
+- frontend/src/components/strategy/SaveDraftBar.vue:379-387, 400-402 (Lane F1's file): the save bar's add-lock poll goes through EVERY id of the add-lock store, including `execute:<id>`, and reads `/paper/strategies/execute:1` every 5 s (a 422 each time; the timer never stops while any id exists). It cannot release a lock early. Evidence: Opus review finding 8 of item 4 (read from the code, not run).
+- frontend/src/lib/tracking.js:95 `paperPostOutcome`: a 585 answer ("A basket was already prepared for this press", 409, templates.py:1097) is classed REFUSED, so the Execute page frees its lock and key on it; the server's open-plan refusal holds. Evidence: Opus review finding 9, run: unknown -> release -> repeat gets 585 -> third press sends a new key.
+- backend/ofo_app/routes/plan_watch.py:164-169: `lim.state == "not_checked"` rows carry no `fires_at` though `_fires_at` is known (W-30, Positions Plan watch row). Routed by the coordinator to Lane B3 already.
+- Without a monotonic clock (`performance.now` absent) the wall clock decides the 130 s rule (documented fallback, unknownLocks.js:19): Opus finding 11.
+
 ## Not done
 - Item 5 (server wording). I-113 is Lane F3's.
 
