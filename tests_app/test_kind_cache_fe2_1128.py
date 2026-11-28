@@ -56,14 +56,10 @@ async def test_a_record_of_a_past_expiry_goes_at_the_next_rebuild(scn):  # noqa:
     assert ("NIFTY", NEAR) in w.kinds
 
 
-def test_the_lister_passes_the_record_only_to_a_reader_that_accepts_it():
+def test_the_lister_passes_the_record_only_when_the_reader_takes_it():
     kinds = {("NIFTY", NEAR): "weekly"}
-
-    async def old_reader(strategy_id, rates, db=None):
-        return None
-
-    async def new_reader(strategy_id, rates, db=None, kinds=None):
-        return None
-    assert background.reader_kinds_kwargs(old_reader, kinds) == {}
-    assert background.reader_kinds_kwargs(new_reader, kinds) == {"kinds": kinds}
-    assert background.reader_kinds_kwargs(new_reader, None) == {}
+    assert background.READER_TAKES_KINDS is False  # until the owner lane's reader half lands (RESULTS-lane-fe2)
+    assert background.reader_kinds_kwargs(kinds) == {}
+    assert background.reader_kinds_kwargs(kinds, takes=False) == {}
+    assert background.reader_kinds_kwargs(kinds, takes=True) == {"kinds": kinds}
+    assert background.reader_kinds_kwargs(None, takes=True) == {}

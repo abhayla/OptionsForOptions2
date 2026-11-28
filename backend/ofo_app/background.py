@@ -117,7 +117,6 @@ import dataclasses
 import datetime
 import enum
 import functools
-import inspect
 import logging
 import sys
 from collections.abc import Awaitable, Callable, Coroutine, Iterable, Mapping
@@ -2158,13 +2157,15 @@ def listable(marker: str | None, mode: str | None) -> bool:
     return scenario_mode.in_scope(marker, mode)
 
 
-def reader_kinds_kwargs(reader: Callable[..., Any], kinds: Mapping | None) -> dict[str, Any]:
-    """FE2 item 7 (#864): the worker's record of expiry kinds as the reader's keyword, only when the reader accepts
-    ``kinds`` (``adjustment_readers.read_tracked`` takes it once its owner lane has made the change: RESULTS-lane-fe2);
-    a reader without it is called as before, so the list never fails on a missing keyword."""
-    if kinds is None or "kinds" not in inspect.signature(reader).parameters:
-        return {}
-    return {"kinds": kinds}
+#: FE2 item 7 (#864): True once ``adjustment_readers.read_tracked`` takes the keyword ``kinds`` (the owner lane's half:
+#: RESULTS-lane-fe2 "For the owner lane" 2). Until then the lister calls the reader exactly as before: a keyword the
+#: reader does not know would fail every strategy's read. (No reflection on the reader: the door-names guard forbids)
+READER_TAKES_KINDS: Final = False
+
+
+def reader_kinds_kwargs(kinds: Mapping | None, takes: bool = READER_TAKES_KINDS) -> dict[str, Any]:
+    """FE2 item 7 (#864): the worker's record of expiry kinds as the reader's keyword, only when the reader takes it."""
+    return {"kinds": kinds} if takes and kinds is not None else {}
 
 
 async def owner_lister(provider: Any, gate: Any = None,
@@ -2205,7 +2206,7 @@ async def owner_lister(provider: Any, gate: Any = None,
             continue  # IC e2e decision 4: a live worker never checks a scenario strategy, and the reverse
         try:
             async with held(gate, GATE_REBUILD):  # one strategy's reads per hold
-                tracked = await read_tracked(s.id, rates, **reader_kinds_kwargs(read_tracked, kinds))
+                tracked = await read_tracked(s.id, rates, **reader_kinds_kwargs(kinds))
                 if tracked is None:  # nothing traded: a definite answer, not a failed read (those raise below)
                     raise _NothingTraded  # handled outside the hold (the lapse takes its own)
                 stype = check.entry_type(tracked, provider.instrument_master())  # D-04
