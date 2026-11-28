@@ -203,6 +203,7 @@ class Publisher:
         self._kept: dict[int, Entry] = {}  # FE3 item 4: restored paused entries no check has answered for yet
         self._restored_at: datetime.datetime | None = None
         self.restore_pending = False  # FE3 item 3 (F6): the restart's empty snapshot was not written; tried again
+        self._read_pending = False  # ... or the old snapshot could not be read
         self._written: str | None = None
         self._written_at: datetime.datetime | None = None
 
@@ -216,9 +217,11 @@ class Publisher:
             return False
         try:
             raw = await self._client.get(key())
-        except Exception as exc:  # noqa: BLE001 - nothing to keep; the first cycle writes as before
+        except Exception as exc:  # noqa: BLE001 - nothing known to keep yet; tried again (review F6)
             log.warning("background: reading the old monitoring state failed: %s", type(exc).__name__)
+            self.restore_pending, self._read_pending = True, True
             return False
+        self._read_pending = False
         self._previous = _entries_of(raw, now)
         self._kept, self._restored_at = dict(self._previous), now
         return await self._write_restart_snapshot(now)
@@ -229,6 +232,8 @@ class Publisher:
         Nothing is read again: the kept starts are the ones the restart read. Never raises."""
         if not self.restore_pending or self._client is None:
             return False
+        if self._read_pending:  # the old snapshot could not be READ at the start: read it (and write) again
+            return await self.restore(now)
         return await self._write_restart_snapshot(now)
 
     async def _write_restart_snapshot(self, now: datetime.datetime) -> bool:
