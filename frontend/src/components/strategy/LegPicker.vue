@@ -1010,7 +1010,7 @@ v-for="l in legs" :key="l.id" class="flex flex-wrap items-center gap-2" data-tes
     >
       <span class="font-medium" data-testid="picker-count">{{ pickedCount }} {{ pickedCount === 1 ? 'leg' : 'legs' }} selected</span>
       <span v-if="legs.length" class="text-ink-muted" data-testid="picker-draft-count">{{ DRAFT_HOLDS_TEXT(legs.length) }}</span>
-      <button type="button" class="ml-auto text-accent underline" data-testid="picker-pick-chain" @click="view = 'ltp'">Pick from Option Chain</button>
+      <button type="button" class="ml-auto text-accent underline" data-testid="picker-pick-chain" @click="view = 'ltp'; showStrikes()">Pick from Option Chain</button>
       <button type="button" data-testid="picker-clear-all" class="rounded border border-line px-3 py-1" :disabled="!pickedCount" @click="clearAll">Clear All</button>
       <button type="button" data-testid="picker-done" class="rounded bg-accent px-3 py-1 font-semibold text-white hover:bg-accent-hover disabled:opacity-50" :disabled="busy || !pickedCount" @click="done">Done</button>
       <span v-if="doneError" class="w-full text-error" data-testid="done-error">{{ doneError }}</span>

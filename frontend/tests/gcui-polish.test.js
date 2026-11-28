@@ -87,7 +87,7 @@ describe('D-A29: summary pills carry the percent inline at a small height', () =
       expect(p.find(`[data-testid="${pct}"]`).exists()).toBe(true)
       const cls = p.classes().join(' ')
       expect(cls).toContain('flex-col') // GC-UI D-PX item 2: the percent is a smaller second line inside the pill
-      expect(cls).toContain('whitespace-nowrap')
+      expect(cls).toContain('max-w-full') // Lane FB2, D-10 (1366x768): the pill no longer forces one line; a long server text ("No fixed maximum") wraps inside block 1 instead of running over Intrinsic value
       expect(cls).not.toMatch(/(^| )flex-wrap( |$)/)
     }
     expect(t(w, 'max-profit-percent').text()).toBe('9.0% of margin needed')

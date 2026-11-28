@@ -200,3 +200,29 @@ describe('item 2 on the page: no outcome request until the entry is in', () => {
     expect(calls.find((c) => c.url === '/strategies/outcome').body.legs[0]).toMatchObject({ planned_entry: '104.65' })
   })
 })
+
+// Lane FB2, I-71 (Lane TD defect D-TD-1): "Pick from Option Chain" only set the column view; from Straddles, Strangles or Futures it did not open the Strikes tab.
+describe('I-71: "Pick from Option Chain" opens the Strikes tab from every tab', () => {
+  // the footer is not shown on the Futures tab (v-if tab !== 'futures')
+  for (const from of ['straddles', 'strangles']) {
+    it(`from ${from}: the Strikes tab is selected`, async () => {
+      const w = mountPicker()
+      await flushPromises()
+      await t(w, `tab-${from}`).trigger('click')
+      await flushPromises()
+      expect(t(w, `tab-${from}`).attributes('aria-selected')).toBe('true')
+      await t(w, 'picker-pick-chain').trigger('click')
+      await flushPromises()
+      expect(t(w, 'tab-strikes').attributes('aria-selected')).toBe('true')
+      expect(t(w, `tab-${from}`).attributes('aria-selected')).toBe('false')
+    })
+  }
+  it('on the Strikes tab it still brings the LTP columns back (UX-27)', async () => {
+    const w = mountPicker()
+    await flushPromises()
+    await t(w, 'picker-view-oi').trigger('click')
+    await t(w, 'picker-pick-chain').trigger('click')
+    const on = t(w, 'picker-view').findAll('[role="radio"]').filter((b) => b.attributes('aria-checked') === 'true').map((b) => b.text())
+    expect(on).toEqual(['LTP'])
+  })
+})
