@@ -79,3 +79,28 @@ describe('S-14 Live card links', () => {
     expect(plan.get('[data-testid="live-legs"] thead').text()).not.toContain('Entry price')
   })
 })
+
+// Lane FC2 (R2, 28 Nov) UX-A05 / ADR-330 (54): a running trade's Live card has the same Plan door as the Positions row (the ONE
+// plan sheet, PlanDoor.vue); real and paper alike; none on a draft, a completed trade or a card that could not load.
+describe('UX-A05 Plan door on the Live card', () => {
+  it('a running paper card shows the Plan button; pressing it asks for the plan and a failed read says so (fails closed)', async () => {
+    const w = await mountCard(strat(168, 'Running'))
+    expect(w.get('[data-testid="plan-open-paper-168"]').text()).toBe('Plan')
+    await w.get('[data-testid="plan-open-paper-168"]').trigger('click')
+    await flushPromises()
+    expect(w.find('[data-testid="plan-open-failed-paper-168"]').exists()).toBe(true) // the mocked read answers 404: nothing opens
+  })
+  it('a running REAL card shows the same door', async () => {
+    const w = await mountCard({ ...strat(169, 'Running'), position_kind: 'real', position_kind_text: 'Real trade' })
+    expect(w.get('[data-testid="plan-open-real-169"]').text()).toBe('Plan')
+  })
+  it.each([['Draft', 171], ['Completed', 170]])('a %s card has no Plan door', async (word, id) => {
+    const w = await mountCard(strat(id, word))
+    expect(w.find(`[data-testid^="plan-open-"]`).exists()).toBe(false)
+  })
+  it('a card in the error state has no Plan door', async () => {
+    failLegs = true
+    const w = await mountCard(strat(168, 'Running'), false)
+    expect(w.find('[data-testid^="plan-open-"]').exists()).toBe(false)
+  })
+})

@@ -6,7 +6,7 @@
   <section ref="root" class="p-4" data-testid="opportunities-page">
     <PageHeader parent="Positions" title="Adjustment opportunities" />
     <p v-if="state === 'loading'" class="mt-2 text-sm text-ink-muted" data-testid="opp-loading">Loading.</p>
-    <ErrorMessage v-else-if="state === 'error'" :parts="errorParts" prefix="opp-error" data-testid="opp-error" />
+    <ListLoadFailed v-else-if="state === 'error'" :parts="errorParts" prefix="opp-error" data-testid="opp-error" @retry="load" />
     <template v-else>
       <p v-if="reply.totals" class="mt-2 text-xs text-ink-muted" data-testid="opp-totals">{{ reply.totals.text }}</p>
       <ul class="mt-2 flex flex-wrap gap-2" data-testid="opp-counts">
@@ -31,7 +31,11 @@
               <td class="py-1.5" data-testid="opp-strategy">{{ plainName(g.strategy_name) }}</td>
               <td class="py-1.5" data-testid="opp-what">
                 <p v-if="g.summary" class="font-medium" data-testid="opp-summary">{{ g.summary }}</p>
-                <p v-for="r in g.records" :key="r.id" data-testid="opp-condition">{{ r.condition }}</p>
+                <template v-for="r in g.records" :key="r.id">
+                  <p data-testid="opp-condition">{{ r.condition }}</p>
+                  <!-- I-61: the worker's stored reading with its time (one source for every reader); open records only -->
+                  <p v-if="r.can_act" class="text-xs text-ink-muted tabular-nums" data-testid="opp-now">{{ nowText(r) }}</p>
+                </template>
               </td>
               <td class="py-1.5" data-testid="opp-source">{{ g.label }}</td>
               <td class="py-1.5">
@@ -84,12 +88,13 @@
 
 <script setup>
 import { computed, inject, nextTick, onMounted, reactive, ref } from 'vue'
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import { RouterLink, routeLocationKey } from 'vue-router'
 import ErrorMessage from '@/components/common/ErrorMessage.vue'
 import PageHeader from '@/components/common/PageHeader.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import { compareAllUrl } from '@/lib/adjustDrawer'
-import { istTime } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, istTime } from '@/lib/displayFormat'
 import { plainName } from '@/lib/saveDraft'
 import { OPPORTUNITY_PAGE_SIZE, rowsRangeText } from '@/lib/sharedStateText'
 
@@ -123,6 +128,7 @@ const picked = inject(routeLocationKey, null)?.query?.strategy ?? null
 const linkOf = (g) => compareAllUrl(g.strategy_id, g.records.filter((r) => r.can_act).map((r) => r.id))
 
 async function load() {
+  state.value = 'loading'
   try {
     reply.value = (await props.client.get('/adjustment-opportunities')).data
     pageAt.value = 0 // the list was replaced: start at its first page, never on a page that may not exist now
@@ -160,5 +166,13 @@ async function dismiss(g) {
   }
   busy[g.group] = false
   if (done) await load() // the list shows the truth: dismissed rows read "You dismissed this"
+}
+
+// I-61 (ADR-330 (13), (58); new sentences, pending owner read): "Now <value> as of <time> IST" from the record's stored reading (now_value, now_as_of);
+// a value without a readable time, or a time without a value, is not a reading.
+const NOW_NOT_READ_TEXT = 'Now: not read yet'
+function nowText(r) {
+  const at = typeof r.now_as_of === 'string' ? istTime(r.now_as_of) : TIME_UNAVAILABLE
+  return typeof r.now_value === 'string' && r.now_value && at !== TIME_UNAVAILABLE ? `Now ${r.now_value} as of ${at}` : NOW_NOT_READ_TEXT
 }
 </script>

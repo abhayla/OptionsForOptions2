@@ -35,7 +35,8 @@
       </span>
     </header>
 
-    <p v-if="refusal" class="mt-3 rounded-lg border border-error bg-error-soft px-3 py-2 text-sm text-error" role="alert" data-testid="pb-refusal">{{ refusal }}</p>
+    <LoadFailed v-if="loadFailed && !refusal" class="mt-3" :text="LIST_FAILED_TEXT" prefix="pb-load" @retry="start" />
+    <p v-if="refusal" class="mt-3 rounded-lg border border-error bg-error-soft px-3 py-2 text-sm text-error" role="alert" data-testid="pb-refusal">{{ refusal }}<button v-if="loadFailed" type="button" class="ml-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium text-ink" data-testid="pb-load-retry" @click="start">Retry</button></p>
     <p v-if="notice" class="mt-3 rounded-lg border border-line bg-surface-muted px-3 py-2 text-sm" data-testid="pb-notice">{{ notice }}</p>
 
     <div v-if="current && work && tradeId" class="mt-3 flex flex-wrap items-end gap-2">
@@ -170,6 +171,8 @@
 
 <script setup>
 import { computed, onMounted, ref } from 'vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
+import { LIST_FAILED_TEXT } from '@/lib/listFailed'
 import { useRoute } from 'vue-router'
 import api from '@/services/api'
 import PageHeader from '@/components/common/PageHeader.vue'
@@ -219,6 +222,14 @@ const approaches = computed(() => {
 })
 const allApproaches = computed(() => [...approaches.value.applicable, ...approaches.value.off_in_playbook].sort())
 const fail = (err) => { refusal.value = refusalText(err) ?? err?.message ?? null }
+// D-TD-2 (R2 FC2, board I-86): a failed LOAD (types, list, labels) says the one shared sentence with a Retry when the server sent no text of
+// its own; with the server's text its line stays and Retry sits beside it. A refused SAVE or DELETE is not a load and keeps its line.
+const loadFailed = ref(false)
+const failLoad = (err) => {
+  loadFailed.value = true
+  fail(err)
+  if (refusalText(err) == null) refusal.value = null
+}
 // plan-save-1127: this trade's rules save with no catalogue answer (timeout, dropped connection) ends on the one sentence; it is never re-sent here
 
 // the select's own value first, then the read: the handler never reads a value v-model has not written yet
@@ -243,7 +254,7 @@ async function loadTypes() {
     types.value = res.data.types
     if (!typeKey.value && types.value.length) typeKey.value = types.value[0].key
     await loadList()
-  } catch (err) { fail(err) }
+  } catch (err) { failLoad(err) }
 }
 
 async function loadList(keepId = null) {
@@ -257,7 +268,7 @@ async function loadList(keepId = null) {
     pickedId.value = keepId ?? playbooks.value.find((p) => p.active)?.id ?? playbooks.value[0]?.id ?? null
     if (pickedId.value != null) await openPicked()
     else { current.value = null; work.value = null; saved.value = null }
-  } catch (err) { fail(err) }
+  } catch (err) { failLoad(err) }
 }
 
 function show(pb) {
@@ -313,7 +324,7 @@ const saveTrade = async () => {
 const remove = () => { confirmingDelete.value = false; return act(() => api.delete(`/playbooks/${current.value.id}`), async (out) => { await loadList(); notice.value = out.message ? said(out.message) : null }) }
 
 async function loadLabels() {
-  try { labels.value = labelMaps((await api.get('/playbooks/labels')).data) } catch (err) { fail(err) }
+  try { labels.value = labelMaps((await api.get('/playbooks/labels')).data) } catch (err) { failLoad(err) }
 }
 
 /** ?playbook=<id> (the plan sheet's Customise triggers link): open that playbook, on its own type's list. */
@@ -342,7 +353,9 @@ async function openTrade() {
   }
 }
 
-onMounted(async () => {
+async function start() {
+  loadFailed.value = false
+  refusal.value = null
   await loadLabels()
   if (tradeId) { await openTrade(); return }
   const linked = route?.query?.playbook
@@ -350,7 +363,8 @@ onMounted(async () => {
     try { types.value = (await api.get('/playbooks/types')).data.types } catch (err) { fail(err); return }
     await openFromLink(linked)
   } else await loadTypes()
-})
+}
+onMounted(start)
 </script>
 
 <style scoped>

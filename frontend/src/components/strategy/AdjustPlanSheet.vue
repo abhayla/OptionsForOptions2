@@ -33,6 +33,8 @@
           <label class="block text-sm font-medium">{{ labels.stop }}
             <input v-model="form.stop" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop" @input="typed('stop')" />
             <span v-if="form.stopWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-words">{{ form.stopWords }}</span>
+            <!-- F7: the server's reason when no stop can be shown (expiry kind not known); nothing when it sent none -->
+            <span v-if="sheet.stopKindReason" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-kind-reason">{{ sheet.stopKindReason }}</span>
           </label>
           <label class="block text-sm font-medium">{{ labels.stop_rupees }}
             <input v-model="form.stopRupees" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop-rupees" @input="typed('stop_rupees')" />

@@ -143,7 +143,7 @@ describe('PaperStrategies: answer states', () => {
     expect(t(w, 'paper-total').text()).toBe('—')
     expect(w.findAll('[data-testid="paper-ltp"]').every((c) => c.text().startsWith('—'))).toBe(true)
     expect(w.findAll('[data-testid="paper-leg-pnl"]').every((c) => c.text() === '—')).toBe(true)
-    expect(t(w, 'paper-total-reason').text()).toBe('Paper P&L paused - prices not live')
+    expect(t(w, 'paper-total-reason').text()).toBe('Paper P&L paused - prices not live, as of 28 Oct 2026, 11:30:00 IST') // O-1 (R2 FC2): the time of the last good prices (this test's answered_at), through the one formatter
     expect(has(w, 'paper-group')).toBe(true)
     expect(w.findAll('[data-testid="paper-leg"]')).toHaveLength(4)
     expect(has(w, 'paper-stops')).toBe(true)

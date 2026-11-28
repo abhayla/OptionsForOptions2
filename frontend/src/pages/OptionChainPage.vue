@@ -25,6 +25,7 @@ import MarketClosedBanner from '@/components/states/MarketClosedBanner.vue'
 import LeaveBuilderDialog from '@/components/strategy/LeaveBuilderDialog.vue'
 import { useLeaveBuilder } from '@/composables/useLeaveBuilder'
 import { useSettingsValues } from '@/stores/settingsValues'
+import { RETRY_LABEL } from '@/lib/sharedStateText'
 import { CHAIN_ADD_NO_ACTION, CHAIN_ADD_NOTHING_TICKED, CHAIN_EXPIRIES_UNREADABLE_TEXT, CHAIN_NO_STRIKES_MATCH_TEXT, CHAIN_ROWS_MISSING_TEXTS, CHAIN_SPOT_MISSING_ROWS_KEPT_TEXT, CHAIN_WAITING_TEXT } from '@/lib/sharedStateText'
 import { strikeRangesOf } from '@/lib/settingsValues'
 import { NOT_LIVE_LABEL, VALUE_UNAVAILABLE, chainRequest, useChainAnswer } from '@/composables/useChainLive'
@@ -55,16 +56,19 @@ const ask = (exp) => follow(chainRequest(underlying.value, exp, strikesEachSide.
 const filters = ref({ ...NO_FILTERS })
 const SIDE_FIELDS = computed(() => onExpiryDay(fieldsFor(details.value), view.value)) // D-12: Theta's place on expiry day
 
+const listNotice = ref(null)
 async function loadExpiries() {
   const mine = ++expirySeq
   expiries.value = []
   expiry.value = ''
   catalogueFailed.value = false
+  listNotice.value = null
   try {
     const res = await api.get(`/catalogue/${underlying.value}/expiries`)
     if (mine !== expirySeq) return
     expiries.value = [...res.data.expiries].sort()
     shownToday.value = res.data.today ?? null
+    listNotice.value = typeof res.data.list_notice === 'string' && res.data.list_notice.trim() ? res.data.list_notice.trim() : null // ADR-330 (61): the server's line, as sent
     expiryDays.value = daysByExpiry(res.data.expiry_days)
     setShownDate(res.data.today)
     expiry.value = expiries.value[0] ?? ''
@@ -194,6 +198,7 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
   <section data-testid="option-chain-page">
     <LeaveBuilderDialog :leave="leaveGuard" />
     <PageHeader parent="Market" title="Option Chain" />
+    <p v-if="listNotice" class="mb-2 text-sm text-ink-muted" role="status" data-testid="contract-list-notice">{{ listNotice }}</p>
 
     <!-- Owner 2026-10-30 (Sensibull 060): one bar for underlying, expiry, spot and feed state, then one row of filters,
          then the chain in a card with the strike column centred and shaded and numbers right-aligned. -->
@@ -244,7 +249,10 @@ const resetFilters = () => (filters.value = { ...NO_FILTERS })
     <MarketClosedBanner v-if="answer?.market_closed" class="mt-3" :prices-at="answer.last_price_at" />
     <p v-if="reconnecting" class="mt-3 text-sm font-medium" data-testid="live-reconnecting">{{ reconnectingText }}</p>
 
-    <p v-if="catalogueFailed" class="mt-3 text-sm" data-testid="catalogue-unreadable">{{ CHAIN_EXPIRIES_UNREADABLE_TEXT }}</p>
+    <div v-if="catalogueFailed" class="mt-3 flex flex-wrap items-center gap-2 text-sm">
+      <p data-testid="catalogue-unreadable">{{ CHAIN_EXPIRIES_UNREADABLE_TEXT }}</p>
+      <button type="button" class="rounded border border-line bg-surface px-2 py-1 text-xs font-medium text-ink" data-testid="catalogue-retry" @click="loadExpiries">{{ RETRY_LABEL }}</button>
+    </div>
     <p v-else-if="notLive()" class="mt-3 text-sm" data-testid="not-live">{{ NOT_LIVE_LABEL }}</p>
     <p v-else-if="!view && request" class="mt-3 text-sm text-ink-muted" data-testid="chain-waiting">{{ CHAIN_WAITING_TEXT }}</p>
     <p v-if="rowsMissing" class="mt-3 text-sm" data-testid="rows-missing">{{ rowsMissing }}</p>

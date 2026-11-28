@@ -411,6 +411,7 @@ onBeforeUnmount(() => {
               class="flex gap-3 rounded-md px-3 text-ink hover:bg-surface-muted focus:bg-accent-soft focus:outline-none"
               :class="it.description ? 'py-2' : 'h-10 items-center'"
               data-testid="nav-menu-item"
+              @click="closeMenu()"
             >
               <span class="text-ink-muted" :class="it.description ? 'pt-0.5' : ''"><Icon :name="it.icon" /></span>
               <span class="min-w-0">

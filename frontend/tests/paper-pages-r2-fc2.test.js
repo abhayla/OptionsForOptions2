@@ -1,0 +1,214 @@
+// Lane FC2 (R2, 28 Nov) D-7, D-8, D-11 on the Positions / compact paper list (PaperStrategies.vue).
+import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
+import { mount, flushPromises } from '@vue/test-utils'
+import { createRouter, createMemoryHistory } from 'vue-router'
+import REAL from './fixtures/paper-strategies.json'
+
+let answers = {}
+vi.mock('@/services/api', async (importActual) => {
+  const actual = await importActual()
+  const reply = (method) => (url) => {
+    const a = answers[`${method} ${url}`]
+    return a ? a() : Promise.reject({ message: 'no answer', parts: null, status: null })
+  }
+  return { ...actual, default: { get: reply('GET'), post: reply('POST'), delete: reply('DELETE') } }
+})
+import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import { resetActiveAlerts } from '@/lib/paperAlerts'
+
+const PAUSED = 'Paper P&L paused - prices not live'
+const clone = () => JSON.parse(JSON.stringify(REAL))
+async function show(props = {}) {
+  const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: PaperStrategies }, { path: '/strategy/builder', component: { template: '<div/>' } }, { path: '/positions/:p(.*)*', component: { template: '<div/>' } }] })
+  router.push('/')
+  await router.isReady()
+  const w = mount(PaperStrategies, { props, global: { plugins: [router] } })
+  await flushPromises()
+  return w
+}
+beforeEach(() => { answers = {}; resetActiveAlerts(); vi.useFakeTimers() })
+afterEach(() => vi.useRealTimers())
+
+describe('D-7 the underlying and the status word are apart', () => {
+  it('"NIFTY" and "Running" are separated by a space in the card text', async () => {
+    const d = clone()
+    d.strategies.find((s) => s.state === 'LIVE').status_word = 'Running'
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: d })
+    const w = await show()
+    const card = w.get('[data-testid="paper-group"][data-strategy="1"]')
+    expect(card.text()).toContain('NIFTY Running')
+    expect(card.text()).not.toContain('NIFTYRunning')
+  })
+})
+
+describe('D-8 a closed row has no empty cell', () => {
+  it('Unbooked and P&L of a closed leg show the dash (—), the booked figure stays', async () => {
+    const d = clone()
+    const s = d.strategies.find((x) => x.state === 'LIVE')
+    s.closed = [{ contract_id: 901, contract_text: 'NIFTY 24200 CE 2026-12-08', instrument: 'CE', strike: '24200.00', expiry: '2026-12-08', quantity: 65, lots: 1, side: 'SELL', opened_at: '2026-11-26T04:00:00Z', average_entry_text: '98.00', average_exit_text: '90.00', booked_text: '+520.00', reason_text: null }]
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: d })
+    const w = await show()
+    await w.get('[data-testid="show-closed"]').setValue(true)
+    const row = w.get('[data-testid="paper-closed-leg"]')
+    const cells = row.findAll('td').map((c) => c.text())
+    expect(cells).toHaveLength(8)
+    expect(cells[5]).toBe('+520.00')
+    expect(cells[6]).toBe('—')
+    expect(cells[7]).toBe('—')
+    expect(cells.slice(1).every((c) => c !== '')).toBe(true)
+  })
+})
+
+describe('D-11 the paused sentence is printed once under a paused compact row', () => {
+  it('paused book with the server pause text and the state text: one sentence', async () => {
+    const d = clone()
+    const s = d.strategies.find((x) => x.state === 'LIVE')
+    Object.assign(s, { state: 'PAUSED', total_text: null, total: null, pause_reason: 'prices_not_live', pause_reason_text: PAUSED, as_of: '2026-11-27T09:57:00Z' })
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: d })
+    const w = await show({ compact: true })
+    const row = w.get(`[data-testid="paper-compact-row"][data-strategy="${s.strategy_id}"]`)
+    expect(row.text().split(PAUSED).length - 1).toBe(1)
+  })
+})
+
+// UX-A09 (ADR-330 (56)): the feed is paused and every open strategy was PAUSED: the page says it once, the tiles carry no sentence.
+describe('UX-A09 one paused notice for the page', () => {
+  const pausedList = (ids) => {
+    const d = clone()
+    for (const s of d.strategies.filter((x) => ids.includes(x.strategy_id))) {
+      Object.assign(s, { state: 'PAUSED', total_text: null, total: null, unbooked_text: null, unbooked: null, pause_reason: 'prices_not_live', pause_reason_text: PAUSED, as_of: '2026-11-27T09:57:00Z' })
+    }
+    Object.assign(d.totals, { total_text: null, total: null, unbooked_text: null, unbooked: null, totals_reason: 'prices_not_live', totals_reason_text: PAUSED, totals_as_of: '2026-11-27T09:57:00Z' })
+    return d
+  }
+  const count = (w) => w.text().split(PAUSED).length - 1
+  it('two paused strategies: the sentence appears once on the page, as the page notice with its time', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: pausedList([1, 3]) })
+    const w = await show()
+    expect(count(w)).toBe(1)
+    expect(w.get('[data-testid="paper-paused-notice"]').text()).toContain(PAUSED)
+    expect(w.get('[data-testid="paper-paused-notice"]').text()).toContain('as of')
+  })
+  it('the page already shows its own notice (noticeUp): the list says nothing of its own', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: pausedList([1, 3]) })
+    const w = await show({ noticeUp: true })
+    expect(count(w)).toBe(0)
+    expect(w.find('[data-testid="paper-paused-notice"]').exists()).toBe(false)
+  })
+  it('exactly one paused strategy: no page notice, that tile carries its line (unchanged)', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: pausedList([1]) })
+    const w = await show()
+    expect(w.find('[data-testid="paper-paused-notice"]').exists()).toBe(false)
+    expect(w.get('[data-testid="paper-group"][data-strategy="1"]').text()).toContain(PAUSED)
+  })
+  it('the Paper total the list hands to the page carries no paused sentence of its own (the page notice speaks)', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: pausedList([1, 3]) })
+    const w = await show()
+    expect(w.emitted('summary').at(-1)[0].totalAfter.reason ?? null).toBe(null)
+  })
+  it('the list tells the page how many are affected', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: pausedList([1, 3]) })
+    const w = await show()
+    expect(w.emitted('summary').at(-1)[0].affected).toBe(2)
+  })
+})
+
+import { priceNoticeUp } from '@/lib/priceState'
+describe('priceNoticeUp follows PriceNotice', () => {
+  it('closed: up; live: down; not live with 1 affected: down; with 2: up; unknown count: up', () => {
+    expect(priceNoticeUp({ market_closed: true, last_price_at: '2026-11-27T10:00:00Z', state: 'LIVE' }, null)).toBe(true)
+    expect(priceNoticeUp({ state: 'LIVE' }, null)).toBe(false)
+    expect(priceNoticeUp({ state: 'STALE' }, 1)).toBe(false)
+    expect(priceNoticeUp({ state: 'STALE' }, 2)).toBe(true)
+    expect(priceNoticeUp({ state: 'STALE' }, null)).toBe(true)
+    expect(priceNoticeUp(null, 3)).toBe(false)
+  })
+})
+
+// UX-A01 (R2 FC2, PC note): the user's ticks stay across a price pause; a greyed Exit says in words why: nothing ticked, or prices are not live.
+describe('UX-A01 ticks and the reason beside a greyed Exit', () => {
+  const reply = (paused) => {
+    const d = clone()
+    if (paused) {
+      const s = d.strategies.find((x) => x.strategy_id === 1)
+      Object.assign(s, { state: 'PAUSED', total_text: null, total: null, unbooked_text: null, unbooked: null, pause_reason: 'prices_not_live', pause_reason_text: PAUSED, as_of: '2026-11-27T09:57:00Z' })
+      for (const p of s.positions) Object.assign(p, { price_state: p.net_quantity ? 'stale' : null, ltp: null, ltp_text: null })
+    }
+    return d
+  }
+  const exitBtn = (w) => w.get('[data-testid="exit-selected-1"]')
+  const reason = (w) => w.get('[data-testid="paper-group"][data-strategy="1"]').find('[data-testid="paper-exit-reason"]')
+  it('nothing ticked: the button is off and says to tick a leg', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: reply(false) })
+    const w = await show()
+    expect(exitBtn(w).attributes('disabled')).toBeDefined()
+    expect(reason(w).text()).toBe('Tick a leg to exit.')
+  })
+  it('a server pause (PAUSED book): the tick stays', async () => {
+    let paused = false
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: reply(paused) })
+    const w = await show()
+    await w.get('[data-testid="select-leg-1-776"]').setValue(true)
+    paused = true
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(w.get('[data-testid="select-leg-1-776"]').element.checked).toBe(true)
+    expect(exitBtn(w).text()).toBe('Exit (1)')
+  })
+  it('a failed read after a good one: the tick stays; Exit is off for "prices are not live" and the words carry the time of the last good prices', async () => {
+    let fail = false
+    answers['GET /paper/strategies'] = () => (fail ? Promise.reject({ message: 'x', status: 500, parts: null }) : Promise.resolve({ data: { ...reply(false), answered_at: '2026-11-27T09:57:00Z' } }))
+    const w = await show()
+    await w.get('[data-testid="select-leg-1-776"]').setValue(true)
+    fail = true
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(w.get('[data-testid="select-leg-1-776"]').element.checked).toBe(true)
+    expect(exitBtn(w).text()).toBe('Exit (1)')
+    expect(exitBtn(w).attributes('disabled')).toBeDefined()
+    expect(reason(w).text()).toContain('Prices are not live')
+    expect(reason(w).text()).not.toContain('Tick a leg')
+    const asOf = w.get('[data-testid="paper-group"][data-strategy="1"]').get('[data-testid="paper-exit-asof"]').text()
+    expect(asOf).toBe('Last prices: 15:27:00 IST.')
+  })
+})
+
+// O-1 / board I-157 (TD walk): the paused line carries the as-of date and time, through the one formatter (priceState.pausedText).
+describe('O-1 the paused line has its as-of time', () => {
+  it('a failed read after a good one: totals and the card say "... paused ..., as of 27 Nov 2026, 15:27:00 IST" (the last good prices)', async () => {
+    let fail = false
+    answers['GET /paper/strategies'] = () => (fail ? Promise.reject({ message: 'x', status: 500, parts: null }) : Promise.resolve({ data: { ...clone(), answered_at: '2026-11-27T09:57:00Z' } }))
+    const w = await show()
+    fail = true
+    await vi.advanceTimersByTimeAsync(5000)
+    await flushPromises()
+    expect(w.get('[data-testid="totals-reason"]').text()).toBe(`${PAUSED}, as of 27 Nov 2026, 15:27:00 IST`)
+    expect(w.get('[data-testid="paper-group"][data-strategy="1"]').get('[data-testid="paper-total-reason"]').text()).toBe(`${PAUSED}, as of 27 Nov 2026, 15:27:00 IST`)
+  })
+  it('no good read ever (nothing to date it by): the sentence alone, never a made-up time', async () => {
+    answers['GET /paper/strategies'] = () => Promise.reject({ message: 'x', status: 500, parts: null })
+    const w = await show()
+    expect(w.text()).not.toContain('as of')
+  })
+})
+
+// UX-A02 (R2 FC2; the Stop price box half is Lane FA2's PaperStops.vue): the list hands each open leg's current price text as `currentPriceText`.
+describe('UX-A02 current price text for the Stops form', () => {
+  it('passes { contractId: ltp text } for the live open legs only', async () => {
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: clone() })
+    const seen = []
+    const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: PaperStrategies }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
+    router.push('/')
+    await router.isReady()
+    const Stub = { name: 'PaperStops', props: ['strategyId', 'currentPriceText'], setup(p) { seen.push(p) }, template: '<div data-testid="stops-stub" />' }
+    const w = mount(PaperStrategies, { global: { plugins: [router], stubs: { PaperStops: Stub } } })
+    await flushPromises()
+    await w.get('[data-testid="stops-open-1"]').trigger('click')
+    await flushPromises()
+    const p = seen.at(-1)
+    const d = clone().strategies.find((x) => x.strategy_id === 1)
+    const want = Object.fromEntries(d.positions.filter((x) => x.net_quantity !== 0 && x.price_state === 'live').map((x) => [String(x.contract_id), x.ltp_text]))
+    expect(Object.keys(want).length).toBeGreaterThan(0)
+    expect(p.currentPriceText).toEqual(want)
+  })
+})
