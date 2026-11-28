@@ -1,4 +1,4 @@
-STATUS (28 Nov, IST): pushed 5342dcb2c (CI-1, CI-2). FLAKE-1 (tests_app/test_feed_control load-flaky) FIXED locally, not pushed yet: cause found, 12 of 12 green under load (was 5 of 8 red). Walker rows (W-07, W-35, TG2 hand-over list) start after wave 1. Messages to the coordinator are refused (device trust); read this line.
+STATUS (28 Nov, IST): pushed 5342dcb2c (CI-1, CI-2). I-204 and I-168 CLOSED (5 passed on build a1d704225; 5 + 6 passed on B3's branch ecf8e8f99). FLAKE-1 (tests_app/test_feed_control load-flaky) FIXED locally, not pushed yet: cause found, 12 of 12 green under load (was 5 of 8 red). Walker rows (W-07, W-35, TG2 hand-over list) start after wave 1. Messages to the coordinator are refused (device trust); read this line.
 
 # RESULTS: Lane T (test-only gaps and tooling)
 
@@ -15,8 +15,8 @@ below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables 
 |---|---|---|---|---|
 | I-184 | "Three stale xfail strict markers in tests_app/test_slow_price_source_live_day.py" | grep of `xfail|strict` on the build head: nothing | 10 passed (file alone) | none needed (already clean) |
 | I-126 | "Two plan-watch tests read the real clock and fail Friday after 15:00" | pins 8ed916db, cdce22ce are ancestors of the build | `tests_app/test_plan_watch.py` 13 passed; the two pinned tests are `test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live` and `test_a_quote_answering_after_the_market_was_cut_is_not_asked` (they call `_pin_server_clock`) | none needed |
-| I-204 | "Three FE2 DB tests fail on the merged build (F-39)" | build e2da71f50: 3 failed, 2 passed (`real_position_exit_refused`) | fix branch origin/fix/r3-leftovers-1128 (951aa698c, worktree, removed after): 5 passed. Build re-run after wave 0: PENDING | none (fix is a5259db50 on that branch) |
-| I-168 | "Pool-not-held plan-watch tests fail on the unmodified build; test_d36 assumes a fresh database" | first pass (under load, DB behind head): `test_pool_not_held_across_market_wait.py` 3 failed | alone on the r3 build with a database at head: `test_pool_not_held_across_market_wait.py` 5 passed, `test_d36_adjustment_counts.py` 6 passed. Re-run after Lane B3's I-48 lands: PENDING (not on origin) | none (no test change needed) |
+| I-204 | "Three FE2 DB tests fail on the merged build (F-39)" | build e2da71f50: 3 failed, 2 passed (`real_position_exit_refused`) | fix branch origin/fix/r3-leftovers-1128 (951aa698c, worktree, removed after): 5 passed. Build re-run after wave 0 (a1d704225, worktree, removed after): 5 passed. CLOSED | none (fix is a5259db50, now on the build) |
+| I-168 | "Pool-not-held plan-watch tests fail on the unmodified build; test_d36 assumes a fresh database" | first pass (under load, DB behind head): `test_pool_not_held_across_market_wait.py` 3 failed | alone on the r3 build with a database at head: `test_pool_not_held_across_market_wait.py` 5 passed, `test_d36_adjustment_counts.py` 6 passed. On origin/fix/r3-backend-b3-1128 (ecf8e8f99, with I-48 cut 2; worktree, removed after): `test_pool_not_held_across_market_wait.py` 5 passed, `test_d36_adjustment_counts.py` 6 passed. CLOSED on both heads; B3's branch is not in the build yet, so no re-run on the build | none (no test change needed) |
 | CI-1 (coordinator, front of queue) | CI pull 881, job domain-tests, commit a1d70422: `tests/test_alert_kinds.py::test_the_migration_copies_the_table` ModuleNotFoundError: No module named 'alembic' | clean venv (pyyaml, jsonschema, pytest, mypy only): 1 failed, 12 passed | same venv: 13 passed; mutation (an extra answer in the 0054 literal) makes it fail, so the guard still runs; ruff clean | see git log |
 | I-170 | "27 DB tests in 12 files fail on a clean run" | 18 files, 28 tests failed (511 files run one by one, `OFO_TEST_DB_PER_FILE=1`, while the pre-push check used the machine) | the same 18 files alone, database at head 0062: 0 failed, 249 passed | none (no test change needed) |
 | I-176 | "11 of 29 failing tests never named" | all 28 failures named below (`-rf`) | 0 unnamed, 0 failing | none |
@@ -88,7 +88,7 @@ None. No product code was at fault in any run.
 ## Not done
 
 - Coordinator messages (send_message to the parent) are refused: "elevated_session_untrusted_device"; the remedy is an owner card (confirm_repository_trust) that also limits this session to trusted devices for good, so it was not raised unasked. Status goes through this file and the push line.
-- I-168 (needs B3's I-48 on origin), I-204 build re-run (needs wave 0).
+- Nothing open in items 1 to 6 except re-running I-168 on the build once Lane B3 is merged (green on B3's branch already).
 
 SAFE TO CLOSE: no (items 4 to 6 open)
 
