@@ -1,4 +1,4 @@
-STATUS 19:00 | round 3 page: waves of Lane Z3 (wave 0 now, 22:45, 01:45 Sunday, final 10:00 Sunday), 0062 database step in the pull order, PC ONLY list (W-04, W-22 passed, AF-07, D-1, D-2, I-85, R3-T) and live list (I-09, I-21, I-108); rule 18 PC keep-alive (I-95 not closed: owner go-ahead not on record) | build seen 4d975129 | board rows I-96, I-109, I-110: waiting for Lane T's evidence
+STATUS 20:05 | TG2's six plan faults corrected (W-09 PATH-10, W-23 colon, TC-3 menu entry, W-10/W-11 TEST_CATALOGUE_DATE with the Completed/Acted-on word left to the owner, W-15 built sentence, W-21 PC only); round 3 build head a1d70422 (wave 0, 0062 in); ADR-330 (73) not in round 3 | previous push 8a9fa59a8 | next: round 2 results fold-in, wave versions
 
 # Test plan for the closed-market weekend, 28 and 29 Nov 2026 (rounds 1 to 3)
 
@@ -24,6 +24,10 @@ Version log: v1b Fri 19:40; v1 Fri 22:30 (all lane result files read); **v2 Sat 
 **PC ONLY list, round 3 (kept current, coordinator 28 Nov 18:45):** W-04, W-22 (PASSED in round 1: not repeated), AF-07, D-1, D-2, I-85, and R3-T (the real triggers route content). **Live list (Monday only, market open):** I-09, I-21, I-108. (I-85, I-09, I-21 and I-108 are board rows; this plan does not carry their wording: the board text is the source, and the PC reads it there.)
 
 **PC keep-alive (board row I-95):** the PC stays awake for the whole run: power plugged in, sleep and screen lock off, the screen server, API, worker and feed left running between checks, and the machine checked at the start of each round (the PC session is reused for all three rounds). This line is written in rule 18 of section 0. **I-95 is NOT closed by this line: the owner's go-ahead is not on record.**
+
+**Build head seen (coordinator, 28 Nov 19:35 IST): `a1d70422` (wave 0; migration 0062 is in it).** **Decision ADR-330 (73) (real positions get the same screens as paper, nothing sent) is on `origin/fix/ic-live-test-1123` (`6423c95ea`), built on separate branches, and is NOT in round 3 unless the coordinator says so: this page keeps the 27 Nov rule for real rows; this may change.**
+
+**Lane TG2's six plan faults (`test/r3-plan-walk-2-1128`, head `c4f43ddb8`) are corrected in the checks: W-09 (PATH-10), W-23 (`holdback:create_app`), TC-3 (a menu entry), W-10 and W-11 (`TEST_CATALOGUE_DATE`; W-10 word conflict "Completed" / "Acted on" left to the owner), W-15 (built sentence "or change one of them"), W-21 (strategies 194 and 201 exist on the PC only).**
 
 ### R3-A. What the PC does first (set-up delta, about 25 minutes)
 1. `git fetch origin integration/weekend-r3-1129`, `git checkout -b test/weekend-r3 <the final commit>`, `git rev-parse HEAD` must equal it.
@@ -639,6 +643,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **On FAIL or PARTIAL write:** the sentence seen, the sentence expected, known or new.
 
 ### W-09 Plan-stop alert in scenario mode (market closed): try it, Monday T1-05 is the real proof
+- **Round 3b plan fault (Lane TG2, cloud, 28 Nov): use scenario path PATH-10, not PATH-01.** PATH-01 is a profit drift and can never reach a loss stop. Set `OFO_SCENARIO=PATH-10` for the API and the worker, plan Stop (Rs) 500, frames 0 to 9, 25 s after each frame. (Proof level: cloud browser PASS on PATH-10.)
 - **Board items:** T1-05 to T1-08; ADR-330 (47)
 - **Proves:** T1-05 to T1-08 chain (stop level crossed, one alert row in the plan's rule list). **Type:** Functionality. **First carried:** R1 (Lane J `hotfix/loss-stop-1127` 3e0b9780).
 - **Honest limits:** Lane J's RESULTS: "Not proven end to end here: I did not run this chain with a plan stop on a path scenario; whether a PATH fixture reaches a given rupee level mu[st be checked]." There is **no price-replay tool** (cancelled; Lane Q2). The scenario worker exists (`python -m ofo_app.background` with `OFO_SCENARIO`), and ticks only on PATH scenarios. If the try does not give an alert, the result is **PARTIAL: tool limit, Monday T1-05** (not FAIL).
@@ -648,6 +653,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **On FAIL or PARTIAL write:** the sentence seen, the sentence expected, known or new.
 
 ### W-10 Compare approaches: "Open in builder and prepare basket", Cancel and Confirm (Lane W item 10; T2-13)
+- **Round 3b (Lane TG2, cloud PARTIAL): the API must run with `TEST_CATALOGUE_DATE` set to the scenario day** (else no contract matches); "Compare approaches" is the link on Positions > Adjustment opportunities. **Word conflict, owner decision pending:** with the worker running TG2 saw the row close as **"Completed at <time>"**, not "Acted on"; decision (53) in this plan says "Acted on - Paper - not sent to Zerodha"; the spec (REQ-112 AC-2) uses the word "Completed", but its AC-3 sets it only from Zerodha-confirmed fills. The PC writes the word it sees; neither word is a fail until the owner picks.
 - **Board items:** T2-13 (FAIL); UX-22; issue-list rows 13 and 26; REQ-112 AC-2; ADR-330 (53)
 - **Type:** Functionality. **27 Nov:** T2-13 FAIL (an opportunity stayed "Acted on" after Cancel with no order placed). **First carried:** R1 (Lane W). Needs an alert with an opportunity row (Alerts has rows from 27 Nov; if none is open: BLOCKED, name it).
 - **Steps:** Alert > Compare approaches > "Open in builder and prepare basket" > Cancel. Look at the opportunity. Prepare again, Confirm.
@@ -655,6 +661,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **On FAIL or PARTIAL write:** the sentence seen, the sentence expected, known or new.
 
 ### W-11 Full-exit approach stages the held legs (Lane W item 11)
+- **Round 3b (Lane TG2, cloud: not done): the API must run with `TEST_CATALOGUE_DATE` set to the scenario day.** The confirm list is the builder's "Review and add".
 - **Board items:** UX-21 (staged exits show "No legs yet")
 - **Type:** Functionality. **First carried:** R1. **Steps:** Alert > Compare > the full-exit approach > "Open in builder and prepare basket" > Cancel on the confirm list.
 - **Expected:** the held legs show as exiting with **"N pending changes"**, never "No legs yet"; wording **"Exiting these legs (staged, not placed yet)"**.
@@ -682,7 +689,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **Round 2 correction (PC round 1, 28 Nov):** The sentence names the two legs in screen order: expect "Legs 1 and 2 are the same contract (NIFTY 1 Dec 24050 CE), one <side of leg 1> and one <side of leg 2>." (round 1 saw "one Buy and one Sell"). For the same-side variant use leg 2's own Buy/Sell toggle to give both legs the same side (the badge did not flip in round 1: write what the toggle does).
 - **Board items:** issue-list row 2; OBS-03; D-60
 - **Type:** Screen. **First carried:** R1. **Steps:** builder: two legs on one strike and expiry; Save draft; once with the same side, once with opposite sides. Check the leg numbers in the sentence equal the numbers on screen.
-- **Expected (same side):** **"Legs 1 and 2 are the same contract and side (NIFTY 1 Dec 25900 CE, Sell)."** then **"Join them into one leg with more lots, or change one to a different contract."** **(opposite sides):** **"Legs 1 and 2 are the same contract (NIFTY 1 Dec 25900 CE), one Sell and one Buy."** then **"A strategy holds one leg per contract: remove one of them, or change one to a different contract."** (27 Nov N-03 saw a red box "This strategy definit..." for two identical legs: write the full text seen.)
+- **Expected (same side):** **"Legs 1 and 2 are the same contract and side (NIFTY 1 Dec 25900 CE, Sell)."** then the BUILT sentence **"Join them into one leg with more lots, or change one of them."** (Lane TG2, 28 Nov: the plan said "...or change one to a different contract."; the spec has no exact sentence for this case (closest ADR-319, REQ-030 AC-12), so the built sentence is the expected text; TG2 checked the API replies only: PARTIAL; the PC reads it on screen.) **(opposite sides):** **"Legs 1 and 2 are the same contract (NIFTY 1 Dec 25900 CE), one Sell and one Buy."** then **"A strategy holds one leg per contract: remove one of them, or change one to a different contract."** (27 Nov N-03 saw a red box "This strategy definit..." for two identical legs: write the full text seen.)
 - **On FAIL or PARTIAL write:** the sentence seen, the sentence expected, known or new.
 
 ### W-16 A completed trade opens read-only (Lane W item 8)
@@ -714,6 +721,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **On FAIL or PARTIAL write:** the sentence seen, the sentence expected, known or new.
 
 ### W-21 Lane M read-only SQL (data only; send the rows)
+- **Round 3b (Lane TG2): strategies 194 and 201 do not exist in the cloud database; they exist only on the PC (his real rows), so W-21 is PC ONLY and stays so.** In the cloud write PARTIAL; optionally list the `paper_alerts` columns first (`\d public.paper_alerts`).
 - **Round 2 correction (PC round 1, 28 Nov):** The table `actionable_alerts` does not exist (round 1); the alert tables are `paper_alerts` and `strategy_alert_style` (lesson 3): item 4 below is corrected; select by strategy id.
 - **Board items:** D-2 data pull (2028 date); OBS-01
 - Run each on the VPS with `psql -d ofo_dev` over SSH (read only):
@@ -736,7 +744,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **Proves:** that Lane Q2's only working tool runs. **Type:** Functionality. **First carried:** R1 (Lane Q2 5bdfdde0).
 - **Steps:** 1. Write a rules file (JSON) with times that carry the offset `+05:30` (a naive time is refused), for example:
   `{"delay_routes": [{"prefix": "/api/strategies/", "suffix": "/plan-watch", "seconds": 5, "from": "2026-11-28T10:00:00+05:30", "until": "2026-11-28T10:10:00+05:30"}]}`
-  2. Set the environment variable `OFO_HOLDBACK_FILE` to the file's path. 3. Start the API with **`python -m uvicorn --factory holdback.create_app --app-dir tests_app`** instead of the usual start (it wraps the real API). 4. Open a planned strategy's builder inside the window: the plan-watch answer takes about 5 s longer. 5. Restart the API the usual way afterwards.
+  2. Set the environment variable `OFO_HOLDBACK_FILE` to the file's path. 3. Start the API with **`python -m uvicorn --factory holdback:create_app --app-dir tests_app`** instead of the usual start (it wraps the real API). 4. Open a planned strategy's builder inside the window: the plan-watch answer takes about 5 s longer. 5. Restart the API the usual way afterwards.
 - **Expected:** the delayed route answers about 5 s late; other routes unchanged. The `withhold_tokens` and `silence` keys need the Kite relay, which is not built: do not try them (T1-23 and AX-01 are MONDAY ONLY, and are "not possible" until the relay exists).
 - **On FAIL or PARTIAL write:** the sentence seen, the sentence expected, known or new.
 
@@ -842,6 +850,7 @@ Order of the round: **W-33 first** (seed done, restart, nine screens), then A (m
 - **On FAIL or PARTIAL write:** the sentence seen, the sentence expected, known or new.
 
 ### TC-3 Notification settings and a "side closed" alert (SW-8; not walked)
+- **Round 3b plan fault (Lane TG2, cloud PASS): Notification settings is an ENTRY IN THE ALERTS MENU (page `/alerts/notification-settings`), not a button on the Alerts page.** Expected line unchanged: "No notification channels are set up yet."
 - **Board items:** SW-8. **Type:** Screen. **Steps:** 1. Alerts: open notification settings and read the empty line. 2. If a "side closed" alert exists, open its "Add the legs again" confirm and read it; do not confirm. **Expected:** "No notification channels are set up yet."; the "Add the legs again" confirm text is not in the sources: write it as an observation. If no side-closed alert exists: write "none exists" (TC could not create one).
 - **On FAIL or PARTIAL write:** the sentence seen, the sentence expected, known or new.
 
