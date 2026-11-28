@@ -143,6 +143,7 @@ PR241_SELECTION = {
     "tests_app/test_paper_armed_exits.py",  # #774 (ADR-330 (48)): names ofo.errors.explanations
     "tests_app/test_completed_header_count_r2_1128.py",  # Lane TA 28 Nov: added (I-39), the /strategies list
     "tests_app/test_plan_watch_draft_r2_1128.py",  # Lane TA 28 Nov: added (I-64), imports ofo_app.strategy_store
+    "tests_app/test_bulk_delete_undo_tf_1128.py",  # Lane TF 28 Nov: imports the bulk-delete test
 }
 
 
