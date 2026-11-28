@@ -19,6 +19,8 @@ from __future__ import annotations
 import dataclasses
 import datetime
 import logging
+from collections.abc import Mapping
+from decimal import Decimal
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends
@@ -32,6 +34,7 @@ from ofo.strategy.stored_form import shown_name
 from pydantic import BaseModel, ConfigDict
 
 from ofo_app import actionable_alerts as aa
+from ofo_app import feed_bus, feed_mode, rule_readings
 from ofo_app import playbook_store as store
 from ofo_app.adjustment_check import (
     CLOCK_UNIT,
@@ -81,6 +84,10 @@ class OpportunityOut(ApiModel):
     # D-67 (ADR-326 (5)): the pop-up for this record is raised now. False only while a rule that was already true at
     # entry is inside its first 5 minutes; the record and the bell's count do not wait (ofo.adjustment.popup_quiet)
     popup_due: bool = True
+    # FD2 item 4: the worker's last stored reading of THIS rule's value, in the units of ``value``, and when it stored
+    # it; null/null when the worker stored none (never the record's own value shown as "now")
+    now_value: Money | None = None
+    now_as_of: datetime.datetime | None = None
 
 
 class GroupOut(ApiModel):
@@ -237,8 +244,10 @@ def _popup_due(s: store.Suggestion, facts: PopupFacts | None) -> bool:
                      seen_clear=facts.seen_clear.get((s.strategy_id, s.rule_id)), now=facts.now)
 
 
-def _record(s: store.Suggestion, paper: bool, popup: PopupFacts | None = None) -> dict:
-    return {"popup_due": _popup_due(s, popup), "id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
+def _record(s: store.Suggestion, paper: bool, popup: PopupFacts | None = None,
+            readings: Mapping[tuple[int, str], tuple[Decimal, datetime.datetime]] | None = None) -> dict:
+    now_value, now_as_of = (readings or {}).get((s.strategy_id, s.rule_id), (None, None))
+    return {"now_value": now_value, "now_as_of": now_as_of, "popup_due": _popup_due(s, popup), "id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
             "stage": stage_name_text(s.stage), "value": s.value, "threshold": s.threshold,
             "condition": condition_text(s), "shown_at": s.shown_at, "outcome": s.shown_outcome,
             "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open",
@@ -253,7 +262,8 @@ def held_body(rows: list[store.HeldInboxRow]) -> list[dict]:
 
 
 def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None = None,
-               popup: PopupFacts | None = None) -> dict:
+               popup: PopupFacts | None = None,
+               readings: Mapping[tuple[int, str], tuple[Decimal, datetime.datetime]] | None = None) -> dict:
     groups: dict[str, dict] = {}
     for row in rows:  # newest first; a group's first row seen is its newest record
         s = row.suggestion
@@ -264,7 +274,7 @@ def inbox_body(rows: list[store.InboxRow], held: list[store.HeldInboxRow] | None
             g = groups[key] = {"group": key, "strategy_id": s.strategy_id,
                                "strategy_name": shown_name(row.strategy_name), "shown_at": s.shown_at,
                                "label": render_explanation(label), "records": []}
-        g["records"].append(_record(s, row.paper, popup))
+        g["records"].append(_record(s, row.paper, popup, readings))
     for g in groups.values():
         g["records"].sort(key=lambda r: (r["rule_id"], r["id"]))
         n = len(g["records"])
@@ -322,14 +332,31 @@ async def _close(db: Any, work: Any) -> SuggestionOut:
     return SuggestionOut.model_validate({"id": s.id, "outcome": s.outcome, "outcome_text": outcome_text(s, False)})
 
 
+async def read_rule_values(now: datetime.datetime) -> dict:
+    """The seam a test replaces: the worker's stored readings (Redis). No bus (the in-process feed) = no worker = none."""
+    if feed_mode.feed_mode() != feed_mode.BUS:
+        return {}
+    client = feed_bus.new_client(feed_mode.redis_url())
+    try:
+        return await rule_readings.read(client, now)
+    finally:
+        await client.aclose()
+
+
+async def get_rule_reader() -> Any:
+    return read_rule_values
+
+
 @router.get("/api/adjustment-opportunities", response_model=InboxOut)
 async def adjustment_opportunities(db: Annotated[Any, Depends(get_db)],
                                    user_ref: Annotated[str, Depends(current_user_ref)],
-                                   now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> InboxOut:
+                                   now: Annotated[AnswerClock, Depends(get_answer_clock)],
+                                   reader: Annotated[Any, Depends(get_rule_reader)]) -> InboxOut:
     rows = await store.inbox(db, user_ref)
     entry, clear = await store.popup_facts(db, user_ref, {r.suggestion.strategy_id for r in rows})
     popup = PopupFacts(entry, clear, now())
-    return InboxOut.model_validate(inbox_body(rows, await store.held_inbox(db, user_ref), popup))
+    return InboxOut.model_validate(inbox_body(rows, await store.held_inbox(db, user_ref), popup,
+                                              await reader(now())))
 
 
 @router.post("/api/adjustment-opportunities/{suggestion_id}/dismiss", response_model=SuggestionOut)

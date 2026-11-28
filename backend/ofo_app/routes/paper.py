@@ -1447,6 +1447,16 @@ async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, 
                                      check.basis_in_force(None, None, None))
 
 
+async def _refuse_real_position(db: Any, strategy_id: int) -> None:
+    """#877 (ADR-330 (64), (58)): a real position (a held entry, or an order and no paper order) has no stop and no exit
+    in the app: an exit or stop request for it reaches this paper route only by a wrong link, and would run a PAPER
+    action the trader could take for a real exit. Refused by name (nothing is stored); every other kind goes on, an
+    unreadable one too (the paper store then answers by its own rules)."""
+    from ofo_app import position_kind  # noqa: PLC0415 - the one rule, beside its sentence
+    if (await store.kinds_of(db, [strategy_id])).get(strategy_id) == position_kind.REAL:
+        raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+
+
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
@@ -1462,6 +1472,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     """The order door. With ``client_request_id`` the request is de-duplicated (ADR-017): the first request places; a
     repeat of the same key, strategy and orders answers the first result and stores nothing; see ``request_key``."""
     stored = await _load_strategy(db, user_ref, strategy_id)
+    if any(o.kind == "exit" for o in body.orders):
+        await _refuse_real_position(db, strategy_id)  # #877: before any key is claimed
     key = body.client_request_id
     sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id"})
     if key is not None:
@@ -1577,9 +1589,18 @@ class ExitRiskOut(ApiModel):
     #: ADR-330 (55): a leg stop that leaves a sold option bare answers three lines, each its own fact, built here (the
     #: page prints them as sent); ``warning_text`` is the same lines joined by newlines. None for every other answer.
     warning_lines: list[CatalogueText] | None = None
+    #: FD2 item 4: the server's own aware clock when this answer was made, so the dialog tells the age of a price against
+    #: it, never the browser's clock. Filled by the exit-risk answer.
+    server_time: datetime.datetime | None = None
 
 
 _UNPRICED = Decimal("0.05")  # placeholder order price only; the engine is told priced=False
+
+
+def _stamped[ReplyT: ApiModel](answer: ReplyT, at: datetime.datetime) -> ReplyT:
+    """FD2 item 4: the same reply plus the server's clock (rebuilt by validation, as ``echo_seq``; set fields only)."""
+    kept = {name: value for name, value in answer if name in answer.model_fields_set}
+    return type(answer).model_validate({**kept, "server_time": at})
 
 
 def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut:
@@ -1680,6 +1701,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     """Read only, nothing stored. The WHOLE prepared basket (exits and entries) is judged on the legs after all of it.
     Bad input is refused (422), an engine error is cannot_tell, never "no". When an exit price cannot be read the
     answer is judged without any Max Loss figure (never a stand-in price) and shows none."""
+    served = now()  # FD2 item 4: one clock read, stamped on whichever answer is returned
     stored = await _load_strategy(db, user_ref, strategy_id)
     try:  # the prepared orders as JSON, the same shape the order route takes
         basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
@@ -1687,7 +1709,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
         refuse_request(("query", "orders"), "invalid_orders")
     booked = await paper_store.load(db, strategy_id)
     if not booked:  # nothing is open: an exit is larger than what is open; a first basket leaves nothing unprotected
-        return _exit_risk_answer("cannot_tell" if any(o.kind == "exit" for o in basket) else "no")
+        return _stamped(_exit_risk_answer("cannot_tell" if any(o.kind == "exit" for o in basket) else "no"), served)
     state = {c.contract_id: c for c in await tracked_contracts.resolve(
         db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
     if any(state[o.contract_id].stored is None for o in basket):
@@ -1711,11 +1733,11 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
                            prices.get(i, _UNPRICED if o.kind == "exit" else o.price), o.kind, at)
                 for i, o in enumerate(basket)]
     except ValueError:
-        return _exit_risk_answer("cannot_tell")
+        return _stamped(_exit_risk_answer("cannot_tell"), served)
     risk = exit_risk(_paper(booked), legs, terms, priced=len(prices) == exits)
     if risk.state != "yes":
-        return _exit_risk_answer(risk.state)
-    return _exit_warning(risk, names)
+        return _stamped(_exit_risk_answer(risk.state), served)
+    return _stamped(_exit_warning(risk, names), served)
 
 
 @router.get("/paper/strategies/{strategy_id}/leg-stop-risk", response_model=ExitRiskOut)
@@ -1820,6 +1842,7 @@ def _leg_name(state: Mapping[int, Any], stored: Any, trigger: Any) -> str:
 
 class ArmedExitsOut(ApiModel):
     lines: list[CatalogueText]  # one per armed index exit, in the order above, below
+    server_time: datetime.datetime | None = None  # FD2 item 4: the server's own aware clock for this answer
 
 
 @router.get("/paper/strategies/{strategy_id}/armed-exits", response_model=ArmedExitsOut)
@@ -1830,6 +1853,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     """D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one
     line per armed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at
     its level). No line when nothing is armed or the basket closes every leg (the exits are then cancelled)."""
+    served = now()  # FD2 item 4: one clock read, stamped on whichever answer is returned
     stored = await _load_strategy(db, user_ref, strategy_id)
     try:
         basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
@@ -1839,7 +1863,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     armed = sorted((r.trigger for r in rows if r.trigger.kind == "conditional_exit"), key=lambda t: t.direction)
     leg_stops = [r.trigger for r in rows if r.trigger.kind == "leg_stop"]
     if not armed and not leg_stops:
-        return ArmedExitsOut(lines=[])
+        return _stamped(ArmedExitsOut(lines=[]), served)
     booked = await paper_store.load(db, strategy_id)
     state = {c.contract_id: c for c in await tracked_contracts.resolve(
         db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
@@ -1850,7 +1874,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
                                            _UNPRICED if o.kind == "exit" else o.price, o.kind, at) for o in basket)]
     positions = [p for p in net_positions(after, {}).positions if p.net_quantity]
     if not positions:
-        return ArmedExitsOut(lines=[])
+        return _stamped(ArmedExitsOut(lines=[]), served)
     gone = paper_leg_stops.leaving(leg_stops, {int(p.instrument_id) for p in positions})  # #774: what the route cancels
     shorts = [_identity(state[int(p.instrument_id)])[1:3] for p in positions if p.net_quantity < 0]
     calls = [k for kind, k in shorts if kind is Instrument.CE]
@@ -1864,7 +1888,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     # one line per leg stop that goes with its closed contract (ADR-330 (42); never silent)
     lines.extend(render_explanation("paper_leg_stop_removed_on_move", contract=_leg_name(state, stored, t))
                  for t in gone)
-    return ArmedExitsOut(lines=lines)
+    return _stamped(ArmedExitsOut(lines=lines), served)
 
 
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------
@@ -2005,6 +2029,17 @@ async def list_paper_triggers(strategy_id: int, db: Annotated[Any, Depends(get_d
     return await _triggers_out(db, strategy_id)
 
 
+@router.get("/real/strategies/{strategy_id}/triggers", response_model=TriggersOut)
+async def list_real_triggers(strategy_id: int, db: Annotated[Any, Depends(get_db)],
+                             user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
+    """FD2 item 4 (ADR-330 (58)): the armed and fired exits of a strategy read for a REAL trade, the same answer as
+    ``GET /paper/strategies/{id}/triggers`` (one function, ``_triggers_out``), so a real trade's screen reads them the
+    way a paper trade's does. Read only. Rows exist only where the trigger store holds them (the paper route refuses
+    to set any for a real position, #877); a real strategy with none answers an empty list, never a made-up row."""
+    await _load_strategy(db, user_ref, strategy_id)
+    return await _triggers_out(db, strategy_id)
+
+
 def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> list[paper_trigger_store.NewTrigger]:
     new: list[paper_trigger_store.NewTrigger] = []
     if body.kind == "conditional_exit":
@@ -2087,6 +2122,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                              now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
+    await _refuse_real_position(db, strategy_id)  # #877: a stop for a real position is set in Kite, not here
     underlying = stored.saved.definition.underlying
     # ADR-327: the price read (up to 3 s) happens BEFORE the strategy row lock, so a slow feed never holds the lock the
     # monitor's fire waits behind; what the read decided is re-validated under the lock below (D-05: the open legs)

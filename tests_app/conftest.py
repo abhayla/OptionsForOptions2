@@ -192,10 +192,14 @@ CLONES_MADE: list[str] = []  # in order; read by tests_app/test_db_per_file_guar
 
 
 def should_clone(template: str, env=None) -> bool:
-    """Clone only a throwaway made by db_run_fresh, or in CI; any other template (db_run on the shared ofo_test, which
-    also serves production) is used as given: no clones to collide on, leak, or fail on a busy template."""
+    """Clone only a throwaway made by db_run_fresh, or in CI, or when the runner says this database is its own
+    (``OFO_TEST_DB_PER_FILE=1``: a disposable database nobody else uses; Lane FD2 / Lane TE: some files commit rows
+    that no guard lets a test delete, so a second file run on the same database met them: "would drop 750 of 750 live
+    NIFTY contracts", an extra ``lapsed`` alert). Any other template (db_run on the shared ofo_test, which also serves
+    production) is used as given: no clones to collide on, leak, or fail on a busy template; run ONE file there."""
     env = os.environ if env is None else env
-    return _db_run_fresh.is_tool_name(template) or env.get("GITHUB_ACTIONS") == "true"
+    return (_db_run_fresh.is_tool_name(template) or env.get("GITHUB_ACTIONS") == "true"
+            or env.get("OFO_TEST_DB_PER_FILE") == "1")
 
 
 def _db_name(url: str) -> str:

@@ -12,6 +12,7 @@ from __future__ import annotations
 
 import asyncio
 import datetime
+import time
 from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
@@ -37,6 +38,9 @@ from ofo_app.routes.plan_watch import PlanWatchOut, watch_of
 
 router = APIRouter(route_class=ClosedRoute)
 MAX_ROWS = 20
+#: #859: ONE time budget for the whole request, under the browser's 20 s limit (the old 4 s was per row: 20 hanging rows
+#: ran 80 s and the page got no answer at all). A row not finished when it runs out is shown as ``not_read``.
+BATCH_BUDGET_S = 15.0
 
 
 class PlanWatchItemOut(ApiModel):
@@ -44,7 +48,7 @@ class PlanWatchItemOut(ApiModel):
     ``status`` (404 not found, 409 ..., 500)."""
 
     strategy_id: int
-    state: Literal["ok", "refused"]
+    state: Literal["ok", "refused", "not_read"]  # not_read (#859): the request's one time budget ran out before this row
     watch: PlanWatchOut | None = None
     refusal: CatalogueText | None = None
     status: int | None = None
@@ -80,17 +84,26 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
         prefs: UserPreferences, user_values: UserValuesIn) -> PlanWatchBatchOut:
     items: list[dict] = []
+    deadline = time.monotonic() + BATCH_BUDGET_S
     for sid in _ids_of(strategy_ids):
+        left = deadline - time.monotonic()
+        if left <= 0:  # the budget is spent: this row is not read (never guessed, never waited for)
+            items.append({"strategy_id": sid, "state": "not_read"})
+            continue
         try:
-            watch = await watch_of(sid, db=db, user_ref=user_ref, tracked_reader=tracked_reader,
-                                   market_reader=market_reader, rest_reader=rest_reader, margin_of=margin_of, ctx=ctx,
-                                   rates=rates, prefs=prefs, user_values=user_values)
+            watch = await asyncio.wait_for(
+                watch_of(sid, db=db, user_ref=user_ref, tracked_reader=tracked_reader, market_reader=market_reader,
+                         rest_reader=rest_reader, margin_of=margin_of, ctx=ctx, rates=rates, prefs=prefs,
+                         user_values=user_values), left)
             items.append({"strategy_id": sid, "state": "ok", "watch": watch})
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - one row's failure is that row's refusal, never the whole reply
-            message, status = row_answer(exc, f"GET /api/plan-watch row {sid}")
-            items.append({"strategy_id": sid, "state": "refused", "refusal": message, "status": status})
+            if isinstance(exc, TimeoutError) and time.monotonic() >= deadline:  # cut by the one budget, not a row's fault
+                items.append({"strategy_id": sid, "state": "not_read"})
+            else:
+                message, status = row_answer(exc, f"GET /api/plan-watch row {sid}")
+                items.append({"strategy_id": sid, "state": "refused", "refusal": message, "status": status})
             rollback = getattr(db, "rollback", None)
             if rollback is not None:  # a failed statement leaves the shared session unusable for the next row
                 await rollback()

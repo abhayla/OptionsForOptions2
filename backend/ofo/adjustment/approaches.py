@@ -467,16 +467,20 @@ class _Builder:
             return self.entry_distance(leg, found)
         if found.code != ROLL_TARGET_DELTA:
             raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
+        if not self.chain:  # #857: a spot beside an empty chain (a market not connected): no price to roll to, stated
+            raise _refusal("adjust_no_price", leg=self.ref(leg))
         rows = sorted((r for r in self.chain if r.type == leg.type and r.expiry == leg.expiry
                        and (r.strike > leg.strike if up else r.strike < leg.strike)
                        and (outward or self.otm(r))),  # rolling IN stops short of spot (live 2026-11-06)
                       key=lambda r: abs(r.strike - leg.strike))  # the walk away from the short
         with_delta = [(r, r.delta) for r in rows if r.delta is not None]
-        target = self.cfg.target_short_delta[self.p.expiry_kind]
         if not with_delta:
             points = self.cfg.roll_points_without_delta[self.p.underlying]
             self.basis = ("points", points)
             return points if up else -points
+        target = self.cfg.target_short_delta.get(self.p.expiry_kind)  # #857: an unknown expiry kind is a refusal, not a KeyError
+        if target is None:
+            raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
         self.basis = ("delta", target)
         fit = [r for r, delta in with_delta if abs(delta) <= target and self.otm(r)]  # |delta| (puts < 0); never ITM
         if not fit:

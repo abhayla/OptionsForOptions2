@@ -460,7 +460,10 @@ async def _refuse_lots_over_limit(req: _Request, wanted: list[ep.LegToPrice], he
             raise _refuse("strategy_contract_not_in_catalogue")
         name = display_contract(ep.contract_key(catalogue, instrument_id, underlying))
         legs.append(LegLots(name, lot_size, held_by_id.get(instrument_id, 0), signed))
-    check_lots(top, legs)
+    try:
+        check_lots(top, legs)
+    except StrategyRefused as refused:  # #855: the real door refuses with ONE code (409), the paper door keeps its 422
+        raise StrategyRefused(refused.args[0], Failure.CONFLICT, message=refused.message) from None
 
 
 async def _banded(req: _Request, wanted: list[ep.LegToPrice], catalogue: Any) -> ep.QuoteOf:

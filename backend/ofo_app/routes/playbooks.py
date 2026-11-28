@@ -458,15 +458,15 @@ def _not_checked(row: Any, body: dict[str, Any]) -> dict[str, Any]:
 
 
 async def _tracked_first(seams: _Seams, row: Any) -> Any:
-    """The strategy's tracked legs (a database read on the request's session), or None when they are not readable:
-    its type is not known, so it is not "of that type". Read before any broker wait so the connection can go back."""
+    """The strategy's tracked legs (a database read on the request's session), or None when they are not readable as
+    option legs: its type is not known, so it is not "of that type" (``TrackedUnreadable``, ``TrackedExited``: the
+    expected case, and the only one caught). #858: a database error (or any other fault) is NOT "not of the type": it
+    propagates, so the preview shows the failure instead of dropping this strategy and, with the shared session
+    aborted, every strategy after it. Read before any broker wait so the connection can go back."""
     from ofo_app.adjustment_readers import TrackedUnreadable  # noqa: PLC0415 - it imports routes.adjustment
     try:
         return await seams.tracked_reader(row.id, seams.rates)
     except TrackedUnreadable:
-        return None
-    except Exception as exc:  # noqa: BLE001 - as the bounded read: one strategy's failed read is never a 500
-        log.debug("playbook test: strategy %s legs %s", row.id, type(exc).__name__)
         return None
 
 
