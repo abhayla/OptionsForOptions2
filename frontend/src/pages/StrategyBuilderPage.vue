@@ -45,7 +45,7 @@ import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBook
 import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, exitLegsNotLive, legsNoPrice, refusalText, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
-import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock, sentNow } from '@/lib/unknownLocks'
+import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, lockDecidedElsewhere, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import { STOP_OFFER_LABEL, legStopsGone, triggerListOf, triggersPath } from '@/lib/paperTriggers'
@@ -544,7 +544,11 @@ function adoptForeignLock() {
   if (!paper.value) return
   if (exitUnknown.value) {
     const u = exitUnknown.value
-    if (!exitLockFor(u.id)) { // Lane W2 (I-139): another tab DECIDED this lock (its POST answered, or its read decided it) and removed it: the store is the authority, so this tab's unknown state ends at once, not after the window.
+    if (!exitLockFor(u.id) && !lockDecidedElsewhere(u.id, u.lock)) { // Lane F1b item 1 (Opus review): a lock that merely VANISHED (site data cleared) is not a decision and the request key went with it: the lock this page holds stays, and a deciding read ends it (a moved book at once, an unchanged one only past the window)
+      void recheckUnknownExit()
+      return
+    }
+    if (!exitLockFor(u.id)) { // Lane W2 (I-139): another tab DECIDED this lock (its POST answered, or its read decided it, and it wrote its marker) and removed it: this tab's unknown state ends at once, not after the window.
       // What is on screen is old (the exit may have been stored): the dialog closes and the book is read again before anything is offered or sent.
       exitUnknown.value = null
       exitRec.clear(EXIT_KEY)

@@ -23,10 +23,11 @@ import { UNKNOWN_EXIT_READ_AFTER_MS } from '@/lib/sharedStateText'
 const LOCK_KEY = 'ofo.exitUnknown'
 const ADD_KEY = 'ofo.addUnknown'
 const KEYS_KEY = 'ofo.orderKeys'
-const memory = { [LOCK_KEY]: {}, [ADD_KEY]: {}, [KEYS_KEY]: {} }
+const DONE_KEY = 'ofo.lockDecided' // F1b item 1: the marker a page writes BEFORE it removes a lock it DECIDED; a wipe of storage leaves none (a missing lock alone is never a decision)
+const memory = { [LOCK_KEY]: {}, [ADD_KEY]: {}, [KEYS_KEY]: {}, [DONE_KEY]: {} }
 const UNREADABLE = Symbol('unreadable') // content is there but is not an object of entries: a lock for every strategy, decided by nobody
 const garbageSeen = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null } // R5 N3: when this page first saw a store that cannot be read (it counts the window from there; never written over the content)
-const dirty = { [LOCK_KEY]: false, [ADD_KEY]: false, [KEYS_KEY]: false } // true once a write was refused: then what this page wrote is merged over what storage holds (never instead of it)
+const dirty = { [LOCK_KEY]: false, [ADD_KEY]: false, [KEYS_KEY]: false, [DONE_KEY]: false } // true once a write was refused: then what this page wrote is merged over what storage holds (never instead of it)
 
 const monoNow = () => { try { const n = globalThis.performance?.now?.(); return Number.isFinite(n) ? n : null } catch { return null } }
 const sentMono = new Map() // wall send time -> monotonic time of that send (sentNow); the newest 64
@@ -299,6 +300,7 @@ function makeLocks(name, kind) {
       }
       if (!(String(id) in all)) return true
       if (only && !sameLock(asLock(all[String(id)], kind), only)) return false
+      if (only) markDecided(kind, id, only) // the marker first: another tab that sees the lock vanish releases only when it finds this
       const next = { ...all }
       delete next[String(id)]
       writeAll(name, next)
@@ -314,6 +316,22 @@ function makeLocks(name, kind) {
     /** True when the stored content as a whole cannot be read (then every strategy is locked). */
     unreadable() { return readAll(name) === UNREADABLE },
   }
+}
+/** F1b: remember that the lock `lock` of `id` was DECIDED here (one marker per strategy and kind, the newest). */
+function markDecided(kind, id, lock) {
+  if (lock.key === null && !Number.isFinite(lock.at)) return // nothing names the lock: no marker, the other tab keeps waiting for its own read
+  const all = entriesOf(DONE_KEY)
+  all[`${kind}|${id}`] = { key: lock.key ?? null, at: Number.isFinite(lock.at) ? lock.at : null }
+  writeAll(DONE_KEY, all)
+}
+/** F1b item 1 (Opus review): true only when ANOTHER page decided exactly this lock and said so (a marker). A lock that merely vanished (site data cleared) is not decided: the caller keeps it
+ *  and lets a read decide. A marker matches by request key, or by `at` when the lock has no key. */
+export function lockDecidedElsewhere(id, lock, kind = 'exit') {
+  const m = readAll(DONE_KEY)?.[`${kind}|${id}`]
+  if (!m || !lock) return false
+  if (Number.isFinite(m.at) && Number.isFinite(lock.at) && m.at !== lock.at) return false // a resend keeps the held key but is a new lock (a new give-up time): an old marker never matches it
+  if (m.key !== null && lock.key !== null && lock.key !== undefined) return m.key === lock.key
+  return m.key === null && Number.isFinite(m.at) && m.at === lock.at
 }
 const exitLocks = makeLocks(LOCK_KEY, 'exit')
 const addLocks = makeLocks(ADD_KEY, 'add')
@@ -378,4 +396,5 @@ export function resetExitLocks() {
   writeAll(LOCK_KEY, {})
   writeAll(ADD_KEY, {})
   writeAll(KEYS_KEY, {})
+  writeAll(DONE_KEY, {})
 }

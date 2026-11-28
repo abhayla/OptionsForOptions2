@@ -198,7 +198,7 @@ import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
-import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock, sentNow } from '@/lib/unknownLocks'
+import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, lockDecidedElsewhere, onExitLocksChanged, orderKeyFor, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -538,17 +538,22 @@ function adoptLock(id, seq, now) {
   return true
 }
 function adoptLocks(now, seq) { for (const id of new Set([...exitLockIds(), ...(now ?? []).map((g) => String(g.id))])) adoptLock(id, seq, now) } // every listed strategy too: an unreadable store locks them all
-// Lane W2 (I-139): another tab DECIDED a lock this page was holding (its POST answered, or its read decided it) and removed it from the store: the store is the authority, so the record this page
-// kept for it ends too, at once and not after the window. What is on screen is old (the exit may have been stored), so an open dialog of that strategy closes with the changed-elsewhere note and the
-// list is read again before anything is offered. A page's own decisions never come here (the storage event reaches only OTHER tabs).
+// Lane W2 (I-139) + Lane F1b item 1 (Opus review): a lock that vanished from the store is NOT a decision: another tab's decision and a WIPE (site data cleared) look the same, and a wipe takes the
+// request key too. So nothing is released here. The record this page holds keeps its own copy of the lock (`r.lock`, never written back: two tabs would pass it to each other), the list is read
+// again, and `decideUnresolved` decides it as for any lock: a book that moved is "stored" at once (the usual case of another tab's stored exit), an unchanged one only past the window
+// counted on this page's monotonic clock. Until then the dialog stays on the unknown sentence and Confirm sends nothing.
 function releaseForeignDecided() {
   const gone = (items.value ?? []).map((g) => String(g.id)).filter((id) => exitRec.cur(id)?.state === 'unknown' && !exitLockFor(id))
   if (!gone.length) return
+  let reread = false
   for (const id of gone) {
+    const rec = exitRec.cur(id)
+    if (!lockDecidedElsewhere(id, rec.lock)) { reread = true; continue } // no marker: a wipe or an unknown removal; the held lock waits for a deciding read
     if (confirm.value && String(confirm.value.id) === id) endExit('changed', confirm.value.names, null, id)
-    else exitRec.drop(id)
+    else exitRec.drop(id) // another page said it DECIDED this very lock
+    reread = true
   }
-  try { refreshNow() } catch { /* the list says its own read failed */ }
+  if (reread) { try { refreshNow() } catch { /* the list says its own read failed */ } }
 }
 let offLocks = null
 onMounted(() => {
