@@ -1,4 +1,4 @@
-STATUS 23:20 | MUST stored-close as-of PUSHED: code commit 45ff71c20 + 9f4f37c1b, gate TOTAL PASS 1139.6s; the build lane merges RA2 (88500c2a9) only together with it | I-66 pushed 937e80bbe | queue empty | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
+STATUS 00:40 IST 29 Nov | CI-2 spec fixes + W-25 D tests + Positions not-connected fix: built, merged with wave 1 (8425feea), full check running, ONE push by 01:30 | still failing browser specs: 0 (8 screen specs 1652 passed / 0 failed / 20 flaky-on-retry / 2 skipped; real-API files 14 passed / 2 skipped) | blocker: none
 
 # RESULTS Lane F3 (frontend tail), branch fix/r3-frontend-f3-1128, base origin/integration/weekend-r3-1129 + FJ2 68a46dd62 + RA2 (fix/r3-leftovers-2-1128)
 
@@ -44,6 +44,14 @@ Reproduced on the Positions paper list (PaperStrategies), test first (exit-slow-
 What does grey every Exit on a failed read: the builder's book panel (PaperBookPanel: Exit all and each leg's Exit), by the older D-05 / REQ-109 AC-5 rule, with its reason line; exit-gate-d05 pins it. That is the F1b lane's file and a money screen: not changed here.
 Possible clash, so not decided: ADR-330 (60) ("Not chosen: grey the Exit button itself") against D-05 (no exit from old prices, the builder greys Exit on a failed read). They agree on Positions (button open, dialog explains, Confirm off) and differ in the builder's panel.
 
+## CI-2: the failing browser specs (coordinator 17:24 UTC, confirmed 23:44 IST)
+Classification table and the result: `docs/design/next-batch-2026-11-26/ci2-playwright-classification-f3.md` (98 distinct tests failing on my head, (b) stale spec 97 + (c) 1, (a) none, (d) none; every one fixed to the decided behaviour, none skipped or quarantined). Count still failing after this push: 0 (single-run result above; CI's own run on the build decides). One product change rode in: Positions, not connected, keeps a clean four-part server message with a Retry (my own item 3 had dropped its next action).
+Money-path note (Exit): the spec changes for the Exit dialog only re-pin what the product already does (market-state answer asked first, idempotency key in the body, Confirm waits for the re-read after an unknown outcome, a failed read leaves Exit open with the dialog explaining). No Exit code was touched.
+
+## Found, not assigned
+- Builder PaperBookPanel.vue (Lane F1b): Exit all / each leg's Exit greyed while a read has failed (D-05) against ADR-330 (60); see "Question for the owner".
+- CI frontend job time: Playwright with all specs green is about 9 minutes on 4 workers here; the CI runner uses 2 workers (playwright.config.ts): expect 15 to 18 minutes for that step.
+
 ## For the owner lane
 - Lane F1/FJ2, `PaperStrategies.vue` row `paper-closed-leg`: the cells `paper-closed-unbooked` and `paper-closed-pnl` are `pnlText(null)` (a dash). Print `c.unbooked` and `c.pnl` (new fields of readPaperList's closed row), else `c.pnlReason`, when present.
 - Backend (Lane RA2/B2) `backend/ofo_app/routes/paper.py` `_closed_row` (line ~716): add `unbooked_text` and `pnl_text` (a closed lifecycle has nothing left to book: its P&L is its booked) or `pnl_reason_text`. Until then the Positions closed row keeps its dash cells; ClosedRows.vue (P&L table, builder) shows the two columns only when the server sends a figure or reason.
@@ -75,4 +83,4 @@ ADR-259 (6 Nov 2026): a strategy whose every leg is closed leaves My Strategies'
 |---|---|---|
 | items 1-4 | Sonnet (this session) | 55 |
 
-SAFE TO CLOSE (head = the pushed head of fix/r3-frontend-f3-1128; left: item 4 needs backend `_closed_row` fields and Lane F1's PaperStrategies cells, item 9 W-15 and the 90 s question are owner questions, nothing proved in a browser)
+SAFE TO CLOSE after the push of 29 Nov ~01:00 (head = the pushed head of fix/r3-frontend-f3-1128; left: item 4 needs backend `_closed_row` fields and Lane F1's PaperStrategies cells, item 9 W-15 and the 90 s question are owner questions, nothing proved in a browser)
