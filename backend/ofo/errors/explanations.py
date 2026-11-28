@@ -2633,6 +2633,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("monitoring_badge", "rule", "Monitoring paused"),
     ExplanationTemplate("monitoring_health_unknown", "rule", "Health unknown"),
     ExplanationTemplate("monitoring_since", "rule", "Since {time}", {"time": ClockHm}),
+    ExplanationTemplate("monitoring_why_no_bus", "rule",
+                        "Not being watched here: this server is not set up to share prices with its background worker, so it cannot tell."),
     ExplanationTemplate("monitoring_why_workers_down", "rule", "Not being watched: no worker has reported in the last 2 minutes."),
     ExplanationTemplate("monitoring_why_state_unreadable", "rule", "Not being watched: the worker's report cannot be read."),
     ExplanationTemplate("monitoring_why_not_listed", "rule", "Not being watched: the worker does not list this trade."),

@@ -134,3 +134,20 @@ def test_ra_a_paused_reason_with_its_own_sentence_and_the_plain_fallback():
     assert str(odd.reason_text) == "Not being watched: the reason is not known."
     (free,) = route.compose({5: ms.Entry(5, ms.PAUSED, "stale", "a REST detail, free text", None)}, [5], NOW)
     assert free.reason_text == render_explanation("monitoring_why_stale")
+
+
+def test_ra_an_unset_or_in_process_feed_mode_reads_as_its_own_plain_reason_never_as_no_worker(monkeypatch):
+    """Lane TG finding (RESULTS-lane-tg line 38): with FEED_MODE unset, ``read_found`` said "no worker has reported in
+    the last 2 minutes" for every trade even with a worker running: a wrong reason. Without the bus the API cannot know
+    anything about a worker, and says exactly that (paused, fail closed; never "watched")."""
+    for mode in (None, "inprocess"):
+        if mode is None:
+            monkeypatch.delenv("FEED_MODE", raising=False)
+        else:
+            monkeypatch.setenv("FEED_MODE", mode)
+        found = asyncio.run(route.read_found([4, 5], NOW))
+        out = route.compose(found, [4, 5], NOW)
+        assert [(o.watch_state, o.reason) for o in out] == [("paused", "no_bus")] * 2, mode
+        assert all(str(o.reason_text) == "Not being watched here: this server is not set up to share prices with its "
+                   "background worker, so it cannot tell." for o in out), mode
+        assert "no worker has reported" not in " ".join(str(o.reason_text) for o in out)

@@ -5287,6 +5287,10 @@
     "sha256": "9369f5e303aaa45e07285c16da5782dd4919d190fe7b97ec6342083b63b9744f",
     "reviewed": "pending owner read"
   },
+  "explanation:monitoring_why_no_bus": {
+    "sha256": "e2f319c95417e1d8535d00a917a7a262aa575d912c34f43f4d0420696eb8cb8c",
+    "reviewed": "pending owner read"
+  },
   "explanation:monitoring_why_unknown": {
     "sha256": "39ec88e42e6a29e459c1a8ffb0d100be6a9e8a9401d9da6901f33e9011d17b14",
     "reviewed": "pending owner read"

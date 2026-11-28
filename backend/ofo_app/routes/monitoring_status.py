@@ -74,7 +74,7 @@ def compose(found: Mapping[int, ms.Entry], ids: list[int], now: datetime.datetim
 async def read_found(ids: list[int], now: datetime.datetime) -> dict[int, ms.Entry]:
     """The seam a test replaces: the Redis read. No bus (in-process feed) = no worker = every trade paused."""
     if feed_mode.feed_mode() != feed_mode.BUS:
-        return {i: ms.Entry(i, ms.PAUSED, ms.WORKERS_DOWN, "", None) for i in ids}
+        return {i: ms.Entry(i, ms.PAUSED, ms.NO_BUS, "", None) for i in ids}  # RA (TG): not "no worker": unknown
     client = feed_bus.new_client(feed_mode.redis_url())
     try:
         return await ms.read_states(client, ids, now)
