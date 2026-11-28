@@ -356,8 +356,15 @@ def catalogue_of(provider: Any, underlying: str) -> tuple[tuple, frozenset]:
     return tuple(listed_options(provider, underlying)), future_expiries(provider, underlying)
 
 
+def primary_expiry(position: Any) -> datetime.date:
+    """The ONE expiry a trade's chain, forward, ATM IV and expiry kind are read for: its NEAREST leg (FE2 item 2, issue
+    #863; the kind was always read for the nearest leg, the chain for the first listed one: a calendar trade listed far
+    leg first priced its market from the far chain)."""
+    return min(x.expiry for x in position.legs)
+
+
 def _snapshot_instant(read: PriceRead, expiry: datetime.date) -> datetime.datetime:
-    return max([read.spot.timestamp, *(q.timestamp for q in read.chains[expiry])])
+    return max([read.spot.timestamp, *(q.timestamp for q in read.chains.get(expiry, ()))])
 
 
 def _option_greeks(em: Any, kind: Instrument, strike: Decimal, iv: Decimal) -> Greeks | None:
@@ -410,7 +417,7 @@ def feed_spot(read: PriceRead, now: datetime.datetime) -> SourceReading:
 def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: datetime.datetime,
                   values: Mapping[str, Decimal]) -> MarketInputs:
     """The screen's ``MarketInputs`` (``adjustment_readers.read_market``) from a fresh price read, every per-option
-    figure from the shared cache instead of a whole-chain model: the first leg's expiry, the legs' rows, the same ATM
+    figure from the shared cache instead of a whole-chain model: the nearest leg's expiry, the legs' rows, the same ATM
     IV rule (the IV of the call nearest the forward that the model prices), the same last close. Valued at the
     snapshot instant (the price's own time), so a figure is shared per price update; the screen values at its clock,
     so the two agree exactly when the clock reads the price's time (named in the module docstring).
@@ -422,8 +429,8 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
         read_last_close,
     )
     position = watched.tracked.position
-    expiry = position.legs[0].expiry
-    chain = tuple(sorted(read.chains[expiry], key=lambda q: q.instrument_id))
+    expiry = primary_expiry(position)
+    chain = tuple(sorted(read.chains.get(expiry, ()), key=lambda q: q.instrument_id))
     instant = _snapshot_instant(read, expiry)
     em = fwd = None
     rate, quality = value_of(values, RISK_FREE_RATE), settings_calc.forward_quality(values)  # the settings in force
@@ -437,7 +444,7 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
 
     def shared_greeks(_iid: str, q: Any) -> Greeks | None:  # the shared per-option figures (REQ-166 AC-2)
         return None if em is None or q is None else _figures(shared, at, q, em)[1]
-    # the screen's own row builder over every listed contract of the expiry (the screen reads the first leg's expiry)
+    # the screen's own row builder over every listed contract of the expiry (the screen: see RESULTS-lane-fe2)
     rows, ids, leg_greeks = chain_rows(read.listed, expiry, {q.instrument_id: q for q in chain}, shared_greeks,
                                        scenario_mode.current())
     vol = None
@@ -463,7 +470,7 @@ def market_inputs(watched: Watched, read: PriceRead, shared: FeedScope, now: dat
             if sym in own and iid in by_id and (iv := _figures(shared, at, by_id[iid], em)[0]) is not None:
                 leg_ivs[sym] = iv
     return MarketInputs(tuple(rows), ids, None if fwd is None else fwd.forward, years, vol, feed, last, now,
-                        expiry_kind_of(min(x.expiry for x in position.legs), read.listed, read.futures,
+                        expiry_kind_of(expiry, read.listed, read.futures,
                                        scenario_mode.current()), leg_greeks,
                         fwd, leg_ivs, index_day_open(read.day, now),
                         carry_gap_pct=values.get(settings_calc.CARRY_GAP_PERCENT),  # absent -> no figures, named reason
@@ -967,7 +974,7 @@ def daily_iv_of(w: Watched, read: PriceRead, market: MarketInputs,
         return None
     day = now.astimezone(IST).date()
     position = w.tracked.position
-    expiry = position.legs[0].expiry
+    expiry = primary_expiry(position)
     listed = [lc.contract.expiry for lc in read.listed
               if lc.contract.expiry is not None and lc.contract.expiry >= day]
     if not listed or expiry != min(listed):
@@ -1309,7 +1316,7 @@ class Worker:
             return set()
 
     def _window_tokens_of(self, w: Watched) -> set[int]:
-        """The calls and puts of the SCREEN's strike window of the strategy's first leg expiry (the expiry the
+        """The calls and puts of the SCREEN's strike window of the strategy's nearest leg expiry (the expiry the
         forward and ATM IV are read from, ``adjustment_readers.read_market``): ``chain_push.strike_window`` around
         ``chain_push.atm_strike`` of the live spot, ``limits.chain_strikes_each_side`` (the chain screen's default)
         each side (finding 2). Empty when not known: no settings read yet, no live spot, the expiry not listed."""
@@ -1319,7 +1326,7 @@ class Worker:
         provider = self._provider_for(w.feed_owner)
         options, _by_id = self._tokens_of(provider)
         position = w.tracked.position
-        expiry = position.legs[0].expiry
+        expiry = primary_expiry(position)
         spot = provider.underlying_quote(position.underlying)
         grid = self._grid_of(provider, options, position.underlying, expiry)
         each = settings_calc.chain_strikes_each_side(self._values)
