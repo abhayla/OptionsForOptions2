@@ -1,4 +1,4 @@
-STATUS 19:10 | items 1, 2, 3: Fixed, not tested in a browser (batch 1 check pending) | item 4 waits for Lane F1's add lock (not on origin at 19:00) | item 5: no frontend text to change (server wording) | next push batch 1 after the check | blocker: link to coordinator refused (elevated_session_untrusted_device), so this STATUS line is the report
+STATUS 18:50 | items 1, 2, 3: Fixed, not tested in a browser (batch 1 check pending) | item 4 waits for Lane F1's add lock (not on origin at 18:50) | item 5: no frontend text to change (server wording) | next push batch 1 after the check | blocker: link to coordinator refused (elevated_session_untrusted_device), so this STATUS line is the report
 
 # RESULTS Lane F2 (frontend plan screens, Review wording, Execute page), branch fix/r3-frontend-f2-1128
 
@@ -9,7 +9,7 @@ Base: origin/integration/weekend-r3-1129 + Lane FJ2 push 68a46dd62 merged (its v
 | 2 I-208 Stop / Stop (Rs) clash | Fixed, not tested in a browser | plan-sheet-levels-differ-f2-1128: 2 of 4 red (Stop 9 + Stop (Rs) 500 sent only `stop_rupees`; Target 30 + Target (Rs) 900 sent only the last box) | 4/4; adjust-plan 30, plan-rupee-levels green |
 | 1 I-197 stop / target figure in the Plan block | Fixed, not tested in a browser; raw body of strategy 209 not seen (Lane W1 / TG2 body not on origin): built on the server's PlanOut shape | plan-entry-levels-f2-1128: 6 of 6 red | 6/6; 20 files / 206 tests that touch PlanEntry or adjustPlan green |
 | 3 I-41 builder money figures | Tests only (pins, green at once), no code changed | builder-money-figures-f2-1128 | 7/7; re-buy rows stay pinned by panel-rows-closed-b6 (8/8) |
-| 4 I-182 Execute page lock | NOT STARTED: waits for Lane F1's add lock (decideLock through the one lock rule) on origin/fix/r3-frontend-2-1128 (head still 68a46dd62 at 19:00) | | |
+| 4 I-182 Execute page lock | NOT STARTED: waits for Lane F1's add lock (decideLock through the one lock rule) on origin/fix/r3-frontend-2-1128 (head still 68a46dd62 at 18:50) | | |
 | 5 I-195 one stop wording | No frontend change possible, see For the owner lane | | |
 
 ## Causes
