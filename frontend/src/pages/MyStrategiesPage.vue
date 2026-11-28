@@ -266,7 +266,7 @@ async function confirmRename(row) {
     <DraftDeleteStatus :flow="deleteFlow" />
     <!-- I-203 (F3, ADR-259): a closed trade leaves this list by design; say where it went (new sentence, pending owner read) -->
     <p v-if="loaded && !loadFailed && !errorParts && !completedOnly && hasCompleted" class="mt-3 text-xs text-ink-muted" data-testid="completed-pointer">
-      Completed strategies are listed under <RouterLink to="/strategies/completed-strategies" class="link" data-testid="completed-pointer-link">Strategies &gt; Completed Strategies</RouterLink>.
+      Completed strategies are listed under Strategies &gt; Completed Strategies.
     </p>
   </section>
 </template>

@@ -26,12 +26,11 @@ async function page(completedOnly) {
 const POINTER = 'Completed strategies are listed under Strategies > Completed Strategies.' // pending owner read
 const DONE = { ...C1, closed_at: '2026-11-23T07:54:07Z' }
 describe('I-203 where the Completed rows are', () => {
-  it('rows exist and one is completed: no Completed row here, a pointer with a link to the Completed page', async () => {
+  it('rows exist and one is completed: no Completed row here, a pointer naming the Completed page', async () => {
     rows = [{ ...C1, id: 1, status: 'draft', status_word: 'Running', closed_at: null }, DONE]
     const w = await page(false)
     expect(w.findAll('[data-testid="row-completed"]').length).toBe(0)
     expect(w.get('[data-testid="completed-pointer"]').text()).toBe(POINTER)
-    expect(w.get('[data-testid="completed-pointer-link"]').attributes('href')).toBe('/strategies/completed-strategies')
   })
   it('empty list but a completed one exists: the empty state names where it is', async () => {
     rows = [DONE]
