@@ -1,4 +1,4 @@
-STATUS 23:20 | BATCH 2 pushed: item 6 done, 7 nothing, 8 done (read-only), outcome block hardened (waits for a running first request, cascade), migration renumbered 0064 after RA2's 0063; DB regression of the 69 order-door test files: 1890 passed, 1 failed (Lane B1's stale test_n7, pre-existing) | batch 1 was pushed 21:49 | blocker: send_message to @parent REFUSED (elevated_session_untrusted_device); this STATUS line is the report
+STATUS 22:30 | BATCH 2 pushed: item 6 done, 7 nothing, 8 done (read-only), outcome block hardened (waits for a running first request, cascade), migration renumbered 0064 after RA2's 0063; DB regression of the 69 order-door test files: 1890 passed, 1 failed (Lane B1's stale test_n7, pre-existing) | batch 1 was pushed 21:49 | blocker: send_message to @parent REFUSED (elevated_session_untrusted_device); this STATUS line is the report
 
 # Lane B2: the order-door and request-key backend lane (round 3, weekend)
 
