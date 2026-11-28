@@ -54,10 +54,10 @@ describe('F-D: a stored `at` that is not a credible time never counts as long pa
       expect(L.decideLock(lock, BOOK_SAME, Date.now()).verdict).toBe('keep')
     })
   }
-  it('a real old lock (epoch ms, days ago) is still past at first sight: the existing rule', () => {
+  it('a real old lock (epoch ms, days ago): first sight keeps it too (Lane W2 D-W2-1: the wall age is never trusted); a window of real time later it is decided', () => {
     const store = { 1: lockRec(Date.now() - 3 * 86400000) }
     globalThis.localStorage.setItem('ofo.exitUnknown', JSON.stringify(store))
-    expect(L.decideLock(L.exitLockFor(1), BOOK_SAME, Date.now()).verdict).toBe('not_stored')
+    expect(L.decideLock(L.exitLockFor(1), BOOK_SAME, L.sentNow()).verdict).toBe('keep')
     expect(UNKNOWN_EXIT_READ_AFTER_MS).toBeGreaterThan(0)
   })
 })

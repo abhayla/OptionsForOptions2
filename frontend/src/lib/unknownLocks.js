@@ -39,16 +39,10 @@ export function sentNow() {
 }
 const stamps = new Map() // `${store}|${id}|${at}` -> monotonic stamp of this page instance (never stored: it means nothing in another page)
 const stampKey = (name, id, at) => `${name}|${id}|${at ?? ''}`
-/** A stamp that makes the lock look `wallAgeMs` old now (the wall age is trusted ONCE, clamped to 0..window + 1 s, at first sight or write; never again). */
-const EPOCH_MS_FLOOR = 1e12 // 9 Sep 2001 in epoch ms: a stored time below it (0, a negative, a count of seconds) is not a time this app wrote
-const stampFor = (wallAgeMs, at = null) => {
-  const m = monoNow()
-  if (m === null) return null
-  const cap = UNKNOWN_EXIT_READ_AFTER_MS + 1000
-  // FJ2 F-D (Opus review): a stored `at` that is not a credible time (0, -1, seconds) is never read as "long ago": the lock counts from first sight, then only the monotonic source
-  const age = !Number.isFinite(wallAgeMs) || wallAgeMs < 0 || (at !== null && !(at >= EPOCH_MS_FLOOR)) ? 0 : wallAgeMs > cap ? cap : wallAgeMs
-  return m - age
-}
+/** The monotonic stamp of a lock for THIS page instance: taken when the lock is written here or FIRST SEEN here, and always as "age 0 now". The wall age is never trusted, not even once
+ *  (Lane W2 D-W2-1, Opus review R2-3: a clock moved forward before a reload released a lock after 46 real seconds). A reloaded page therefore counts the window from its own first sight, by the
+ *  monotonic clock only: the lock outlives a reload for up to one more window, never less. No monotonic source: null (the wall rule stays, as it must). */
+const stampFor = () => monoNow()
 /** Monotonic ms the lock has aged when the read was sent: null when no stamp or no source (then the wall rule counts). A read whose wall `sentAt` is ahead of now counts as sent now; one behind
  *  now counts as sent that long ago (only ever younger, never older). */
 function monoAgeAtSend(stamp, sentAt) {
@@ -229,16 +223,15 @@ function makeLocks(name, kind) {
   const seenKey = (id, seen) => stampKey(name, `${id}#seen`, seen)
   /** The lock with this page instance's monotonic stamps: found, or taken now from the wall age of this first sight (once). */
   const withStamps = (id, l) => {
-    const now = Date.now()
     const out = { ...l }
     if (l.at !== null) {
       const k = atKey(id, l.at)
-      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.at, l.at))
+      if (!stamps.has(k)) stamps.set(k, stampFor())
       out.mono = stamps.get(k)
     }
     if (l.seen !== null) {
       const k = seenKey(id, l.seen)
-      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.seen, l.seen))
+      if (!stamps.has(k)) stamps.set(k, stampFor())
       out.seenMono = stamps.get(k)
     }
     return out
@@ -273,8 +266,8 @@ function makeLocks(name, kind) {
     const all = entriesOf(name)
     all[String(id)] = { at: rec.at ?? null, before: rec.before ?? null, expected: rec.expected ?? null, names: rec.names ?? [], units: rec.units ?? null, key: rec.key ?? null, sig: rec.sig ?? null, waiting: rec.waiting ?? null, out: rec.out === true, seen: rec.seen ?? null, move: rec.move === true, adds: rec.adds ?? null }
     writeAll(name, all)
-    if (Number.isFinite(rec.at) && !stamps.has(atKey(id, rec.at))) stamps.set(atKey(id, rec.at), stampFor(Date.now() - rec.at, rec.at)) // a lock written here: the wall age counts once, then only the monotonic time
-    if (Number.isFinite(rec.seen) && !stamps.has(seenKey(id, rec.seen))) stamps.set(seenKey(id, rec.seen), stampFor(Date.now() - rec.seen, rec.seen))
+    if (Number.isFinite(rec.at) && !stamps.has(atKey(id, rec.at))) stamps.set(atKey(id, rec.at), stampFor()) // a lock written here: the wall age counts once, then only the monotonic time
+    if (Number.isFinite(rec.seen) && !stamps.has(seenKey(id, rec.seen))) stamps.set(seenKey(id, rec.seen), stampFor())
   }
   return {
     save: writeLock,
