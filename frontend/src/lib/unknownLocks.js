@@ -54,6 +54,21 @@ function monoAgeAtSend(stamp, sentAt) {
   return m - stamp - (behind > 0 ? behind : 0)
 }
 
+/** F1b F-E (Opus review): the sentence a page shows when this browser will not keep the lock and request key of an order (private mode, blocked site data, a full quota). NEW WORDING, pending owner read. */
+export const LOCK_STORAGE_REFUSED_TEXT = 'This browser is not letting the page keep its safety record, so nothing was sent. Allow site data for this page, then try again.'
+/** F1b F-E: true when a lock and its key can be written AND read back here. Asked BEFORE any post that needs a lock: a page that cannot keep the lock would lose it (and the request key) on a reload,
+ *  and its Confirm would send a second order. Writes a probe, reads it back, removes it; never throws. */
+export function canPersistLocks() {
+  try {
+    const ls = globalThis.localStorage
+    if (!ls) return false
+    const k = 'ofo.lockProbe'
+    ls.setItem(k, '1')
+    const ok = ls.getItem(k) === '1'
+    ls.removeItem(k)
+    return ok
+  } catch { return false }
+}
 /** What storage holds: an object of entries, UNREADABLE (content that is not one), or undefined (storage itself cannot be read: only the in-page copy exists). */
 function readStored(name) {
   try {

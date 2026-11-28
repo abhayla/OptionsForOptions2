@@ -58,17 +58,16 @@ describe('R2 (d): one refused storage write does not hide another tab\'s lock', 
     await H.positionsExit(w)
     expect(posts()).toHaveLength(0)
   })
-  it('storage refuses every write (private mode): this page\'s own lock still holds', async () => {
+  it('storage refuses every write (private mode): moved by Lane F1b F-E to "nothing is sent": a lock the browser cannot keep is lost by a reload and the next Confirm would send a second order', async () => {
     const ls = globalThis.localStorage
     const impl = ls.setItem.getMockImplementation()
     ls.setItem.mockImplementation(() => { throw new DOMException('full', 'QuotaExceededError') })
     try {
       const w = await H.showPositions()
       await H.positionsExit(w)
-      expect(posts()).toHaveLength(1)
-      expect(lockNow(), 'this page\'s own lock is lost').not.toBeNull()
+      expect(posts()).toHaveLength(0)
       await H.positionsExit(w)
-      expect(posts()).toHaveLength(1)
+      expect(posts()).toHaveLength(0)
     } finally { ls.setItem.mockImplementation(impl) }
   })
 })

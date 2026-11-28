@@ -198,7 +198,7 @@ import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
-import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, lockDecidedElsewhere, onExitLocksChanged, orderKeyFor, saveExitLock, sentNow } from '@/lib/unknownLocks'
+import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, canPersistLocks, LOCK_STORAGE_REFUSED_TEXT, lockDecidedElsewhere, onExitLocksChanged, orderKeyFor, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -613,6 +613,7 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
   if (busy.value) return endExit('busy', c.names)
   if (exitGate.notLive.value) return endExit('not_live', c.names) // prices paused (a failed read, or a leg of this dialog not live on the last good read): no POST; the dialog says which leg and why
   if (isUnknown(c.id) || adoptLock(c.id, readSeq + 1)) { dialogState.value = PAPER_STATE.UNKNOWN; return } // F6: this instance's own unknown record counts, whatever storage says; fail closed: an exit of unknown outcome is undecided: nothing is sent until a good re-read decides it
+  if (!canPersistLocks()) { exitRec.put(c.id, 'refused', LOCK_STORAGE_REFUSED_TEXT); dialogState.value = PAPER_STATE.READY; return } // F1b F-E: a lock this browser cannot keep is lost by a reload and the next Confirm would send a second order: nothing is sent
   const sig = JSON.stringify(orders)
   const key = orderKeyFor(c.id, sig, dialogKey, 'exit')
   const attempt = exitRec.begin(c.id, c.names, c.units) // ONE record per attempt: every answer below goes through it

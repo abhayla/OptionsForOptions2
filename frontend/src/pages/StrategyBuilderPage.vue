@@ -45,7 +45,7 @@ import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBook
 import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, exitLegsNotLive, legsNoPrice, refusalText, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
-import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, lockDecidedElsewhere, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock, sentNow } from '@/lib/unknownLocks'
+import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, canPersistLocks, LOCK_STORAGE_REFUSED_TEXT, lockDecidedElsewhere, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import { STOP_OFFER_LABEL, legStopsGone, triggerListOf, triggersPath } from '@/lib/paperTriggers'
@@ -860,6 +860,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
     paperState.value = PAPER_STATE.UNKNOWN
     return
   }
+  if (!canPersistLocks()) { exitRec.clear(EXIT_KEY); paperBusy.value = false; paperError.value = LOCK_STORAGE_REFUSED_TEXT; paperState.value = PAPER_STATE.READY; return } // F1b F-E: a lock this browser cannot keep is lost by a reload and the next Confirm would send a second order: nothing is sent
   const check = { id, stops: stopsNow.filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
   const sendsExit = orders.some((o) => o?.kind === 'exit')
   // F1 second path (Opus review F1): the lock is written BEFORE the post, so a page left or reloaded while the post is still out is covered; a definite answer removes it

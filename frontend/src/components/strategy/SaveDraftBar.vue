@@ -31,7 +31,7 @@ import { contractName, istTime } from '@/lib/displayFormat'
 import { readPaperBook } from '@/lib/paperDrafts'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
-import { addLockFor, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, keySigOf, onAddLocksChanged, orderKeyFor, saveAddLock, sentNow } from '@/lib/unknownLocks'
+import { addLockFor, canPersistLocks, LOCK_STORAGE_REFUSED_TEXT, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, keySigOf, onAddLocksChanged, orderKeyFor, saveAddLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
@@ -447,6 +447,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   if (paperBusy.value) return
   const target = paperTarget.value
   if (lockedAdd(target)) return // Opus review F1: an add of unknown outcome (or one whose post is out, or a lock that cannot be read) is not sent again, whichever button asks
+  if (!canPersistLocks()) { paperError.value = LOCK_STORAGE_REFUSED_TEXT; return } // F1b F-E: a lock this browser cannot keep is lost by a reload and the next Confirm would send a second order: nothing is sent
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY

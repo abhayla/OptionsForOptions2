@@ -87,3 +87,22 @@ describe('F1b item 1: a wiped store is not a decision (Positions list, releaseFo
     expect(posts()).toHaveLength(1)
   })
 })
+
+// F-E (Opus review of group A): the browser refuses the write; a reload would lose lock AND key, and the next Confirm would send a second order.
+describe('F1b F-E: storage refuses the write', () => {
+  it('setItem throws: Confirm sends nothing and the dialog says storage is refused', async () => {
+    const orig = globalThis.localStorage.setItem
+    globalThis.localStorage.setItem = () => { throw new Error('QuotaExceededError') }
+    try {
+      const a = await show()
+      await openExit(a); await press(a)
+      expect(posts()).toHaveLength(0)
+      expect(document.body.textContent).toContain('not letting the page keep its safety record')
+    } finally { globalThis.localStorage.setItem = orig }
+  })
+  it('storage works again: the same Confirm sends once', async () => {
+    const a = await show()
+    await openExit(a); await press(a)
+    expect(posts()).toHaveLength(1)
+  })
+})
