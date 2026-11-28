@@ -817,7 +817,7 @@ class TargetValue(SlotType):
     def format(value: datetime.datetime | Decimal) -> str:
         if isinstance(value, datetime.datetime):
             ist = value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
-            return f"{ist.day} {ist.strftime('%b')}, {HourMinute.format(value)} IST"
+            return f"{ist.day} {_MONTH_NAMES[ist.month]}, {HourMinute.format(value)} IST"
         return IndexLevel.format(value)
 
 
@@ -992,7 +992,7 @@ class ClockHmsOrDated(SlotType):
     def format(value: object) -> str:
         if isinstance(value, EarlierDay):
             ist = value.at.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
-            return f"{ist.day} {ist.strftime('%b')}, {ist.strftime('%H:%M:%S')}"
+            return f"{ist.day} {_MONTH_NAMES[ist.month]}, {ist.strftime('%H:%M:%S')}"
         return ClockHms.format(value)  # type: ignore[arg-type]
 
 
@@ -1094,7 +1094,7 @@ class DayMonth(SlotType):
 
     @staticmethod
     def format(value: datetime.date) -> str:
-        return f"{value.day:02d} {value.strftime('%b')}"
+        return f"{value.day:02d} {_MONTH_NAMES[value.month]}"
 
 
 def _cell_enums() -> tuple[type, ...]:

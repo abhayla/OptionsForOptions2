@@ -1,4 +1,4 @@
-STATUS 06:40 | 1: Passed in cloud (adjust-plan + plan-accept-signal, 38) | 2: Passed in cloud tracking half (plan-screens-r2-fc3, 15), real read waiting on FD2 | 3: UX-SW6, B13, A06/A09 Passed in cloud; A05 not done (host files) | 4: Passed in cloud (tests_app 88, tests/errors 711, pins updated) | 5: #880, #875 Passed in cloud | 6: waiting on FD2 (fix/r2-backend-2-1128 not on origin) | 7: finding only (PaperBookPanel follows ADR-330 (56)) | added: outcomeLoading, four monitoring_why_* sentences done; F5, UX-A18, d36 count (no PostgreSQL here) not done | gate 18b55049f TOTAL PASS, pushed | message to @parent refused (untrusted device) | next push none | blocker: none
+STATUS 06:40 | 1: Passed in cloud (adjust-plan + plan-accept-signal, 38) | 2: Passed in cloud tracking half (plan-screens-r2-fc3, 15), real read waiting on FD2 | 3: UX-SW6, B13, A06/A09 Passed in cloud; A05 not done (host files) | 4: Passed in cloud (tests_app 88, tests/errors 711, pins updated) | 5: #880, #875 Passed in cloud | 6: waiting on FD2 (fix/r2-backend-2-1128 not on origin) | 7: finding only (PaperBookPanel follows ADR-330 (56)) | added: outcomeLoading, four monitoring_why_* sentences done; F5, UX-A18, d36 count (no PostgreSQL here) not done | gate 18b55049f TOTAL PASS, pushed | message to @parent refused (untrusted device) | 07:45 coordinator item: the other three strftime month names (TargetValue, ClockHmsOrDated, DayMonth) now use the English table, test test_dated_slots_do_not_follow_the_host_locale (red before, green after); next push after gate | blocker: none
 
 # Lane FC3 results
 
@@ -44,7 +44,7 @@ Not a file of mine. The "Checked at 03:22:40 IST" beside the banner is printed b
 - StrategyBuilderPage.vue (FB2): pass `:trade-mode="'real'"` to TrackingPanel for a real trade (line about 1690), and `:closed="paperCompleted"` to PlanWatch (line about 1694) instead of hiding it, if the owner wants the closed sentence there.
 - PaperStrategies.vue (FC2): PlanWatch row for a settled trade may pass `closed` instead of `v-if="g.openCount"`. UX-A05: add a "Plan" door on the Live card that opens the plan sheet for that strategy (AdjustPlanSheet takes `strategyId`); the Live card file is not in my list.
 - Lane FE: the since time of the Monitoring paused badge resets when the worker restarts (the other half of #880).
-- explanations.py (not my region): other `strftime('%b')` uses at lines about 820, 990 and 1092 also follow the host locale; same table fix.
+- explanations.py: the other `strftime('%b')` uses (TargetValue, ClockHmsOrDated, DayMonth) now use the same English table (coordinator item, 28 Nov).
 - PaperBookPanel.vue: see item 7.
 
 ## Decided for the owner

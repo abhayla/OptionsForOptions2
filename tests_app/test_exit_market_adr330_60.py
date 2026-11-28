@@ -11,6 +11,7 @@ from http import HTTPStatus
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.errors.explanations import ClockHmsOrDated, DayMonth, EarlierDay, TargetValue
 from ofo.market_calendar import is_market_open
 from ofo.marketdata.kite_provider import IST
 from ofo_app.exit_market import exit_market_answer
@@ -82,3 +83,17 @@ def test_day_label_does_not_follow_the_host_locale(monkeypatch: pytest.MonkeyPat
     monkeypatch.setattr(time, "strftime", _german)
     _, sentence, _ = exit_market_answer(_ctx(FRIDAY_1602), FRIDAY_1602)
     assert str(sentence) == "The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."
+
+
+def test_dated_slots_do_not_follow_the_host_locale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#875 class: the other three dated slots also keep English month names when every strftime answers in German."""
+    real = time.strftime
+
+    def _german(fmt: str, *args: object) -> str:
+        return real(fmt.replace("%b", "Dez."), *args)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(time, "strftime", _german)
+    at = datetime.datetime(2026, 11, 8, 15, 29, 59, tzinfo=IST)
+    assert DayMonth.format(datetime.date(2026, 11, 24)) == "24 Nov"
+    assert TargetValue.format(at) == "8 Nov, 15:29 IST"
+    assert ClockHmsOrDated.format(EarlierDay(at)) == "8 Nov, 15:29:59"
