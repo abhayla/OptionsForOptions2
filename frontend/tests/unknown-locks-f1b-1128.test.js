@@ -40,3 +40,27 @@ describe('F-G an unreadable store is released one strategy at a time, never as a
     expect(globalThis.localStorage.getItem('ofo.exitUnknown')).toBe('not json{') // nothing written over content nobody can read
   })
 })
+
+describe('R2-2 one token per read', () => {
+  it('two reads sent in the same wall millisecond (the clock stepped back) never share a monotonic send time', async () => {
+    const T0 = Date.now()
+    L.saveExitLock(1, lockOf({ at: T0, out: false, key: 'k' }))
+    const lock = L.exitLockFor(1)
+    const t1 = L.sentNow() // sent at age 0
+    await vi.advanceTimersByTimeAsync(UNKNOWN_EXIT_READ_AFTER_MS + 5000)
+    vi.setSystemTime(new Date(T0)) // the clock steps back to the very millisecond of the first read
+    const t2 = L.sentNow()
+    expect(t2).not.toBe(t1)
+    expect(L.decideLock(lock, BOOK, t1).verdict).toBe('keep') // the first read was sent too early to decide anything
+    expect(L.decideLock(lock, BOOK, t2).verdict).toBe('not_stored') // the second one was sent past the window
+  })
+})
+
+describe('R2-7 a key saved by the earlier build (orders text WITH the entry price) is still found', () => {
+  it('the same add after a price tick gets the key already held', () => {
+    const rows = (price) => [{ contract_id: 5, side: 'SELL', quantity: 130, price }]
+    globalThis.localStorage.setItem('ofo.orderKeys', JSON.stringify({ '7#add': { sig: JSON.stringify(rows('100.00')), key: 'old-key' } }))
+    expect(L.orderKeyFor(7, L.keySigOf(rows('100.25')), 'new-key', 'add')).toBe('old-key')
+    expect(L.orderKeyFor(7, L.keySigOf([{ contract_id: 5, side: 'SELL', quantity: 65, price: '100.25' }]), 'new-key', 'add')).toBe('new-key') // other quantity: a new action
+  })
+})

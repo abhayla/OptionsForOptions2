@@ -31,7 +31,7 @@ import { contractName, istTime } from '@/lib/displayFormat'
 import { readPaperBook } from '@/lib/paperDrafts'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
-import { addLockFor, canPersistLocks, LOCK_STORAGE_REFUSED_TEXT, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, keySigOf, onAddLocksChanged, orderKeyFor, saveAddLock, sentNow } from '@/lib/unknownLocks'
+import { addLockFor, exitLockFor, onExitLocksChanged, canPersistLocks, LOCK_STORAGE_REFUSED_TEXT, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, keySigOf, onAddLocksChanged, orderKeyFor, saveAddLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
@@ -368,7 +368,7 @@ watch(() => props.current?.id, () => { paperRecorded.value = false })
 // It is not reset by Cancel, by reopening the dialog or by another strategy: it names its strategy and ends only on a read of THAT strategy's
 // Paper book: orders there = the add was stored; no orders = not stored, believed only after the server's longest commit window.
 const addTick = ref(0) // the lock store is not reactive: every write and every storage event of another tab bumps this
-const lockedAdd = (id) => { addTick.value; return id != null && !!addLockFor(id) } // also true for a lock that cannot be read: it blocks (fail closed)
+const lockedAdd = (id) => { addTick.value; return id != null && (!!addLockFor(id) || !!exitLockFor(id)) } // F1b F-H: an exit of unknown outcome on the same strategy blocks an add too (the builder's rule) // also true for a lock that cannot be read: it blocks (fail closed)
 let unknownTimer = null
 let checking = false
 const addLocked = computed(() => lockedAdd(props.current?.id))
@@ -401,8 +401,9 @@ async function checkAddUnknown() {
 }
 function startUnknownTimer() { if (!unknownTimer && addLockIds().length) unknownTimer = setInterval(checkAddUnknown, 5000) }
 let offLocks = null
-onMounted(() => { startUnknownTimer(); offLocks = onAddLocksChanged(() => { addTick.value++; startUnknownTimer() }) })
-onBeforeUnmount(() => { clearInterval(unknownTimer); unknownTimer = null; offLocks?.() })
+let offExitLocks = null
+onMounted(() => { startUnknownTimer(); offLocks = onAddLocksChanged(() => { addTick.value++; startUnknownTimer() }); offExitLocks = onExitLocksChanged(() => { addTick.value++ }) })
+onBeforeUnmount(() => { clearInterval(unknownTimer); unknownTimer = null; offLocks?.(); offExitLocks?.() })
 // REQ-163 / Opus review F4: the refused request is remembered per strategy, so Cancel and reopen still ask for an edit
 const refusedLists = new Map() // FJ r3 (FB2 F6): `${id}|${sig}` -> the refusal sentence, for EVERY refused list that was sent unedited (not only the last one)
 const refusalKey = (id, rows) => `${id}|${rowSig(rows)}`
@@ -466,7 +467,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
     if (outcome === PAPER_STATE.REFUSED) paperError.value = refusalText(e?.parts, NEUTRAL_PARTS.what_happened) // 4xx: nothing stored; F6: every part of the reply
     if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
-    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value, 'add') // a definite refusal (580 / 583 too; a 581 is UNKNOWN, see paperPostOutcome): nothing stored, the key is free
+    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(target, 'add') // F1b: the strategy this post went to, whatever the dialog target reads now; a definite refusal (580 / 583 too; a 581 is UNKNOWN, see paperPostOutcome): nothing stored, the key is free
     if (outcome === PAPER_STATE.UNKNOWN) { saveAddLock(target, { at: Date.now(), out: false, before: '', key, sig }); startUnknownTimer() } // `at` is now when the client gave up
     else dropAddLock(target, { key, at: outAt }) // a definite refusal: nothing stored, the lock ends with the answer
     addTick.value++
@@ -481,7 +482,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   inflightAdds.delete(String(target))
   dropAddLock(target, { key, at: outAt })
   addTick.value++
-  dropOrderKey(paperTarget.value, 'add') // stored: the action is over
+  dropOrderKey(target, 'add') // F1b: the strategy this post went to; stored: the action is over
   // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"
   paperRecorded.value = true
   try {

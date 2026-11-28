@@ -26,6 +26,7 @@ const KEYS_KEY = 'ofo.orderKeys'
 const DONE_KEY = 'ofo.lockDecided' // F1b item 1: the marker a page writes BEFORE it removes a lock it DECIDED; a wipe of storage leaves none (a missing lock alone is never a decision)
 const memory = { [LOCK_KEY]: {}, [ADD_KEY]: {}, [KEYS_KEY]: {}, [DONE_KEY]: {} }
 const UNREADABLE = Symbol('unreadable') // content is there but is not an object of entries: a lock for every strategy, decided by nobody
+const garbageReleased = { [LOCK_KEY]: new Set(), [ADD_KEY]: new Set(), [KEYS_KEY]: new Set() } // F1b F-G: strategies whose lock in an UNREADABLE store was decided by a good read: freed on this page instance only, the content is never written over
 const garbageSeen = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null } // R5 N3: when this page first saw a store that cannot be read (it counts the window from there; never written over the content)
 const dirty = { [LOCK_KEY]: false, [ADD_KEY]: false, [KEYS_KEY]: false, [DONE_KEY]: false } // true once a write was refused: then what this page wrote is merged over what storage holds (never instead of it)
 
@@ -33,8 +34,9 @@ const monoNow = () => { try { const n = globalThis.performance?.now?.(); return 
 const sentMono = new Map() // wall send time -> monotonic time of that send (sentNow); the newest 64
 /** FJ2 F-C (Opus review): the time a read is SENT, in wall ms as before, with the monotonic time of the send remembered for decideLock. Every read that decides a lock takes its `sentAt` here. */
 export function sentNow() {
-  const w = Date.now()
+  let w = Date.now()
   const m = monoNow()
+  while (sentMono.has(w)) w += 0.001 // F1b R2-2 (Opus round 2): one token per read; two reads in one millisecond (a clock stepped back) never share a monotonic send time
   if (m !== null) { sentMono.set(w, m); if (sentMono.size > 64) sentMono.delete(sentMono.keys().next().value) }
   return w
 }
@@ -87,7 +89,19 @@ function readAll(name) {
   const s = readStored(name)
   if (s === undefined) return memory[name]
   if (s === UNREADABLE) return UNREADABLE
-  return dirty[name] ? { ...s, ...memory[name] } : s
+  return dirty[name] ? mergeNewer(s, memory[name]) : s
+}
+/** F1b F-F (Opus review): after a refused write what this page holds is merged with what storage holds PER STRATEGY, the NEWER lock (later `at`) winning, so a lock another tab wrote later is never
+ *  replaced by this page's older copy (and never wiped when this page writes the merged copy back). A tie keeps this page's copy. */
+function mergeNewer(stored, mine) {
+  const out = { ...stored }
+  for (const id of Object.keys(mine ?? {})) {
+    const a = stored[id]
+    const b = mine[id]
+    const at = (x) => (x && typeof x.at === 'number' && Number.isFinite(x.at) ? x.at : -Infinity)
+    out[id] = a === undefined || at(b) >= at(a) ? b : a
+  }
+  return out
 }
 const entriesOf = (name) => { const a = readAll(name); return a === UNREADABLE ? {} : { ...a } } // a writer starts from what can be read
 function writeAll(name, o) {
@@ -254,12 +268,14 @@ function makeLocks(name, kind) {
   }
   const forId = (id) => {
     const all = readAll(name)
+    if (all === UNREADABLE && garbageReleased[name].has(String(id))) return null // F1b F-G: this strategy's lock was decided here; the store itself stays as it is, the others stay locked
     if (all === UNREADABLE) { // content that cannot be read is a lock for every strategy; R5 N3: its first sight is kept in memory, so a good read sent past the window can decide it
       const now = Date.now()
       if (garbageSeen[name] === null) { garbageSeen[name] = now; garbageMono[name] = monoNow() } else if (garbageSeen[name] > now) garbageSeen[name] = now // a clock moved back: counted from now, the monotonic stamp stays
       return { ...asLock(null, kind), seen: garbageSeen[name], seenMono: garbageMono[name] }
     }
     garbageSeen[name] = null
+    garbageReleased[name].clear() // the store reads again
     if (!Object.prototype.hasOwnProperty.call(all, String(id))) return null
     const l = withStamps(id, asLock(all[String(id)], kind))
     const now = Date.now()
@@ -310,7 +326,7 @@ function makeLocks(name, kind) {
     drop(id, only = null) {
       const all = readAll(name)
       if (all === UNREADABLE) { // R5 N3: content that cannot be read is reset only for the lock a reader DECIDED (a good read sent past the window after its first sight)
-        if (only && only.malformed === true && Number.isFinite(only.seen) && sameLock(asLock(null, kind), only)) { writeAll(name, {}); garbageSeen[name] = null }
+        if (only && only.malformed === true && Number.isFinite(only.seen) && sameLock(asLock(null, kind), only)) garbageReleased[name].add(String(id)) // F1b F-G (Opus review): ONE strategy's decided read frees that strategy on this page; it never writes `{}` over content nobody can read (that freed every other strategy's lock)
         return true
       }
       if (!(String(id) in all)) return true
@@ -380,7 +396,7 @@ export function orderKeyFor(id, ordersText, dialogKey, action = 'exit') {
   const slot = keySlot(id, action)
   const all = entriesOf(KEYS_KEY)
   const cur = all[slot]
-  if (cur && cur.sig === ordersText && typeof cur.key === 'string' && cur.key) return cur.key
+  if (cur && sameSig(cur.sig, ordersText) && typeof cur.key === 'string' && cur.key) return cur.key
   if (typeof dialogKey !== 'string' || !dialogKey) return null // no key was made (no crypto): none is sent; the lock still holds
   all[slot] = { sig: ordersText, key: dialogKey }
   writeAll(KEYS_KEY, all)
@@ -388,6 +404,11 @@ export function orderKeyFor(id, ordersText, dialogKey, action = 'exit') {
 }
 /** FJ2 F-B (Opus review): the text a request key is held for. An entry row's price is left out (it moves with every price tick, so a resend of the same add would get a new key the
  *  server cannot de-duplicate); a resend whose body differs under the held key meets the server's 581, which the page treats as unknown (lock and key stay). Exit rows are unchanged. */
+/** F1b R2-7: a key saved by the build before FJ2 F-B holds the orders text WITH the entry price; two texts are the same orders when they agree once an entry row's price is left out. */
+const sameSig = (a, b) => {
+  if (a === b) return true
+  try { const n = (t) => keySigOf(JSON.parse(t)); return n(a) === n(b) } catch { return false }
+}
 export const keySigOf = (orders) => JSON.stringify((Array.isArray(orders) ? orders : []).map((o) => (o && typeof o === 'object' && o.kind !== 'exit' ? { ...o, price: '' } : o)))
 export function dropOrderKey(id, action = 'exit') {
   const slot = keySlot(id, action)
@@ -406,7 +427,7 @@ export const newRequestKey = () => {
 }
 /** Tests: forget every lock and key (memory and storage). */
 export function resetExitLocks() {
-  for (const k of Object.keys(dirty)) { dirty[k] = false; garbageSeen[k] = null }
+  for (const k of Object.keys(dirty)) { dirty[k] = false; garbageSeen[k] = null; garbageReleased[k]?.clear() }
   stamps.clear()
   writeAll(LOCK_KEY, {})
   writeAll(ADD_KEY, {})
