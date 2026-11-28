@@ -1,4 +1,4 @@
-STATUS 20:50 | batch 1 pushed 5b3f8ad11 (TOTAL PASS); batch 2 = items 5-8 + FJ2 f23 merged (4297f7065), full check running | next push batch 2 by 01:30 IST Sun | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
+STATUS 21:30 | all items done or answered; batch 2 gate TOTAL PASS 1132.9s on head bbef7d220 (FJ2 f23 4297f7065 and integration a1d70422 merged) | queue empty | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
 
 # RESULTS Lane F3 (frontend tail), branch fix/r3-frontend-f3-1128, base origin/integration/weekend-r3-1129 + FJ2 68a46dd62 + RA2 (fix/r3-leftovers-2-1128)
 
@@ -52,3 +52,5 @@ ADR-259 (6 Nov 2026): a strategy whose every leg is closed leaves My Strategies'
 | task | model | minutes |
 |---|---|---|
 | items 1-4 | Sonnet (this session) | 55 |
+
+SAFE TO CLOSE (head = the pushed head of fix/r3-frontend-f3-1128; left: item 4 needs backend `_closed_row` fields and Lane F1's PaperStrategies cells, item 9 W-15 and the 90 s question are owner questions, nothing proved in a browser)
