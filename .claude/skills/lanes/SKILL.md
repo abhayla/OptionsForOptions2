@@ -97,6 +97,8 @@ standing rules (more than 15 such lines). A passing example: `examples/brief-lan
   machine, so the push must be confirmed first).
 - Queue each lane's next related task before it finishes, so no lane sits idle.
 - Give every item an owner lane; an item without one is never started.
+- Cloud first: class each test-plan check CLOUD or PC ONLY and walk the plan in the cloud before the PC round; see `.claude/rules/project/cloud-first-testing.md`.
+- No leftover waits: a "Not done", "For the owner lane", review minor, failing test, blocked merge or hand-over with no live lane gets a lane in the same scan, from the newest origin base; one standing leftovers lane is always alive, its successor started before it stops.
 - Check every lane each time any lane or the test machine reports (one report often unblocks or invalidates another).
 
 ## Reporting (coordinator side)
