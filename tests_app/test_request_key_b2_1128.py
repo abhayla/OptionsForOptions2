@@ -62,7 +62,8 @@ async def test_begin_still_refuses_another_strategy_and_another_body_but_not_a_p
         await request_key.begin(keys, USER, key, 1, {"orders": []})
 
 
-async def test_two_presses_with_one_key_and_a_pending_hint_store_the_orders_once(app_engine, admin_engine, strategy, keys):
+async def test_two_presses_with_one_key_and_a_pending_hint_store_the_orders_once(
+        app_engine, admin_engine, strategy, keys):
     key = uuid.uuid4()
     await keys.claim(request_key.scoped(USER, key), request_key.pending(strategy, BODY))
     assert await request_key.begin(keys, USER, key, strategy, BODY) is None  # both presses pass the hint

@@ -313,7 +313,8 @@ async def test_r3_a_strategy_saved_during_the_waits_refuses_the_plan_and_stores_
 async def test_g_a_request_past_the_server_deadline_refuses_too_slow_stores_nothing_and_frees_its_key(
         app_engine, admin_engine, monkeypatch, keys):
     """R9 on the real door (as the paper door): the page gives up at 10 s; a request that reaches its commit after the
-    8 s server deadline refuses ``order_request_too_slow`` (409), stores no plan, and frees its key, so the same key on time then
+    8 s server deadline refuses ``order_request_too_slow`` (409), stores no plan, and frees its key, so the same key on
+    time then
     prepares the plan (a fake slow clock; the second run proves the late one released the key)."""
     import uuid  # noqa: PLC0415
 

@@ -190,6 +190,8 @@ class StrategyOut(ApiModel):
     updated_at: datetime.datetime
     definition: DefinitionOut  # the ACTIVE definition (after the first execution, the active version's)
     versions: list[VersionOut] = Field(default_factory=list)  # W-144: empty before the first execution
+    position_kind: Optional[Identifier] = None  # noqa: UP045 - B2 item 5, ADR-330 (64): as SummaryOut (kinds_of)
+    position_kind_text: Optional[CatalogueText] = None  # noqa: UP045 - the real / unknown line; None for paper, none
 
 
 class FirstLegOut(ApiModel):
@@ -384,13 +386,28 @@ async def _with_tokens(db: Any, *docs: dict) -> None:
             leg["exchange_token"] = None if feed_id is None else feed_id.exchange_token
 
 
+async def _kind_of(db: Any, strategy_id: int) -> str:
+    """B2 item 5: the strategy's position kind from the one rule the list uses (``store.kinds_of``). A read that fails
+    reads "unknown" (fail closed: neither Exit nor Stops, the line says why); the savepoint keeps the request's own
+    transaction usable."""
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415 - only this answer needs it
+    try:
+        async with db.begin_nested():
+            return (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown")
+    except SQLAlchemyError:
+        return "unknown"
+
+
 async def _strategy_out(db: Any, stored: store.StoredStrategy) -> StrategyOut:
+    from ofo_app import position_kind  # noqa: PLC0415 - ADR-330 (64)
     doc = _definition_out(stored.saved)
     version_docs = [_definition_out(await store.version_saved(db, v)) for v in stored.versions]
     await _with_tokens(db, doc, *version_docs)
+    kind = await _kind_of(db, stored.id)
     return StrategyOut.model_validate({
         "id": stored.id, "name": sf.shown_name(stored.name), "status": stored.status, "revision": stored.revision,
         "status_word": store.status_word(stored.status, await store.has_order(db, stored.id)),
+        "position_kind": kind, "position_kind_text": position_kind.line_of(kind),
         "created_at": stored.created_at, "updated_at": stored.updated_at, "definition": doc,
         "versions": [{"number": v.number, "state": v.state, "based_on": v.based_on, "created_at": v.created_at,
                       "confirmed_at": v.confirmed_at, "reconciled_at": v.reconciled_at, "outcome": v.outcome,

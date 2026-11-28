@@ -106,12 +106,13 @@ _monotonic = time.monotonic  # the clock the deadline reads (a test replaces it)
 
 
 async def _stamp_request(request: Request) -> None:
-    """RA N5 / Opus review F-1, on the real door: records the request's arrival on the deadline's clock before every other
-    dependency (settings, charge rates, the pool wait), so the 8 s counts them and not only the handler body."""
+    """RA N5 / Opus review F-1, on the real door: records the request's arrival on the deadline's clock before the other
+    dependencies (settings, charge rates, the pool wait), so the 8 s counts them and not only the handler body."""
     request.state.arrived_at = _monotonic()
 
 
-router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(_stamp_request), Depends(require_order_path)])  # W-121
+router = APIRouter(route_class=ClosedRoute,
+                   dependencies=[Depends(_stamp_request), Depends(require_order_path)])  # W-121: the gate is next
 _LOG = logging.getLogger(__name__)
 
 ENTRY, EXIT = "ENTRY", "EXIT"

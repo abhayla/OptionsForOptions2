@@ -12,8 +12,9 @@ three states:
 * freed: the first request was refused (nothing stored); the same key may be used again.
 
 An exception whose outcome is unknown (a failed commit, a failed read after the commit) leaves the hint ``pending``
-until it expires: a repeat reads the durable row, so it replays what committed or places once (never twice). A request without a key
-never touches the store. A Redis that cannot be read no longer refuses (B2 item 2); a durable table that cannot be read does (583).
+until it expires: a repeat reads the durable row, so it replays what committed or places once (never twice). A
+request without a key never touches the store. A Redis that cannot be read no longer refuses (B2 item 2); a durable
+table that cannot be read does (583).
 """
 from __future__ import annotations
 
