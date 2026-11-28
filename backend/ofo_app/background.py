@@ -1177,6 +1177,8 @@ class Worker:
             log.info("background: the queued write of strategy %s was dropped (%s)", sid,
                      "no longer listed" if sid not in body else "plan changed")
         unread = getattr(monitors, "unread", frozenset())  # a failed read is not a strategy leaving (r6 review)
+        for sid in [k for k in self._checked_body if k not in body and k not in unread]:  # FE2 #867: no entry for ever
+            del self._checked_body[sid]
         for sid in [k for k in self._gate_events if k not in body and k not in unread]:  # a plan change keeps them
             gone = self._gate_events.pop(sid)
             self.gate_events_dropped += len(gone)
