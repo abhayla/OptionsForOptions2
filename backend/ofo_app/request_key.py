@@ -6,13 +6,14 @@ path. FD3 item 2 (migration 0061): the record of truth is ``public.order_request
 as the orders (see the end of this module); a repeat after a Redis flush or expiry still finds it. A key goes through
 three states:
 
-* claimed (``pending``): the first request is placing; any other request with the key is told so and places nothing;
+* claimed (``pending``): a hint that the first request is placing; the durable claim decides (B2 item 2), so a repeat
+  places once or replays the first result, never twice;
 * ``done``: the first request committed; a repeat gets the first result and places nothing;
 * freed: the first request was refused (nothing stored); the same key may be used again.
 
-An exception whose outcome is unknown (a failed commit, a failed read after the commit) leaves the key ``pending``
-until it expires: a repeat is told "still being placed", never placed twice (fail closed). A request without a key
-never touches the store. A key store that cannot be read refuses a keyed request (``request_key_store_unavailable``).
+An exception whose outcome is unknown (a failed commit, a failed read after the commit) leaves the hint ``pending``
+until it expires: a repeat reads the durable row, so it replays what committed or places once (never twice). A request without a key
+never touches the store. A Redis that cannot be read no longer refuses (B2 item 2); a durable table that cannot be read does (583).
 """
 from __future__ import annotations
 
@@ -119,12 +120,17 @@ def _refused(template: str, failure: Failure = Failure.CONFLICT) -> StrategyRefu
 
 async def begin(store: KeyStore, user_ref: str, key: uuid.UUID, strategy_id: int,
                 body: Mapping[str, Any]) -> dict[str, Any] | None:
-    """Claim the key. None: this request is the first and places. A ``done`` record: a repeat, answer it with that
-    record and place nothing. Every other case is refused by name (nothing is placed)."""
+    """Claim the Redis hint. None: this request goes on to place; the durable claim in the order's own transaction
+    decides (B2 item 2, I-138: Redis is a hint, the table is the record of truth). A ``done`` record: a repeat, answer
+    it with that record and place nothing. A ``pending`` record for the same strategy and body is only a hint (its
+    first request may have crashed, or still runs): None, and ``claim_in_transaction`` waits for or finds the first
+    request's committed row, so the orders store once either way. A key store that is down no longer refuses (the
+    durable table still does; a table that cannot be read refuses 583 in ``lookup``). Another strategy or another body
+    is refused by name."""
     try:
         found = await store.claim(scoped(user_ref, key), pending(strategy_id, body))
     except KeyStoreDown:
-        raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY) from None
+        return None
     if found is None:
         return None
     if found.get("strategy_id") != strategy_id:
@@ -132,7 +138,7 @@ async def begin(store: KeyStore, user_ref: str, key: uuid.UUID, strategy_id: int
     if found.get("fp") != fingerprint(body):
         raise _refused("request_key_different_body")
     if found.get("state") != DONE:
-        raise _refused("request_key_in_progress")
+        return None
     return found
 
 
