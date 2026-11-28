@@ -149,7 +149,7 @@ async def test_n1_a_held_entry_records_an_add_and_an_open_but_refuses_an_exit_an
     assert await _count(db, stored.id) == before + 1
     opened = paper_store.NewOrder(first.contract_id, first.side, first.quantity, first.price, "open", _ADD_AT)
     await paper_store.place(db, stored.user_ref, stored.id, [opened])  # an open too (Opus review F5)
-    assert await _count(db, stored.id) == before + 2  # noqa: PLR2004
+    assert await _count(db, stored.id) == before + 2
     assert await _kind(db, stored) == "real"
     assert await paper_limit.refuse_real_position(db, stored.id, [add]) is None  # the door's own check agrees
 
