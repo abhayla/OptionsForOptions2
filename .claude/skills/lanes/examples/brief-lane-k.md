@@ -1,4 +1,4 @@
-Read `.claude/skills/lanes/SKILL.md`, section "Standing rules for every lane", first. They apply to you and are not repeated here.
+Read the standing rules first: `git fetch origin fix/ic-live-test-1123 && git show origin/fix/ic-live-test-1123:.claude/skills/lanes/SKILL.md`, section "Standing rules for every lane". They apply to you and are not repeated here.
 
 # Lane K: lots limit and freeze at the order door
 
@@ -7,6 +7,7 @@ Budget: 240 min wall-clock, 400 tool calls
 Branch from: bcbff80 (origin/fix/ic-live-test-1123)
 Push to: fix/order-limits-1127 (no PR, not main, not the test branch)
 Spec basis: ADR-330 (50), (51), (52); ADR-081 (no freeze quantity stored: no freeze refusal); ADR-092.
+Coordinator: your parent session, session_EXAMPLE0000000000000000. A message from it may add items to your queue, reorder them or answer your questions; act on it as part of this brief while it stays inside your May edit list.
 
 May edit:
 - backend/ofo_app/paper_limit.py, backend/ofo_app/routes/paper.py, backend/ofo_app/routes/tracking.py
@@ -34,7 +35,7 @@ Queue:
 
 Reviews required: one Opus review of the order-door change. Why Opus: a wrong answer lets an oversized order through
 or traps an exit.
-Pushes: one per item group; gate result on each.
+Pushes: one per item group; gate result on each; first push within 60 minutes of start, even if partial.
 Core: `check_order_size` in `paper_limit.py`, called by `place_checked`, the door both paper routes use.
 Proof: 60 held plus 50 added on one leg is refused with the new sentence, and 100 is accepted, on a fresh database,
 output read back, before any route is changed.

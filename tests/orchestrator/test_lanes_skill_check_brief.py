@@ -49,3 +49,8 @@ def test_missing_coordinator_fails():
 def test_missing_first_push_fails():
     text = FIRST + "\n" + BODY.replace("; first push within 20 minutes of start, even if partial", "")
     assert any("first push time" in p for p in cb.check(text))
+
+
+def test_shipped_example_passes():
+    example = _ROOT / ".claude/skills/lanes/examples/brief-lane-k.md"
+    assert cb.check(example.read_text(encoding="utf-8")) == []
