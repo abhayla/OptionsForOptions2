@@ -75,7 +75,7 @@ NOT_CHECKED: Final = {
     CREDIT_UNKNOWN: f"{_T}stop_credit_unknown",
     MARGIN_NOT_READ: f"{_T}missing_margin",
     STAGE_UNKNOWN: f"{_T}missing_days_left",
-    EXPIRY_KIND_UNKNOWN: f"{_T}missing_days_left",
+    EXPIRY_KIND_UNKNOWN: f"{_T}expiry_kind_unknown",
 }
 
 

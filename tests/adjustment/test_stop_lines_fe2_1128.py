@@ -19,7 +19,7 @@ from ofo.adjustment import stop_lines as sl
 def test_the_unknown_expiry_kind_has_its_own_reason_and_answers_closed():
     assert sl.EXPIRY_KIND_UNKNOWN not in {sl.STAGE_UNKNOWN, sl.GUARDS_UNREADABLE, sl.STOP_VALUE_UNREADABLE}
     code = sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN)
-    assert code == "adjust_trigger_missing_days_left"  # until the catalogue has its own sentence: fail closed
+    assert code == "adjust_trigger_expiry_kind_unknown"  # FE3: the catalogue has its own sentence (FC3)
     assert code not in (sl.NOT_CHECKED_OTHER, sl.STOPS_NOT_SUPPLIED)
     assert pe.reason_text(code)
 

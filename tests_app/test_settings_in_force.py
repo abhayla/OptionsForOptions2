@@ -256,7 +256,7 @@ def test_an_empty_expiry_kind_names_the_unknown_kind_and_a_stated_kind_is_unchan
     reasons = {x.kind: x.reason for x in found.lines if x.active}
     print("EMPTY KIND", reasons)
     assert reasons["max_loss_pct"] == sl.EXPIRY_KIND_UNKNOWN
-    assert sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN) == "adjust_trigger_missing_days_left"  # the existing sentence
+    assert sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN) == "adjust_trigger_expiry_kind_unknown"  # FE3: its own sentence
     assert (found.first, found.reason) == (None, sif.FIRST_UNKNOWN)
     stated = _stops(_ic(), S82)  # a stated kind: the figures, unchanged
     assert next(x for x in stated.lines if x.kind == "max_loss_pct").reason is None

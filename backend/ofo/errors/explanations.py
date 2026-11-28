@@ -1578,6 +1578,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "The market is closed. Exits can be placed from 09:15 on {day}.", {"day": DayLabel}),
     ExplanationTemplate("exit_market_closed_no_day", "values_seen",
                         "The market is closed. Exits can be placed when it opens."),
+    # Lane FD4 hand-over (28 Nov 2026), pending owner read: the same line for ORDERS (the Add to Paper dialog; it must not
+    # say "Exits"); ``ofo_app/exit_market.entries_sentence`` renders them beside ``exit_market_closed``
+    ExplanationTemplate("exit_market_closed_entries", "values_seen",
+                        "Orders can be placed from 09:15 on {day}.", {"day": DayLabel}),
+    ExplanationTemplate("exit_market_closed_entries_no_day", "values_seen", "Orders can be placed when it opens."),
     ExplanationTemplate("closed_prices_mixed_one", "values_seen",
                         "Market closed. Prices are from {frozen}; 1 leg as of {later}.",
                         {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated}),
