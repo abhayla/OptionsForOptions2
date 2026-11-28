@@ -34,7 +34,7 @@ import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addTo
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
-import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT, UNKNOWN_EXIT_WINDOW_MS, closedBannerFor } from '@/lib/sharedStateText'
+import { PAGE_STOP_REPLY_UNREADABLE_TEXT, pageCancelledStopLines, ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT, UNKNOWN_EXIT_WINDOW_MS, closedBannerFor } from '@/lib/sharedStateText'
 import {
   DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
   legsAfterExit, exitOnlyOrders, paperFillKey, paperLeftOf, paperChargesOf, stagedChangeIds, stagedExitIds,
@@ -499,6 +499,10 @@ const paperRows = ref([])
 const paperDialog = ref(false)
 const paperBusy = ref(false)
 const paperError = ref('')
+// Lane FB2 (review finding F3, page half; Lane FA2's dialog props): the order reply's `cancelled_stops` as it came (a list), or null; `stopsReplyUnreadable`: a 2xx reply that is not an object, so what happened to the stop is unknown
+const cancelledStops = ref(null)
+const stopsReplyUnreadable = ref(false)
+const cancelledStopNotes = computed(() => pageCancelledStopLines(cancelledStops.value)) // Review F1: shown on the page too, because a stored order closes the dialog
 const paperState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's answer state (tracking.js PAPER_STATE)
 // orders were stored but the book could not be re-read: the net on screen is stale, so its diff (the pending orders) would
 // re-offer what was just placed. Until a book is read again nothing is offered for review.
@@ -526,7 +530,7 @@ function restoreExitLock(id, read) {
   exitUnknown.value = { id, attempt, names: rec.names, waiting: null, at: rec.at, before: rec.before, expected: rec.expected }
   if (!decideUnknownExit(read.net, id)) void recheckUnknownExit()
 }
-const leaveDrafts = () => { addUnknown = null; stagedNote.value = ''; paper.value = null; paperStale.value = false; cancelReread(); clearStopOffer() }
+const leaveDrafts = () => { cancelledStops.value = null; stopsReplyUnreadable.value = false; addUnknown = null; stagedNote.value = ''; paper.value = null; paperStale.value = false; cancelReread(); clearStopOffer() }
 // GC-ICFIX round 2 (F4): the page's ONE read of the paper book per refresh; its reply feeds the paper panel, the tracking box's total and
 // the P&L table TOTAL row (one moment, one text). An orders re-read (paperStale) is not overwritten by it.
 const { readFailed: paperReadFailed, contractsChanged: paperContractsChanged } = usePaperBookRead({
@@ -574,6 +578,8 @@ function reviewPending(fromExit = false, only = null, info = null) { // the "Rev
   exitRec.clear(EXIT_KEY)
   paperState.value = PAPER_STATE.READY
   paperRows.value = confirmRowsFor(shown, paper.value.book, contractName, livePriceById.value)
+  cancelledStops.value = null
+  stopsReplyUnreadable.value = false
   paperDialog.value = true
 }
 watch(pendingOrders, (o) => { if (!o?.length) exitOrigin.value = false }) // posted, discarded or edited back: no Exit edits are left
@@ -690,7 +696,7 @@ async function offerAfterMove(check) {
     .map((l) => ({ index: l.contract_id, label: contractName(l), contractId: String(l.contract_id) }))
   if (legs.length) stopOffer.value = { strategyId: check.id, legs }
 }
-async function confirmPending(orders, _held = null, notLiveTicked = false) {
+async function confirmPending(orders, _held = null, notLiveTicked = false, requestKey = null) {
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
   if (exitBlocked.value) { if (paperContractsChanged.value) closeChanged(); return } // post nothing (the watch may not have run yet); a failed read keeps the dialog and its sentence
   const { id } = paper.value
@@ -720,7 +726,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   // F1 second path (Opus review F1): the lock is written BEFORE the post, so a page left or reloaded while the post is still out is covered; a definite answer removes it
   if (sendsExit) saveExitLock(id, { at: Date.now(), before: netKey(paper.value.net), expected: expNet ? netKey(expNet) : null, names })
   try {
-    reply = own || waiting ? await postPaperOrders(api, id, orders, [], null, null, null, false, newRequestId()) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true, newRequestId())
+    reply = own || waiting ? await postPaperOrders(api, id, orders, [], null, null, null, false, requestKey || newRequestId()) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true, requestKey || newRequestId())
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (sendsExit && outcome === PAPER_STATE.REFUSED) dropExitLock(id) // the server itself refused: nothing stored
@@ -752,6 +758,10 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   }
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
   if (sendsExit) dropExitLock(id) // the server answered: the lock written before the post ends
+  // F3 page half: handed to the dialog as it came. Review F2: a non-empty list that yields fewer readable lines than entries counts as unreadable.
+  // Review F3: "unreadable" is only said for a post that carried an exit row (a move or an exit; an add-only basket has no old leg).
+  cancelledStops.value = Array.isArray(reply?.cancelled_stops) ? reply.cancelled_stops : null
+  stopsReplyUnreadable.value = sendsExit && (!(reply && typeof reply === 'object' && !Array.isArray(reply)) || (Array.isArray(reply.cancelled_stops) && pageCancelledStopLines(reply.cancelled_stops).length < reply.cancelled_stops.length))
   exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
   exitAllWaiting.value = null // cleared at once (Opus review): a later throw or a new Exit all during the re-read must not meet a stale value
@@ -1398,6 +1408,7 @@ const chartFullTable = ref(false)
 // change draws its own block, so this only matters during 'loading'.
 const keepNumbers = ref(false)
 const showNumbers = computed(() => (['computed', 'stale', 'from-entries'].includes(state.value) || (state.value === 'loading' && keepNumbers.value)) && !!data.value?.table)
+const planWatchOutcomeLoading = computed(() => state.value === 'loading' && !showNumbers.value) // UX-C3: no old numbers and the outcome is out
 const keptWhileLoading = computed(() => state.value === 'loading' && showNumbers.value)
 // Review 2: the summary card's Reward/Risk or Risk/Reward choice, owned here so a recompute never resets it
 const ratioFlipped = ref(false)
@@ -1539,6 +1550,11 @@ const leaveGuard = useLeaveBuilder({
         <div :class="paper ? 'rounded-lg border-2 border-dashed border-warn p-2' : 'contents'" data-testid="legs-frame" :data-paper-mode="paper ? 'true' : 'false'">
         <p v-if="paper" class="mb-2 text-xs font-semibold text-warn" data-testid="paper-mode-label">{{ PAPER_MODE_LABEL }}</p>
         <!-- #774 (ADR-330 (48), owner 27 Nov): the stop went with the moved leg; offer a new one on each new leg (pending owner read) -->
+        <!-- Review F1: the reply's cancelled stops stay on the page after the dialog closes (until the next dialog opens or the book is left) -->
+        <div v-if="paper && (cancelledStopNotes.length || stopsReplyUnreadable)" class="mb-2 text-sm" role="status" data-testid="cancelled-stops-note">
+          <p v-for="(line, i) in cancelledStopNotes" :key="i" data-testid="cancelled-stops-line">{{ line }}</p>
+          <p v-if="stopsReplyUnreadable" data-testid="cancelled-stops-unreadable">{{ PAGE_STOP_REPLY_UNREADABLE_TEXT }}</p>
+        </div>
         <div v-if="paper && stopOffer" class="mb-2 text-sm" data-testid="stop-offer">
           <div class="flex flex-wrap items-center gap-2">
             <button v-for="l in stopOffer.legs" :key="l.index" type="button" class="h-9 rounded-lg border border-line px-3 font-medium" :aria-expanded="stopOfferLeg === l.index" data-testid="stop-offer-open" @click="stopOfferLeg = stopOfferLeg === l.index ? null : l.index">{{ STOP_OFFER_LABEL(l.label) }}</button>
@@ -1568,7 +1584,7 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :exit-unresolved="!!exitUnknown" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
-        <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :note="exitAllWaiting ? DISCARD_WARNING(exitAllWaiting.names) : ''" :locked="!!exitUnknown" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
+        <PaperConfirmDialog :open="paperDialog" :cancelled-stops="cancelledStops" :stops-reply-unreadable="stopsReplyUnreadable" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :note="exitAllWaiting ? DISCARD_WARNING(exitAllWaiting.names) : ''" :locked="!!exitUnknown" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
         <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" :market-closed="pricesNow.kind === 'last_close'" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>
@@ -1768,15 +1784,9 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <!-- ADR-330 (57): a fully closed trade has no Plan watch (its plan line is in the book panel). P10 (ADR-330 (13)): the Plan watch under the live P&L column, whatever the numbers state is (it is its own server read); it re-reads on the page's own book read (paper.book is replaced by each good read) -->
         <MonitoringBadge v-if="planWatchId && !paperCompleted" :entry="monitoring.entryOf(planWatchId)" class="mt-4" />
-        <!-- UX-C3: while the page's own "Working out the outcome..." is the one loading line, the box keeps its rows but not its own "Loading the rule check..." line (the style below) -->
-        <div v-if="planWatchId && !paperCompleted" class="plan-watch-host" data-testid="plan-watch-host" :data-outcome-loading="state === 'loading' && !showNumbers ? 'true' : 'false'">
-          <PlanWatch :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" class="mt-4" />
-        </div>
+        <!-- UX-C3 (Lane FC3's prop): while the page's own "Working out the outcome..." is the one loading line, the box says no loading line of its own -->
+        <PlanWatch v-if="planWatchId && !paperCompleted" :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" :outcome-loading="planWatchOutcomeLoading" class="mt-4" />
       </div>
     </div>
   </section>
 </template>
-
-<style>
-.plan-watch-host[data-outcome-loading='true'] [data-testid='plan-watch-loading'] { display: none; }
-</style>

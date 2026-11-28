@@ -442,7 +442,7 @@ const INDEX_AGE_REFUSAL = 'STRATEGY_VALIDATION_511'
 const serverNotLive = ref(false)
 const notLiveLine = computed(() => (!props.marketClosed && (!props.pricesLive || serverNotLive.value)
   ? notLiveEntryLine(oldestCapture(tickedLegs.value) ?? (props.priceAsOf || null)) : ''))
-async function confirmPaper(orders, held = null, notLiveTicked = false) {
+async function confirmPaper(orders, held = null, notLiveTicked = false, requestKey = null) {
   if (paperBusy.value) return
   if (addUnknown[paperTarget.value]) return // Opus review F1: an add of unknown outcome is not sent again, whichever button asks
   paperBusy.value = true
@@ -450,7 +450,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false) {
   paperState.value = PAPER_STATE.READY
   try {
     // ADR-330 (28): the flag is the dialog's own tick state (line shown AND ticked), not the page's price state
-    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true, newRequestId())
+    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true, requestKey || newRequestId())
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored

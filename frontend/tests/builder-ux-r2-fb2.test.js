@@ -95,7 +95,7 @@ describe('UX-C3 (Open in Builder): the Plan watch line waits until the outcome i
     expect(t(w, 'state-loading').exists()).toBe(true)
     expect(w.text()).toContain('Working out the outcome...')
     expect(w.text()).not.toContain('Loading the rule check...')
-    expect(t(w, 'plan-watch-host').attributes('data-outcome-loading')).toBe('true') // the host hides the box's own loading line (style) until the outcome is in
+    expect(S(w).planWatchOutcomeLoading).toBe(true) // the page hands PlanWatch `outcomeLoading` (Lane FC3's prop): its own line waits until the outcome is in
   })
 })
 

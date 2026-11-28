@@ -162,3 +162,17 @@ export const closedBannerFor = (loading, fresh, settled) => {
 }
 /** The one existing "updating" wording (LegList, PlanWatch); the summary figures hold it while their leg set is not known (UX-B25). */
 export const UPDATING_NUMBERS_TEXT = 'Updating the numbers...'
+// Lane FB2 (review F1/F2 of the cancelled-stops hand-off): the page keeps the order reply's cancelled stops on screen after the dialog has closed.
+// Same words as Lane FA2's dialog lines (lib/tracking.js STOP_CANCELLED_LINE / STOP_REPLY_UNREADABLE_TEXT: after both branches merge, import those and delete these two).
+export const PAGE_STOP_CANCELLED_LINE = (e) => `The stop on ${e.leg}${e.level ? ` (level ${e.level})` : ''} was removed with the move; set a new one on the new leg.`
+export const PAGE_STOP_REPLY_UNREADABLE_TEXT = 'The stop on the old leg may have been cancelled, and the new leg has no stop until you set one.'
+/** One line per readable entry of the reply's `cancelled_stops` (leg / contract_text / contract as text); an entry that cannot be read gives none. */
+export function pageCancelledStopLines(list) {
+  if (!Array.isArray(list)) return []
+  const text = (v) => (typeof v === 'string' ? v.trim() : '')
+  return list.map((e) => {
+    const leg = text(e?.leg) || text(e?.contract_text) || text(e?.contract)
+    return leg ? PAGE_STOP_CANCELLED_LINE({ leg, level: text(e?.level) }) : ''
+  }).filter(Boolean)
+}
+
