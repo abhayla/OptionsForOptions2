@@ -79,4 +79,4 @@ export function readLastExecuted(storage = globalThis.localStorage) {
 }
 
 /** I-182 (ADR-016 to ADR-019): the one sentence on the Execute screen while a request to prepare orders has an unknown outcome (pending owner read). */
-export const EXECUTE_UNKNOWN_TEXT = 'The last request to prepare orders got no answer, so it may have been prepared. Prepare is not pressed again until this page has checked: it checks by itself.'
+export const EXECUTE_UNKNOWN_TEXT = 'The last request to prepare orders may have been prepared, but no usable answer came. Preparing again stays off until this page has waited and checked again.'

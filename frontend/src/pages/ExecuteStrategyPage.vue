@@ -22,7 +22,7 @@ import { fetchSavedDraft, plainName } from '@/lib/saveDraft'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
 import { EXECUTE_UNKNOWN_TEXT, LIVE_WAIT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
 import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
-import { addLockFor, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, newRequestKey, onAddLocksChanged, orderKeyFor, saveAddLock } from '@/lib/unknownLocks'
+import { addLockFor, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, newRequestKey, onAddLocksChanged, orderKeyFor, saveAddLock, sentNow } from '@/lib/unknownLocks'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
@@ -121,6 +121,9 @@ const lockId = computed(() => `execute:${strategyId.value}`)
 const lockTick = ref(0) // the lock store is not reactive: every write and every storage event of another tab bumps this
 const locked = computed(() => { lockTick.value; return strategyId.value !== null && !!addLockFor(lockId.value) })
 let lockOut = false // this page's own request is in flight: only its answer ends the lock
+let gone = false // the page was closed: no timer is started or read made after it (Opus review F7)
+// the unknown-outcome sentence is for a lock this page is NOT waiting an answer for (its own request in flight is a normal press, Opus review F3)
+const lockedNote = computed(() => { lockTick.value; return locked.value && !lockOut })
 let lockTimer = null
 let lockChecking = false
 async function checkLock() {
@@ -129,7 +132,7 @@ async function checkLock() {
   try {
     const id = lockId.value
     if (!addLockFor(id) || !adoptedAddLock(id, Date.now())) return // no lock, or none this page can age yet
-    const sentAt = Date.now() // the window is judged by when the read was SENT
+    const sentAt = sentNow() // the window is judged by when the read was SENT, by the one clock source (Opus review F5)
     try { await fetchSavedDraft(api, strategyId.value) } catch { return } // a failed read decides nothing
     const now = addLockFor(id) && adoptedAddLock(id, Date.now()) // the lock that is stored NOW (another tab may have replaced it)
     if (!now || lockOut) return
@@ -137,40 +140,41 @@ async function checkLock() {
     if (d.verdict === 'not_stored' || d.verdict === 'changed') { dropAddLock(id, now); lockTick.value++ } // the request key stays: a repeat press is the same request
   } finally { lockChecking = false }
 }
-const startLockTimer = () => { if (!lockTimer) lockTimer = setInterval(() => { if (!locked.value) { clearInterval(lockTimer); lockTimer = null } else checkLock() }, 5000) }
+const startLockTimer = () => { if (!gone && !lockTimer) lockTimer = setInterval(() => { if (!locked.value) { clearInterval(lockTimer); lockTimer = null } else checkLock() }, 5000) }
 let offLocks = null
 onMounted(() => {
   offLocks = onAddLocksChanged(() => { lockTick.value++; if (locked.value) startLockTimer() })
   if (locked.value) { startLockTimer(); checkLock() }
 })
-onBeforeUnmount(() => { clearInterval(lockTimer); lockTimer = null; offLocks?.() })
+onBeforeUnmount(() => { gone = true; clearInterval(lockTimer); lockTimer = null; offLocks?.() })
 
 async function prepare(action) {
   if (phase.value !== 'live' || !liveNow.value) return // the live socket must hold every leg first
-  if (locked.value || lockOut) return // an earlier request of unknown outcome: nothing is sent (I-182)
+  if (strategyId.value === null || lockOut || addLockFor(lockId.value)) return // an earlier request of unknown outcome: nothing is sent; the STORE is read at press time, not the cached value (Opus review F6)
+  const lockKey = lockId.value // the lock id and the key id are fixed at the press: an answer that arrives after a route change still ends THIS strategy's lock (Opus review F2)
   phase.value = 'executing'
   errorParts.value = null
   const mine = guard.next('execute')
   // Group A R3: ONE key per user action (this press of this button for this saved revision): the same press repeated after an unknown outcome (also after a reload) sends the SAME key;
   // a decided answer (a reply, or a 4xx refusal) frees it, so the next press is a new action with a new key. Same rule as every order page (lib/unknownLocks.js orderKeyFor).
-  const keyId = `execute:${strategyId.value}`
+  const keyId = lockKey
   const key = orderKeyFor(keyId, JSON.stringify({ action, revision }), newRequestKey())
   const outAt = Date.now()
   const sig = JSON.stringify({ action, revision })
   lockOut = true
-  saveAddLock(lockId.value, { at: outAt, out: true, before: '', key: key ?? '', sig }) // written BEFORE the request goes out (a closed tab leaves it)
+  saveAddLock(lockKey, { at: outAt, out: true, before: '', key: key ?? '', sig }) // written BEFORE the request goes out (a closed tab leaves it)
   lockTick.value++
   try {
     const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action, revision, seq: mine.seq, ...(key ? { client_request_id: key } : {}) }, { signal: mine.signal })).data
-    dropOrderKey(keyId) // the server answered: the action is over
-    dropAddLock(lockId.value, { key: key ?? '', at: outAt }) // an answer: the lock ends with it
-    if (!guard.claim('execute', data, mine)) return // an older reply is dropped and logged, never shown
-    if (!basketFields(data)) throw new Error('unreadable basket') // fail closed: no form for a reply we cannot read
+    if (!guard.claim('execute', data, mine)) { dropOrderKey(keyId); dropAddLock(lockKey, { key: key ?? '', at: outAt }); return } // an older reply is dropped and logged, never shown: it was an answer, the action is over
+    if (!basketFields(data)) throw new Error('unreadable basket') // fail closed: no form for a reply we cannot read: it counts as unknown (lock and key stay, Opus review F4)
+    dropOrderKey(keyId) // the server answered and the reply is usable: the action is over
+    dropAddLock(lockKey, { key: key ?? '', at: outAt }) // an answer: the lock ends with it
     reply.value = data
     phase.value = 'prepared'
   } catch (e) {
-    if (!isSuperseded(e) && paperPostOutcome(e) === PAPER_STATE.REFUSED) dropAddLock(lockId.value, { key: key ?? '', at: outAt }) // a definite refusal: nothing stored, the lock ends with the answer
-    else saveAddLock(lockId.value, { at: Date.now(), out: false, before: '', key: key ?? '', sig }) // unknown (no answer, 5xx, cancelled): `at` is now when the client gave up
+    if (!isSuperseded(e) && paperPostOutcome(e) === PAPER_STATE.REFUSED) dropAddLock(lockKey, { key: key ?? '', at: outAt }) // a definite refusal: nothing stored, the lock ends with the answer
+    else saveAddLock(lockKey, { at: Date.now(), out: false, before: '', key: key ?? '', sig }) // unknown (no answer, 5xx, cancelled): `at` is now when the client gave up
     startLockTimer()
     if (!isSuperseded(e) && paperPostOutcome(e) === PAPER_STATE.REFUSED) dropOrderKey(keyId) // a 4xx the server itself answered (a cancelled or lost request keeps its key: it may have been prepared)
     if (isSuperseded(e) || !guard.isNewest('execute', mine)) return // cancelled or older: no error text, no state change
@@ -192,7 +196,7 @@ async function prepare(action) {
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
     <p v-if="phase === 'loading' || phase === 'waiting-live'" data-testid="execute-waiting">Waiting for live prices for every leg...</p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />
-    <p v-if="locked" class="mt-2 text-sm text-red-700" role="status" data-testid="execute-unknown-note">{{ EXECUTE_UNKNOWN_TEXT }}</p>
+    <p v-if="lockedNote" class="mt-2 text-sm text-red-700" role="status" data-testid="execute-unknown-note">{{ EXECUTE_UNKNOWN_TEXT }}</p>
 
     <div v-if="!reply && (phase === 'live' || phase === 'executing' || (phase === 'not-live' && everLive))" class="mt-2 flex gap-2" data-testid="execute-actions">
       <button type="button" data-testid="prepare-entry" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live' || locked" @click="prepare('ENTRY')">

@@ -24,6 +24,7 @@ vi.mock('@/composables/useStrategyLive', () => ({
 }))
 
 import ExecuteStrategyPage from '@/pages/ExecuteStrategyPage.vue'
+import { EXECUTE_UNKNOWN_TEXT } from '@/lib/execute'
 
 const DATA = '[{"variety": "regular", "tradingsymbol": "NIFTY26O1923650CE", "exchange": "NFO", "transaction_type": "BUY", ' +
   '"order_type": "LIMIT", "product": "NRML", "price": 3.35, "quantity": 65, "readonly": true, "tag": "OFS1V1L0"}]'
@@ -106,7 +107,7 @@ describe('I-182: no second press after an unknown outcome', () => {
     const w = await openExecute('1', 10000)
     await pressEntry(w)
     expect(posts()).toHaveLength(1)
-    expect(lockNote(w).text()).toContain('no answer')
+    expect(lockNote(w).text()).toBe(EXECUTE_UNKNOWN_TEXT)
     expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeDefined()
     expect(w.get('[data-testid="prepare-exit"]').attributes('disabled')).toBeDefined()
     await w.get('[data-testid="prepare-entry"]').trigger('click')
@@ -212,5 +213,76 @@ describe('I-182: no second press after an unknown outcome', () => {
     await pressEntry(w2)
     expect(lockNote(w2).exists()).toBe(false)
     expect(localStorage.getItem(LOCK_STORE) === null || !JSON.parse(localStorage.getItem(LOCK_STORE))['execute:1']).toBe(true)
+  })
+
+  // ---- Opus review of item 4 (Lane F2, 28 Nov): the findings that changed the code ----
+  it('F3: while the page\'s own request is in flight the "no usable answer" sentence is not shown (a normal press), the buttons are off', async () => {
+    let release
+    answers['POST /strategies/1/execute'] = () => new Promise((r) => { release = () => r({ data: REPLY }) })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(lockNote(w).exists()).toBe(false)
+    expect(w.get('[data-testid="prepare-entry"]').attributes('disabled')).toBeDefined()
+    release()
+    await flushPromises()
+    expect(lockNote(w).exists()).toBe(false)
+  })
+
+  it('F4: a reply that cannot be used as a basket counts as unknown: the lock AND the request key stay', async () => {
+    answers['POST /strategies/1/execute'] = ok({ plan_number: 1 }) // no basket
+    const w = await openExecute('1', 10000)
+    await pressEntry(w)
+    expect(lockNote(w).exists()).toBe(true)
+    expect(JSON.parse(localStorage.getItem(LOCK_STORE))['execute:1']).toBeTruthy()
+    expect(localStorage.getItem('ofo.orderKeys') ?? '').toContain(posts()[0][1].client_request_id)
+  })
+
+  it('F2: an answer that arrives after the route changed ends THIS strategy\'s lock, and no lock is written for another id', async () => {
+    let fail
+    answers['POST /strategies/1/execute'] = () => new Promise((_r, rej) => { fail = () => rej({ message: 'no answer', parts: null }) })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    await w.vm.$router.push('/strategy/2/execute')
+    await flushPromises()
+    fail()
+    await flushPromises()
+    const store = JSON.parse(localStorage.getItem(LOCK_STORE) ?? '{}')
+    expect(Object.keys(store)).toEqual(['execute:1'])
+    expect(store['execute:1'].out).toBe(false) // unknown: the client gave up
+  })
+
+  it('F6: the lock is read from the store at press time (a lock another tab wrote a moment ago, before any storage event)', async () => {
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    localStorage.setItem(LOCK_STORE, JSON.stringify({ 'execute:1': { at: Date.now(), out: false, before: '', key: 'k-other-tab', sig: 's' } })) // no event fired
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    expect(posts()).toHaveLength(0)
+  })
+
+  it('F7: a page closed while its request was out starts no timer and makes no read afterwards', async () => {
+    vi.useFakeTimers({ toFake: ['setInterval', 'clearInterval'] })
+    let fail
+    answers['POST /strategies/1/execute'] = () => new Promise((_r, rej) => { fail = () => rej({ message: 'no answer', parts: null }) })
+    const w = await openExecute('1', 10000)
+    live.onPush(LIVE_PUSH)
+    await flushPromises()
+    await w.get('[data-testid="prepare-entry"]').trigger('click')
+    await flushPromises()
+    w.unmount()
+    fail()
+    await flushPromises()
+    const before = calls.filter(([m, u]) => m === undefined || u === '/strategies/1').length
+    vi.advanceTimersByTime(60000)
+    await flushPromises()
+    expect(calls.filter(([m, u]) => m === undefined || u === '/strategies/1').length).toBe(before)
+    vi.useRealTimers()
   })
 })
