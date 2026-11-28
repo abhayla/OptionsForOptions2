@@ -192,10 +192,6 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
         return tuple(SimpleNamespace(contract_id=i, state="live", feed_id=InstrumentId("NSE_FO", 44624)) for i in ids)
 
     monkeypatch.setattr(strategies.tracked_contracts, "resolve", resolve)
-    async def kind(db, strategy_id):  # B2 item 5: the position kind has its own read (the fake db has none)
-        return "none"
-
-    monkeypatch.setattr(strategies, "_kind_of", kind)
     app = create_app()
 
     async def fake_db():
@@ -211,8 +207,7 @@ def test_golden_a_strategies_route_answers_the_exact_bytes_with_exclude_unset(mo
         b'"updated_at":"2026-10-12T09:15:00.250000Z","definition":{"schema_version":1,"underlying":"NIFTY","legs":'
         b'[{"contract_id":5,"action":"BUY","contract_state":"live","exchange_segment":"NSE_FO","exchange_token":44624,'
         b'"instrument":"NIFTY2610625000CE","strike":"25000","expiry":"2026-10-27",'
-        b'"quantity":75}],"rules_ref":null,"risk_limits":{"max_loss":"5000"},"preferences":{}},"versions":[],'
-        b'"position_kind":"none","position_kind_text":null}')
+        b'"quantity":75}],"rules_ref":null,"risk_limits":{"max_loss":"5000"},"preferences":{}},"versions":[]}')
 
 
 def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkeypatch: pytest.MonkeyPatch) -> None:
@@ -251,10 +246,6 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
     monkeypatch.setattr(strategies.store, "version_saved", version_saved)
     monkeypatch.setattr(strategies.sf, "to_document", lambda saved: copy.deepcopy(document))
     monkeypatch.setattr(strategies.tracked_contracts, "resolve", resolve)
-    async def kind(db, strategy_id):  # B2 item 5: the position kind has its own read (the fake db has none)
-        return "none"
-
-    monkeypatch.setattr(strategies, "_kind_of", kind)
     app = create_app()
 
     async def fake_db():
@@ -273,7 +264,7 @@ def test_golden_a_strategy_with_one_stored_version_answers_its_definition(monkey
         b'"updated_at":"2026-10-12T09:15:00Z","definition":' + definition + b',"versions":[{"number":1,'
         b'"state":"active","based_on":null,"created_at":"2026-10-12T09:15:00Z","confirmed_at":"2026-10-12T09:15:00Z",'
         b'"reconciled_at":"2026-10-12T09:15:00Z","outcome":null,"reconciliation_required":true,"definition":'
-        + definition + b'}],"position_kind":"none","position_kind_text":null}')
+        + definition + b'}]}')
 
 
 # --- every app ApiModel is swept: it emits, and its bytes equal the old serializer's (temporary parity) ----------------
