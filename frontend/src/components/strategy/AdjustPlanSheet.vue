@@ -211,8 +211,8 @@ async function typed(field) {
   try {
     const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId, picked.value))[level]
     if (run !== levelsRun[level] || form.value !== f || savedSince(props.strategyId, stamp)) return
-    if (!got) return
-    f[other] = rupees ? got.percent : got.rupees
+    if (!got) { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // FJ2-5: no figure from the server = no figure shown (the old value of the other box never stays beside the new one)
+    f[other] = (rupees ? got.percent : got.rupees) ?? ''
     f[words[0]] = got.words
     f[words[1]] = got.rupeeWords
     if (!isTarget) f.stopWarning = got.warning

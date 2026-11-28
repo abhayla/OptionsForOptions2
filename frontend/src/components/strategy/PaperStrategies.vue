@@ -13,7 +13,7 @@
     <p v-for="l in noteLines" :key="l.key" class="mt-2 text-xs text-ink-muted" data-testid="paper-exit-link-note">{{ l.text }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
-    <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
+    <ListLoadFailed v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" @retry="onRetry" />
     <p v-if="pageLine" class="mt-2 text-sm text-ink-muted" role="status" data-testid="paper-paused-notice">{{ pageLine }}</p>
     <p v-if="!exitOnlyFor && !loading && items && !items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
     <template v-else-if="!exitOnlyFor && !loading && items">
@@ -177,7 +177,7 @@ import { istClock } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
@@ -478,6 +478,8 @@ const { refresh, refreshNow } = usePaperRefresh({
 })
 onMounted(refresh)
 // N-21: a Save / Cancel / fired stop in the Stops panel: read the list now, not at the next tick (no new timer)
+// FJ2-9 (T3-10): the one failed-load rule: a Retry under the failed read (the list, if one is held, stays under the banner)
+function onRetry() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 function onStopsChanged() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 
 // a read that changes the open contracts of the group being exited ends the exit's open question
@@ -574,7 +576,7 @@ function cancelExit() {
 }
 
 function ask(g, rows) {
-  // ADR-330 (60): the Exit control always opens the dialog and the dialog decides (an unresolved unknown outcome, a not-live read or a leg without a price show their sentence there, Confirm off). ask() returns early only when the gate is blocked for busy / pending / checking (not for not-live); a busy post or unreadable rows end here with their note.
+  // ADR-330 (60): the Exit control always opens the dialog and the dialog decides (an unresolved unknown outcome, a not-live read or a leg without a price show their sentence there, Confirm off). ask() returns early only when the gate is blocked for busy or checking (not for not-live; this page's usePaperExit gets no `pending` or `unresolved` input, so the gate never blocks for those); a busy post or unreadable rows end below with their note, and an unresolved unknown outcome is read from the lock (isUnknown, the dialog's UNKNOWN state, Confirm off), not from the gate.
   if (exitGate.blocked.value && !exitGate.notLive.value) return
   adoptLock(g.id, readSeq + 1) // a lock of another tab or an earlier page instance comes back before anything is offered
   const orders = exitRowsFor(rows)
