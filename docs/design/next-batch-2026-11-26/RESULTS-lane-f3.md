@@ -1,4 +1,4 @@
-STATUS 22:40 | MUST stored-close as-of (coordinator 21:05 IST, Opus review of RA2 88500c2a9): built, commit 45ff71c20; gate running, push next as its own push; the build lane merges RA2 only together with this commit | I-66 pushed 937e80bbe | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
+STATUS 23:20 | MUST stored-close as-of PUSHED: code commit 45ff71c20 + 9f4f37c1b, gate TOTAL PASS 1139.6s; the build lane merges RA2 (88500c2a9) only together with it | I-66 pushed 937e80bbe | queue empty | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
 
 # RESULTS Lane F3 (frontend tail), branch fix/r3-frontend-f3-1128, base origin/integration/weekend-r3-1129 + FJ2 68a46dd62 + RA2 (fix/r3-leftovers-2-1128)
 
