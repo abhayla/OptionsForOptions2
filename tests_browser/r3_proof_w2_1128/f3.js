@@ -1,0 +1,18 @@
+// Lane W2 F3 (937e80bbe incl. f23 hand-off): Home / Positions with no session / My Strategies Completed / paused sentence count / Retry with the API stopped is a separate run
+const { launch, shot, body, MAIN } = require('./common')
+;(async () => {
+  const { browser, page } = await launch()
+  const cnt = (t, s) => (t.split(s).length - 1)
+  await page.goto(MAIN + '/home/overview'); await page.waitForTimeout(9000); let t = await body(page)
+  console.log('HOME paused sentences:', cnt(t, 'Paper P&L paused'), '|', (t.match(/Paper P&L paused[^|]*/g) || ['-']).slice(0, 2).join(' ;; '), '|', (t.match(/Total P&L[^|]*\|[^|]*/) || ['-'])[0]); await shot(page, 'f3-home')
+  await page.goto(MAIN + '/positions/current-positions'); await page.waitForTimeout(9000); t = await body(page)
+  console.log('POSITIONS raw JSON/409 text visible:', /error_class|"code"|409|BROKER_AUTHENTICATION/.test(t), '| paused sentences:', cnt(t, 'Paper P&L paused'), '|', (t.match(/Connect your Zerodha[^|]*/) || ['<no connect sentence>'])[0].slice(0, 120), '| Retry buttons:', await page.getByRole('button', { name: /Retry/ }).count()); await shot(page, 'f3-positions')
+  await page.goto(MAIN + '/positions/current-positions?tab=paper'); await page.waitForTimeout(8000); t = await body(page)
+  console.log('POSITIONS PAPER paused sentences:', cnt(t, 'Paper P&L paused'))
+  await page.goto(MAIN + '/strategies/live-strategies'); await page.waitForTimeout(8000); t = await body(page)
+  console.log('LIVE paused sentences:', cnt(t, 'Paper P&L paused'), '| leg table empty cells:', (t.match(/\t-\t|\t—\t/g) || []).length)
+  await page.goto(MAIN + '/strategies/my-strategies'); await page.waitForTimeout(8000)
+  await page.getByRole('button', { name: 'Completed', exact: true }).first().click().catch(() => page.locator('text=Completed').first().click().catch(() => {})); await page.waitForTimeout(3000); t = await body(page)
+  console.log('MY STRATEGIES Completed:', (t.match(/[^|]*(Completed|No completed|closed)[^|]*/g) || ['-']).slice(0, 6).join(' ;; ').slice(0, 500)); await shot(page, 'f3-completed')
+  await browser.close()
+})()
