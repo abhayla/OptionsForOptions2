@@ -55,6 +55,13 @@ review or a live-database write with "Why Opus" stated, and a lane's results fil
 Context: a finished lane gets a next task in the same session only when it is a related follow-up in the same code;
 an unrelated task goes to a fresh lane with a self-contained brief, and the finished lane reports SAFE TO CLOSE.
 
+### Coordinating many lanes (28 Nov)
+Rules and cases: `.claude/skills/lanes/SKILL.md`, section "Coordinator: finish line, batches and waves".
+Numbers: a full check is a median 23.6 minutes at `--jobs 2`; about 30 percent fail once; 5 items per push cost 6.7
+check-minutes per item against 16.9 at 2 items. So: targeted tests and a local commit per item, two pushes per lane
+(money-path items first), and the build lane merges in waves with one combined check per wave, not one per branch.
+Every report leads with burn-down (open, proven since last report, net).
+
 ## Briefs and dispatch
 - Briefs use `docs/process/builder-brief.md` for the constant parts. Every builder/checker brief goes through
   `python scripts/orchestrator/dispatch.py <row> <measure.json> --kind build|fix|verify-r2 --out <brief>

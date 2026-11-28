@@ -111,6 +111,35 @@ standing rules (more than 15 such lines). A passing example: `examples/brief-lan
   separate pre-check.
 - Create sessions with full history (`clone_depth` high in create_session, for example 100000). A problem seen twice gets its root cause read from the lane's own check output before any second nudge.
 
+## Coordinator: finish line, batches and waves
+Owner's order of 28 Nov 2026 (about 18:40 IST). Each point has its measured case in
+`coordination-lessons-2026-11-28.md` (same folder); read it before you plan a round.
+1. **Finish line before fan-out.** Class every open item MUST / SHOULD / LATER / OWNER, each with what closes it. Every
+   report leads with burn-down: open, proven since the last report, net, new items shown as "added". Case: "passed in
+   cloud" stood at 123 for four runs while the list grew 203 to 210 and reports said "all assigned, waiting 0".
+2. **A lane closing is not work done.** An ETA is for the work, not for the lane. A lane's hand-over list counts as open.
+3. **Batches.** Per item: targeted tests and a local commit. Two pushes per lane: money-path items first, then the rest.
+   A full check is a median 23.6 minutes at `--jobs 2` and about 30 percent fail once. Cost per item: 16.9 check-minutes
+   at 2 items per push, 6.7 at 5. One check covers all commits of the pushed head. There is no unchecked code push.
+4. **Not one push at the very end.** Money-path proof lands 03:20 instead of 01:45, late conflicts were 5 in 8 merges,
+   and a dead container loses everything not pushed.
+5. **The build lane merges in waves,** one combined check per wave. One branch per check cost 5.8 hours for 14 merges.
+6. **Check in the background** while the next item is built in a second worktree. The review runs alongside the check.
+   Reviews on money paths only, two rounds. When several reviews each find one more hole (five on the browser lock),
+   move the guarantee to the one code path every case passes (the server key), not a sixth patch.
+7. **Split lanes by files that do not overlap,** checked against the tree. Every brief names each shared file's single owner.
+8. **Signals.** Lanes report by message at every push, when blocked and at 55 percent of context. Read a lane's last
+   event or message before calling it stalled (a 24-minute check looked like a stall). An accepted build commit goes to
+   the plan lane, the PC and the test lane in the same step (a plan lane sat idle 50 minutes).
+9. **Device trust.** Lanes could not message the coordinator until the owner approved trust per session; afterwards the
+   coordinator cannot read lane events. Messages and origin are the only signals. Say so at session start.
+10. **Quote facts from the source file,** never from memory when passing them between lanes (issue 876: 14 triggers on
+    was passed, the PC said 13 with two guards; three lanes built the wrong shape).
+11. **CI runs only on pull requests and main,** so lane branches cost no CI. Count the merge into main in the plan from
+    the start: main was 11 days old and about 1,700 commits behind, so every check was judged against it (about 15
+    minutes of waste per push).
+12. **Every new lane gets one line to the owner:** what it finishes that a running lane cannot.
+
 ## Before every pre-push check
 1. Once per container: `git fetch --unshallow origin; git fetch origin main` (a cloud clone is shallow; two stages fail late without it).
 2. Cheap rules first, with `PATH=/usr/local/bin:$PATH`: `ruff check <changed files>`; `python scripts/ruff_ratchet.py`; `python -m pytest tests -m repo_scan -q`; `python -m pytest tests/orchestrator/test_select_app_tests.py tests/test_no_broker_name_in_feature_code.py tests/test_scenario_one_reader.py -q`; for a changed route also `python -m pytest -c pytest-app.ini tests_app/test_reply_inventory.py tests_app/test_openapi_drift.py -q`. A new tests_app file is listed in PR241_SELECTION; a database test reading market data uses `scenario_on`.
