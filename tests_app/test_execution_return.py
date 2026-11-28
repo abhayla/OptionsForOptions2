@@ -540,9 +540,8 @@ def test_first_fill_is_no_earlier_filled_plan_and_no_adopted_holding(history, ad
 def _market(ltp):
     from types import SimpleNamespace as NS  # noqa: PLC0415
 
-    from ofo.marketdata.quote import DataHealth  # noqa: PLC0415
-    # ADR-330 (39): the index's spot is "live" only when AVAILABLE (``priced``); the fake quote says so
-    quote = None if ltp is None else NS(ltp=ltp, health=DataHealth.AVAILABLE)
+    from ofo.rules.inputs import DataHealth  # noqa: PLC0415
+    quote = None if ltp is None else NS(ltp=ltp, health=DataHealth.AVAILABLE)  # ADR-330 (39): a live quote has health
     return NS(provider=NS(status=lambda: NS(connected=True), underlying_quote=lambda _u: quote))
 
 

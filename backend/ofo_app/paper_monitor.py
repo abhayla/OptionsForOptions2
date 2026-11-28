@@ -77,6 +77,7 @@ def provider_prices(feed: LiveFeed, underlying: str, keys: Sequence[str]) -> Map
 # (``monitoring_state.ExitsPublisher``: the trade reads "Monitoring paused", never watched). No order is retried.
 #: a crossed exit that could not run (no live leg price) is tried again from the polled reading no sooner than this
 POLLED_RETRY_SECONDS: Final = 5.0
+FIRST_LOAD_RETRY_SECONDS = 5.0  # a monitor that has never loaded its exits retries sooner than the reload period
 #: a ``_Reading`` of this monitor's own feed quote (its ticks judge it); the worker's are "feed" / "rest"
 OWN_FEED: Final = "own"
 #: The kind an "exit could not run" message is stored under: the closest informational kind the alert table's kind
@@ -175,6 +176,7 @@ class PaperMonitor:
         self._exits_publisher: tuple[Any, monitoring_state.ExitsPublisher] | None = None
         self._dirty = True
         self._loaded_at: float | None = None
+        self._ever_loaded = False  # review F3: no armed exit is known until a reload has succeeded; no claim is made
         self.fires = 0
         self.failures = 0
 
@@ -223,6 +225,7 @@ class PaperMonitor:
             self._resubscribe(feed, sorted(set(watch) | extra))
             # hotfix 27 Nov (DB pool 2 on the PC): the hold's two reads use THIS session, not a second checkout
             await self._reload_hold(feed, found, session)  # AFTER the stop watch: a failed hold never unwatches a stop
+        self._ever_loaded = True
 
     async def _read_index_age(self) -> None:
         """The index age rule in force (the one the worker's read applies), read at most once per reload period and
@@ -323,7 +326,8 @@ class PaperMonitor:
     async def step(self) -> int:
         """One pass: reload when due, then handle every queued quote in arrival order. Returns the fires recorded."""
         if self._dirty or self._feed_source() is not self._feed or self._loaded_at is None or \
-                self._monotonic() - self._loaded_at >= self._reload_seconds:
+                self._monotonic() - self._loaded_at >= (self._reload_seconds if self._ever_loaded
+                                                        else min(self._reload_seconds, FIRST_LOAD_RETRY_SECONDS)):
             await self.reload()
         fired = 0
         carried, self._carried = self._carried, []
@@ -332,6 +336,8 @@ class PaperMonitor:
         if self._feed is not None and self._handle is not None:
             for quote in self._feed.fanout.drain(self._handle):
                 fired += await self.on_quote(quote)
+        if not self._ever_loaded:  # nothing loaded: no exit is known, so no claim is made (review F3)
+            return fired
         return fired + await self._index_pass()
 
     async def on_quote(self, quote: NormalizedQuote) -> int:

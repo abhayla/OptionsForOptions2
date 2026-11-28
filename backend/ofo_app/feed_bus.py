@@ -45,6 +45,9 @@ STREAM_MAXLEN = 20_000  # entries kept per user (about a minute of a busy feed);
 WANT_TTL_MS = 10_000  # the API refreshes the snapshot every WANT_REFRESH_S; a dead API's wishes lapse after this
 WANT_REFRESH_S = 1.0
 HEARTBEAT_STALE_S = 120  # REQ-115 AC-6: no heartbeat for 2 minutes = the workers are down or late
+#: #879: how far AHEAD of the reader's clock a heartbeat may be and still be live (one-sided, like
+#: ``monitoring_state.CLOCK_SKEW_S``, which imports this module and so cannot be the home; a test holds them equal)
+HEARTBEAT_SKEW_S = 5
 FRESH, STALE, UNREADABLE = "fresh", "stale", "unreadable"
 CONTROL_MAXLEN = 100  # a wake-up stream: a lost or trimmed entry is rebuilt by the feed's fixed re-check
 STATUS_TTL_MS = 5_000  # the feed refreshes every STATUS_EVERY_S; a dead feed's status lapses after this
@@ -189,7 +192,10 @@ async def write_heartbeat(client: Any, at: datetime.datetime) -> None:
 
 def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
     """``stale`` when older than HEARTBEAT_STALE_S, ``fresh`` otherwise; ``unreadable`` when missing, not text, not a
-    time with a zone, or more than HEARTBEAT_STALE_S ahead of ``now`` (never read as fresh)."""
+    time with a zone, or more than HEARTBEAT_SKEW_S ahead of ``now`` (never read as fresh: a stamp from the future is
+    not a live reading). Limit (Opus review F1, #879): a writer whose clock runs ahead and then dies still reads fresh
+    until real time passes its last stamp plus HEARTBEAT_STALE_S; only a reader-side clock (noting when the stamp
+    last CHANGED) or a store-side expiry closes that, which is the owner lane's call (RESULTS-lane-fr)."""
     text = _text(raw)
     try:
         at = datetime.datetime.fromisoformat(text) if text else None
@@ -198,7 +204,7 @@ def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
     if at is None or at.utcoffset() is None:
         return UNREADABLE
     age = (now - at).total_seconds()
-    if age < -HEARTBEAT_STALE_S:  # a time far ahead of now is a wrong clock or a simulated one, not a live worker
+    if age < -HEARTBEAT_SKEW_S:  # a time ahead of now is a wrong clock or a simulated one, not a live worker
         return UNREADABLE
     return STALE if age > HEARTBEAT_STALE_S else FRESH
 
