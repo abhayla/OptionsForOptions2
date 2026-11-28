@@ -45,7 +45,7 @@ export const paperLotsOk = (text) => /^[1-9]\d{0,5}$/.test(String(text ?? '').tr
 // answer to its ONE POST. Before this, every failure read as "not placed" and Confirm came back, so a POST the server had
 // stored (201) but whose answer or follow-up read was lost could be sent a second time (live 2026-11-06, strategy 86).
 export const PAPER_PLACED_NOT_REFRESHED_TEXT = 'Placed on paper. Loading the position again.' // pending owner read (15 Nov 2026), issue 18: no "reload" dead end
-export const PAPER_UNKNOWN_TEXT = 'We could not confirm the order. Check Orderbook before trying again.'
+export const PAPER_UNKNOWN_TEXT = 'We could not confirm the order. Check the Orderbook; no second order is sent until the answer is known.'
 export const PAPER_OPEN_ORDERBOOK_LABEL = 'Open Orderbook'
 /** An exit's price is read by the server when the order is placed (live in market hours, the last close after hours). */
 export const PAPER_EXIT_PRICED_BY_SERVER_TEXT = 'the server sets the exit price when you confirm'

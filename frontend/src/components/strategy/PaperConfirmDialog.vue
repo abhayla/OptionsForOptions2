@@ -92,6 +92,7 @@
 import { computed, nextTick, onBeforeUnmount, ref, watch } from 'vue'
 import Chip from '@/components/common/Chip.vue'
 import Modal from '@/components/common/Modal.vue'
+import { monoAgeOfAt } from '@/lib/unknownLocks'
 import {
   PAPER_EXIT_CHECKING_TEXT, PAPER_EXIT_PRICED_BY_SERVER_TEXT, PAPER_EXIT_UNCHECKED_TEXT, PAPER_EXIT_UNCHECKED_SHORT_TEXT, PAPER_NOT_REAL_TEXT, PAPER_OPEN_ORDERBOOK_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_LOTS_REASON, PAPER_UNKNOWN_HOLD_MS,
   PAPER_UNKNOWN_TEXT, HELD_LABEL, STOP_REPLY_UNREADABLE_TEXT, cancelledStopLines, EXIT_UNKNOWN_WINDOW_MS, EXIT_UNKNOWN_AFTER_WINDOW_TEXT, heldBlock, paperLotsOk, paperPriceOk, paperPriceReason,
@@ -282,12 +283,19 @@ watch(() => props.state, (s) => {
 }, { immediate: true })
 // #870: how long the lock has stood; after the server's longest commit window it is said plainly. Never an unlock: `locked` alone decides Confirm.
 const lockWindowOver = ref(false)
+// F1b (cloud walker, 28 Nov): the age of the lock is counted on the MONOTONIC clock, like the lock itself. The wall age is never trusted: a clock set forward said "Two minutes have passed" at once.
+// A lock is stamped when this page first sees it (by its give-up time), so a dialog opened again later on the same page still counts from that first sight.
+const seenAt = new Map()
+const monoNow = () => { try { const n = globalThis.performance?.now?.(); return Number.isFinite(n) ? n : Date.now() } catch { return Date.now() } }
 let windowTimer = null
 watch(() => props.locked, (on) => {
   clearTimeout(windowTimer)
   lockWindowOver.value = false
   if (!on) return
-  const left = props.lockedAtMs > 0 ? EXIT_UNKNOWN_WINDOW_MS - (Date.now() - props.lockedAtMs) : EXIT_UNKNOWN_WINDOW_MS
+  const k = props.lockedAtMs > 0 ? props.lockedAtMs : 0
+  if (k === 0 || !seenAt.has(k)) seenAt.set(k, monoNow()) // no give-up time known: a new lock, counted from now
+  const age = monoAgeOfAt(props.lockedAtMs) ?? monoNow() - seenAt.get(k) // the lock's own monotonic stamp on this page, else this dialog's first sight
+  const left = EXIT_UNKNOWN_WINDOW_MS - age
   if (left <= 0) lockWindowOver.value = true
   else windowTimer = setTimeout(() => { lockWindowOver.value = true }, left)
 }, { immediate: true })

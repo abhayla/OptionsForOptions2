@@ -64,3 +64,13 @@ describe('R2-7 a key saved by the earlier build (orders text WITH the entry pric
     expect(L.orderKeyFor(7, L.keySigOf([{ contract_id: 5, side: 'SELL', quantity: 65, price: '100.25' }]), 'new-key', 'add')).toBe('new-key') // other quantity: a new action
   })
 })
+
+describe('review finding 5: a marker names ONE lock write (nonce)', () => {
+  it('same key and same at but another write: not decided', () => {
+    L.saveExitLock(1, lockOf({ at: 5000, key: 'kk' }))
+    const first = L.exitLockFor(1)
+    L.dropExitLock(1, first) // decided: marker
+    L.saveExitLock(1, lockOf({ at: 5000, key: 'kk' })) // a new write with the same key and the same at (clamped clock)
+    expect(L.lockDecidedElsewhere(1, L.exitLockFor(1))).toBe(false)
+  })
+})

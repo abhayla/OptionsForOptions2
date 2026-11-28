@@ -88,3 +88,19 @@ describe('target key drop: only the key of the strategy the post went to is drop
     w.unmount()
   })
 })
+
+describe('review finding 1 (save bar): a wipe never releases the add', () => {
+  it('unknown add, storage wiped (event): the lock is written back and a second Confirm sends nothing', async () => {
+    const w = await mountBar()
+    await t(w, 'add-to-paper').trigger('click'); await flushPromises()
+    dom('paper-confirm-button').click(); await flushPromises()
+    expect(posts()).toHaveLength(1)
+    globalThis.localStorage.clear()
+    window.dispatchEvent(new StorageEvent('storage', { key: null }))
+    await flushPromises()
+    expect(globalThis.localStorage.getItem('ofo.addUnknown')).not.toBeNull()
+    await cancel()
+    expect(t(w, 'add-to-paper').attributes('disabled')).toBeDefined()
+    w.unmount()
+  })
+})

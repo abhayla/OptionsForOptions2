@@ -106,3 +106,15 @@ describe('F1b F-E: storage refuses the write', () => {
     expect(posts()).toHaveLength(1)
   })
 })
+
+describe('review finding 2: the REAL write is the check', () => {
+  it('a store that takes small values but refuses the lock JSON: nothing is sent', async () => {
+    const orig = globalThis.localStorage.setItem
+    globalThis.localStorage.setItem = (k, v) => { if (String(v).length > 8) throw new Error('QuotaExceededError'); return orig.call(globalThis.localStorage, k, v) }
+    try {
+      const a = await show()
+      await openExit(a); await press(a)
+      expect(posts()).toHaveLength(0)
+    } finally { globalThis.localStorage.setItem = orig }
+  })
+})

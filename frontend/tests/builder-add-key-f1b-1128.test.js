@@ -50,3 +50,19 @@ describe('R2-5 builder: an add\'s key and lock', () => {
     expect(posts()).toHaveLength(1)
   })
 })
+
+// Opus review finding 1 (F1b): a wiped store must not release the builder's held add; the lock and its key are written back and a second add sends nothing.
+describe('review finding 1: the builder add survives a wipe', () => {
+  it('unknown add, storage wiped (event), book unchanged inside the window: a second Confirm sends nothing', async () => {
+    const w = await H.showBuilder()
+    await stageAdd(w)
+    expect(posts()).toHaveLength(1)
+    globalThis.localStorage.clear()
+    window.dispatchEvent(new StorageEvent('storage', { key: null }))
+    await flushPromises()
+    await adv(6000)
+    expect(globalThis.localStorage.getItem('ofo.addUnknown')).toContain('"1"') // written back
+    await stageAdd(w)
+    expect(posts()).toHaveLength(1)
+  })
+})

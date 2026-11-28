@@ -31,7 +31,7 @@ import { contractName, istTime } from '@/lib/displayFormat'
 import { readPaperBook } from '@/lib/paperDrafts'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
-import { addLockFor, exitLockFor, onExitLocksChanged, canPersistLocks, LOCK_STORAGE_REFUSED_TEXT, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, keySigOf, onAddLocksChanged, orderKeyFor, saveAddLock, sentNow } from '@/lib/unknownLocks'
+import { addLockFor, exitLockFor, onExitLocksChanged, canPersistLocks, lockPersisted, LOCK_STORAGE_REFUSED_TEXT, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, keySigOf, onAddLocksChanged, orderKeyFor, saveAddLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
@@ -456,6 +456,12 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   const key = orderKeyFor(target, keySigOf(orders), dialogKey, 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
   const outAt = Date.now() // R5 N5: this write's own identity: a definite answer drops this lock, never another tab's
   saveAddLock(target, { at: outAt, out: true, before: '', key, sig }) // F3: written BEFORE the post goes out; a definite answer removes it (`out`: at = when it went out)
+  if (!lockPersisted('add', target, key)) { // F1b (Opus review): the real write is the check; a lock or key only this page's memory holds is lost by a reload
+    dropAddLock(target, { key, at: outAt }); dropOrderKey(target, 'add')
+    paperBusy.value = false; paperError.value = LOCK_STORAGE_REFUSED_TEXT
+    addTick.value++
+    return
+  }
   inflightAdds.add(String(target))
   addTick.value++
   try {

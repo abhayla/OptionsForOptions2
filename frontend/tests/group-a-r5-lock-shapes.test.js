@@ -32,14 +32,15 @@ describe('R5 N3 liveness', () => {
     expect(L.decideLock(exitNoUnits, moved, 2000).verdict).toBe('keep')
     expect(L.decideLock(exitNoUnits, moved, 1000 + WINDOW + 1).verdict).toBe('changed')
   })
-  it('an unparseable whole store locks inside the window and is reset by a decided read past it (Positions)', async () => {
+  it('an unparseable whole store locks inside the window and is freed for THIS strategy only by a decided read past it, the stored content is never overwritten (Positions; F1b F-G)', async () => {
     localStorage.setItem('ofo.exitUnknown', '{not json')
     const w = await H.showPositions()
     await H.positionsExit(w)
     expect(posts(), 'fail closed inside the window').toHaveLength(0)
     await adv(WINDOW + 20000)
-    expect(localStorage.getItem('ofo.exitUnknown'), 'the store was reset').not.toBe('{not json')
-    expect(L.exitLockFor(1)).toBeNull()
+    expect(localStorage.getItem('ofo.exitUnknown'), 'content nobody can read is never written over (F1b F-G)').toBe('{not json')
+    expect(L.exitLockFor(1)).toBeNull() // freed for this strategy on this page
+    expect(L.exitLockFor(99999)?.malformed, 'a strategy no read has decided stays locked').toBe(true)
   })
 })
 

@@ -198,7 +198,7 @@ import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
-import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, canPersistLocks, LOCK_STORAGE_REFUSED_TEXT, lockDecidedElsewhere, onExitLocksChanged, orderKeyFor, saveExitLock, sentNow } from '@/lib/unknownLocks'
+import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, canPersistLocks, lockPersisted, LOCK_STORAGE_REFUSED_TEXT, lockDecidedElsewhere, onExitLocksChanged, orderKeyFor, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -622,7 +622,14 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
   const g = (items.value ?? []).find((x) => String(x.id) === String(c.id))
   const book = g ? bookOfPositions(g.positions) : null // the WHOLE book the orders go against (one key for every page), the exited legs' signed units, and the book they should leave
   const lock = { at: Date.now(), out: true, before: book?.key ?? null, units: exitUnitsOf(orders, book) ?? c.units, expected: expectedKeyOf(orders, book), names: c.names, key, sig, seen: book ? null : Date.now() } // `seen`: a lock whose book could not be read counts from the post
-  saveExitLock(c.id, lock) // written BEFORE the post goes out (`out`: `at` is when it went out): a list left, reloaded or opened in a second tab meanwhile is covered too; a definite answer removes it
+  saveExitLock(c.id, lock)
+  if (!lockPersisted('exit', c.id, key)) { // F1b (Opus review): the real write is the check; a lock or key only this page's memory holds is lost by a reload
+    dropExitLock(c.id, { key, at: lock.at }); dropOrderKey(c.id, 'exit')
+    exitRec.settle(c.id, attempt, 'refused', LOCK_STORAGE_REFUSED_TEXT)
+    busy.value = false
+    return
+  }
+  // written BEFORE the post goes out (`out`: `at` is when it went out): a list left, reloaded or opened in a second tab meanwhile is covered too; a definite answer removes it
   let reply = null
   try {
     reply = await addToPaper(api, c.id, orders, [], null, null, null, false, key) // no suggestion ids: the body is { orders, client_request_id }

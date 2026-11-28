@@ -1,5 +1,6 @@
 // Lane FA2 #870 (ADR-017): an unknown-outcome exit keeps Confirm locked; once the server's longest commit window (120 s) has passed with
 // every re-read failing, the dialog says plainly that the outcome is not known and what to check (the Orderbook). It never unlocks on a guess.
+import { saveExitLock } from '@/lib/unknownLocks'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
@@ -43,9 +44,11 @@ describe('#870', () => {
     expect(w.get('[data-testid="paper-unknown"]').text()).toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
     w.unmount()
   })
-  it('page half: with `lockedAtMs` (when the unknown reply came) the window counts from then, also for a dialog opened later', async () => {
+  it('page half: with `lockedAtMs` (when the unknown reply came) the window counts from then, also for a dialog opened later (F1b: on the lock\'s own monotonic stamp, never the wall age)', async () => {
     vi.setSystemTime(new Date('2026-11-27T10:00:00Z'))
-    const at = Date.now() - 100000 // the reply came 100 s ago; the dialog is opened now
+    const at = Date.now()
+    saveExitLock(1, { at, out: false, before: 'x', units: [{ id: 1, units: 5 }], key: 'k', names: [] }) // the page wrote the lock: its monotonic stamp starts here
+    await adv(100000) // the reply came 100 s ago; the dialog is opened now
     const w = mountIt({ lockedAtMs: at })
     await flushPromises()
     await adv(19000)
@@ -53,7 +56,10 @@ describe('#870', () => {
     await adv(1000)
     expect(w.get('[data-testid="paper-unknown"]').text()).toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
     w.unmount()
-    const old = mountIt({ lockedAtMs: Date.now() - 500000 }) // already past the window: shown at once
+    const at2 = Date.now()
+    saveExitLock(2, { at: at2, out: false, before: 'x', units: [{ id: 1, units: 5 }], key: 'k2', names: [] })
+    await adv(500000)
+    const old = mountIt({ lockedAtMs: at2 }) // already past the window: shown at once
     await flushPromises()
     expect(old.get('[data-testid="paper-unknown"]').text()).toContain(EXIT_UNKNOWN_AFTER_WINDOW_TEXT)
     old.unmount()

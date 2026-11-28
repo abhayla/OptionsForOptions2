@@ -75,7 +75,7 @@ async function remount() {
 
 
 import { PAPER_UNKNOWN_TEXT } from '@/lib/tracking'
-import { dropExitLock } from '@/lib/unknownLocks'
+import { dropExitLock, exitLockFor } from '@/lib/unknownLocks'
 const TAB_BOOK = () => BOOK
 async function secondTab() { return remount() }
 const tryExit = async (w) => {
@@ -120,7 +120,7 @@ describe('I-139 second tab (Lane W2): released by the first tab\'s decision', ()
     const second = await secondTab()
     expect(S(second).exitBlocked).toBe(true)
     answers['GET /paper/strategies/86'] = afterExitOf(OPEN_IDS[0]) // the book moved: the exit was stored
-    dropExitLock(86) // the first tab decided it and removed it from the store
+    dropExitLock(86, exitLockFor(86)) // the first tab decided THIS lock (Lane F1b: it passes the lock it decided, so its decided marker is written) and removed it from the store
     window.dispatchEvent(new StorageEvent('storage', { key: 'ofo.exitUnknown' })) // the browser tells the other tab
     await flushPromises()
     await vi.advanceTimersByTimeAsync(2000)

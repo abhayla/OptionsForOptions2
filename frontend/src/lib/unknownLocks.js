@@ -26,6 +26,8 @@ const KEYS_KEY = 'ofo.orderKeys'
 const DONE_KEY = 'ofo.lockDecided' // F1b item 1: the marker a page writes BEFORE it removes a lock it DECIDED; a wipe of storage leaves none (a missing lock alone is never a decision)
 const memory = { [LOCK_KEY]: {}, [ADD_KEY]: {}, [KEYS_KEY]: {}, [DONE_KEY]: {} }
 const UNREADABLE = Symbol('unreadable') // content is there but is not an object of entries: a lock for every strategy, decided by nobody
+const held = { [LOCK_KEY]: new Map(), [ADD_KEY]: new Map() } // F1b (Opus review): the raw lock records THIS page wrote or read, by strategy; a lock that vanishes from the store with no decided marker (a wipe) is written back (restoreVanished), never forgotten
+const nonceOf = () => { const c = globalThis.crypto; try { if (typeof c?.randomUUID === 'function') return c.randomUUID() } catch { /* none */ } return `${Date.now().toString(36)}${Math.random().toString(36).slice(2)}` }
 const garbageReleased = { [LOCK_KEY]: new Set(), [ADD_KEY]: new Set(), [KEYS_KEY]: new Set() } // F1b F-G: strategies whose lock in an UNREADABLE store was decided by a good read: freed on this page instance only, the content is never written over
 const garbageSeen = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null } // R5 N3: when this page first saw a store that cannot be read (it counts the window from there; never written over the content)
 const dirty = { [LOCK_KEY]: false, [ADD_KEY]: false, [KEYS_KEY]: false, [DONE_KEY]: false } // true once a write was refused: then what this page wrote is merged over what storage holds (never instead of it)
@@ -41,6 +43,14 @@ export function sentNow() {
   return w
 }
 const stamps = new Map() // `${store}|${id}|${at}` -> monotonic stamp of this page instance (never stored: it means nothing in another page)
+/** F1b: the monotonic age (ms) of the lock whose give-up time is `at`, for a lock this page wrote or first saw (any store); null when this page never saw it. For the dialog's own sentence (never the lock decision). */
+export function monoAgeOfAt(at) {
+  const m = monoNow()
+  if (m === null || !Number.isFinite(at)) return null
+  let best = null
+  for (const [k, v] of stamps) { if (k.endsWith(`|${at}`) && Number.isFinite(v)) best = best === null ? v : Math.min(best, v) }
+  return best === null ? null : m - best
+}
 const stampKey = (name, id, at) => `${name}|${id}|${at ?? ''}`
 /** The monotonic stamp of a lock for THIS page instance: taken when the lock is written here or FIRST SEEN here, and always as "age 0 now". The wall age is never trusted, not even once
  *  (Lane W2 D-W2-1, Opus review R2-3: a clock moved forward before a reload released a lock after 46 real seconds). A reloaded page therefore counts the window from its own first sight, by the
@@ -236,7 +246,7 @@ export function sameLock(a, b) {
 export const addBeforeOf = (book) => (book ? `#${book.key}` : '#?')
 // ---- the ONE writer (an exit store and an add store of the same shape) ----
 const asLock = (raw, kind) => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { kind, malformed: true, at: null, before: null, expected: null, names: [], units: null, key: null, sig: null, waiting: null, out: false, seen: null, move: false, adds: null }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { kind, malformed: true, at: null, before: null, expected: null, names: [], units: null, key: null, sig: null, waiting: null, out: false, seen: null, move: false, adds: null, nonce: null }
   const units = Array.isArray(raw.units) && raw.units.length && raw.units.every((u) => u && isInt(u.id) && isInt(u.units) && u.units !== 0) ? raw.units.map((u) => ({ id: u.id, units: u.units })) : null
   const before = typeof raw.before === 'string' ? raw.before : null
   return {
@@ -244,10 +254,40 @@ const asLock = (raw, kind) => {
     expected: typeof raw.expected === 'string' ? raw.expected : null, names: Array.isArray(raw.names) ? raw.names.filter((n) => typeof n === 'string') : [],
     units, key: typeof raw.key === 'string' ? raw.key : null, sig: typeof raw.sig === 'string' ? raw.sig : null,
     waiting: raw.waiting && typeof raw.waiting === 'object' ? raw.waiting : null, out: raw.out === true,
-    seen: typeof raw.seen === 'number' && Number.isFinite(raw.seen) ? raw.seen : null, move: raw.move === true, adds: validAdds(raw.adds), // `move`: the exit's orders also opened a leg (a move): its reply may have named cancelled stops (Group A R4)
+    seen: typeof raw.seen === 'number' && Number.isFinite(raw.seen) ? raw.seen : null, move: raw.move === true, nonce: typeof raw.nonce === 'string' ? raw.nonce : null, adds: validAdds(raw.adds), // `move`: the exit's orders also opened a leg (a move): its reply may have named cancelled stops (Group A R4)
   }
 }
 const garbageMono = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null }
+/** F1b (Opus review, finding 1): a lock THIS page held that is gone from the store WITHOUT a decided marker was wiped (site data cleared), not decided: it is written back, with its request key,
+ *  and keeps blocking until a read decides it. With a marker another tab decided exactly that lock: the hold ends. Never touches content that cannot be read. */
+function restoreVanished(name) {
+  const kind = name === ADD_KEY ? 'add' : 'exit'
+  const all = readAll(name)
+  if (all === UNREADABLE) return
+  for (const [id, raw] of [...held[name].entries()]) {
+    if (String(id) in all) continue
+    const lock = asLock(raw, kind)
+    if (lockDecidedElsewhere(id, lock, kind)) { held[name].delete(id); continue }
+    const next = entriesOf(name)
+    next[id] = raw
+    writeAll(name, next)
+    if (typeof raw.key === 'string' && raw.key && typeof raw.sig === 'string') {
+      const keys = entriesOf(KEYS_KEY)
+      const slot = kind === 'add' ? `${id}#add` : String(id)
+      if (!keys[slot]) { keys[slot] = { sig: raw.sig, key: raw.key }; writeAll(KEYS_KEY, keys) }
+    }
+  }
+}
+/** F1b (Opus review, finding 2): the REAL write is the check. True when storage now holds the lock of `id` with this request key and, with a key, the key store holds it too. Asked after the writes and
+ *  before the post: a lock or key that only this page's memory holds is lost by a reload, and the next Confirm would send a second order. */
+export function lockPersisted(kind, id, key) {
+  const lk = readStored(kind === 'add' ? ADD_KEY : LOCK_KEY)
+  const e = lk && lk !== UNREADABLE ? lk[String(id)] : undefined
+  if (!e || (typeof key === 'string' && key && e.key !== key)) return false
+  if (typeof key !== 'string' || !key) return true
+  const ks = readStored(KEYS_KEY)
+  return !!ks && ks !== UNREADABLE && ks[kind === 'add' ? `${id}#add` : String(id)]?.key === key
+}
 function makeLocks(name, kind) {
   const atKey = (id, at) => stampKey(name, id, at)
   const seenKey = (id, seen) => stampKey(name, `${id}#seen`, seen)
@@ -277,6 +317,7 @@ function makeLocks(name, kind) {
     garbageSeen[name] = null
     garbageReleased[name].clear() // the store reads again
     if (!Object.prototype.hasOwnProperty.call(all, String(id))) return null
+    held[name]?.set(String(id), all[String(id)])
     const l = withStamps(id, asLock(all[String(id)], kind))
     const now = Date.now()
     if (l.seen !== null && l.seen > now) { // a first-sight time in the future (a clock moved back) counts from now too, written back once (the monotonic stamp is carried: a real 130 s still decides)
@@ -296,8 +337,9 @@ function makeLocks(name, kind) {
   }
   const writeLock = (id, rec) => {
     const all = entriesOf(name)
-    all[String(id)] = { at: rec.at ?? null, before: rec.before ?? null, expected: rec.expected ?? null, names: rec.names ?? [], units: rec.units ?? null, key: rec.key ?? null, sig: rec.sig ?? null, waiting: rec.waiting ?? null, out: rec.out === true, seen: rec.seen ?? null, move: rec.move === true, adds: rec.adds ?? null }
+    all[String(id)] = { at: rec.at ?? null, before: rec.before ?? null, expected: rec.expected ?? null, names: rec.names ?? [], units: rec.units ?? null, key: rec.key ?? null, sig: rec.sig ?? null, waiting: rec.waiting ?? null, out: rec.out === true, seen: rec.seen ?? null, move: rec.move === true, adds: rec.adds ?? null, nonce: rec.nonce ?? nonceOf() }
     writeAll(name, all)
+    held[name]?.set(String(id), all[String(id)])
     if (Number.isFinite(rec.at) && !stamps.has(atKey(id, rec.at))) stamps.set(atKey(id, rec.at), stampFor()) // a lock written here: the wall age counts once, then only the monotonic time
     if (Number.isFinite(rec.seen) && !stamps.has(seenKey(id, rec.seen))) stamps.set(seenKey(id, rec.seen), stampFor())
   }
@@ -325,6 +367,7 @@ function makeLocks(name, kind) {
     /** Drops the lock of `id`; with `only` (the lock a reader decided) it drops that lock alone: a newer lock of another tab (other key or `at`) stays. Returns false when a different lock stayed. */
     drop(id, only = null) {
       const all = readAll(name)
+      if (all !== UNREADABLE && (!only || !(String(id) in all) || sameLock(asLock(all[String(id)], kind), only))) held[name]?.delete(String(id)) // this page's own decision ends its hold
       if (all === UNREADABLE) { // R5 N3: content that cannot be read is reset only for the lock a reader DECIDED (a good read sent past the window after its first sight)
         if (only && only.malformed === true && Number.isFinite(only.seen) && sameLock(asLock(null, kind), only)) garbageReleased[name].add(String(id)) // F1b F-G (Opus review): ONE strategy's decided read frees that strategy on this page; it never writes `{}` over content nobody can read (that freed every other strategy's lock)
         return true
@@ -340,7 +383,7 @@ function makeLocks(name, kind) {
     ids() { const all = readAll(name); return all === UNREADABLE ? [] : Object.keys(all) },
     changed(fn) {
       if (typeof globalThis.addEventListener !== 'function') return () => {}
-      const h = (e) => { if (e?.key === null || e?.key === name || (name === LOCK_KEY && e?.key === KEYS_KEY)) { try { fn() } catch { /* a listener never breaks the page */ } } }
+      const h = (e) => { if (e?.key === null || e?.key === name || (name === LOCK_KEY && e?.key === KEYS_KEY)) { try { restoreVanished(name) } catch { /* never breaks the page */ } try { fn() } catch { /* a listener never breaks the page */ } } }
       globalThis.addEventListener('storage', h)
       return () => globalThis.removeEventListener('storage', h)
     },
@@ -352,7 +395,7 @@ function makeLocks(name, kind) {
 function markDecided(kind, id, lock) {
   if (lock.key === null && !Number.isFinite(lock.at)) return // nothing names the lock: no marker, the other tab keeps waiting for its own read
   const all = entriesOf(DONE_KEY)
-  all[`${kind}|${id}`] = { key: lock.key ?? null, at: Number.isFinite(lock.at) ? lock.at : null }
+  all[`${kind}|${id}`] = { key: lock.key ?? null, at: Number.isFinite(lock.at) ? lock.at : null, nonce: lock.nonce ?? null }
   writeAll(DONE_KEY, all)
 }
 /** F1b item 1 (Opus review): true only when ANOTHER page decided exactly this lock and said so (a marker). A lock that merely vanished (site data cleared) is not decided: the caller keeps it
@@ -360,6 +403,7 @@ function markDecided(kind, id, lock) {
 export function lockDecidedElsewhere(id, lock, kind = 'exit') {
   const m = readAll(DONE_KEY)?.[`${kind}|${id}`]
   if (!m || !lock) return false
+  if (typeof m.nonce === 'string' && typeof lock.nonce === 'string') return m.nonce === lock.nonce // each lock write has its own nonce: a clamped `at` or a reused key never matches another lock
   if (Number.isFinite(m.at) && Number.isFinite(lock.at) && m.at !== lock.at) return false // a resend keeps the held key but is a new lock (a new give-up time): an old marker never matches it
   if (m.key !== null && lock.key !== null && lock.key !== undefined) return m.key === lock.key
   return m.key === null && Number.isFinite(m.at) && m.at === lock.at
@@ -396,7 +440,7 @@ export function orderKeyFor(id, ordersText, dialogKey, action = 'exit') {
   const slot = keySlot(id, action)
   const all = entriesOf(KEYS_KEY)
   const cur = all[slot]
-  if (cur && sameSig(cur.sig, ordersText) && typeof cur.key === 'string' && cur.key) return cur.key
+  if (cur && (action === 'add' ? sameSig(cur.sig, ordersText) : cur.sig === ordersText) && typeof cur.key === 'string' && cur.key) return cur.key
   if (typeof dialogKey !== 'string' || !dialogKey) return null // no key was made (no crypto): none is sent; the lock still holds
   all[slot] = { sig: ordersText, key: dialogKey }
   writeAll(KEYS_KEY, all)
@@ -429,6 +473,7 @@ export const newRequestKey = () => {
 export function resetExitLocks() {
   for (const k of Object.keys(dirty)) { dirty[k] = false; garbageSeen[k] = null; garbageReleased[k]?.clear() }
   stamps.clear()
+  held[LOCK_KEY].clear(); held[ADD_KEY].clear()
   writeAll(LOCK_KEY, {})
   writeAll(ADD_KEY, {})
   writeAll(KEYS_KEY, {})

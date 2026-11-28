@@ -45,7 +45,7 @@ import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBook
 import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, exitLegsNotLive, legsNoPrice, refusalText, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
-import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, canPersistLocks, LOCK_STORAGE_REFUSED_TEXT, lockDecidedElsewhere, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock, sentNow } from '@/lib/unknownLocks'
+import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, canPersistLocks, lockPersisted, LOCK_STORAGE_REFUSED_TEXT, lockDecidedElsewhere, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import { STOP_OFFER_LABEL, legStopsGone, triggerListOf, triggersPath } from '@/lib/paperTriggers'
@@ -870,6 +870,12 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
   const outAt = Date.now() // R5 N5: the identity of this page's own write: a definite answer drops that lock, never another tab's
   if (sendsExit) saveExitLock(id, { at: outAt, out: true, ...lockBase }) // `out`: at = when the post went out; the give-up time replaces it below
   else saveAddLock(id, { at: outAt, out: true, before: addBeforeOf(book), adds: addsOf(orders, book), expected: lockBase.expected, key, sig: lockBase.sig, seen: lockBase.seen }) // Group A R2 (e): an add is locked in the browser too, written BEFORE the post
+  if (!lockPersisted(sendsExit ? 'exit' : 'add', id, key)) { // F1b (Opus review): the real write is the check; a lock or key only this page's memory holds is lost by a reload
+    if (sendsExit) dropExitLock(id, { key, at: outAt }); else dropAddLock(id, { key, at: outAt })
+    dropOrderKey(id, sendsExit ? 'exit' : 'add')
+    exitRec.clear(EXIT_KEY); paperBusy.value = false; paperError.value = LOCK_STORAGE_REFUSED_TEXT; paperState.value = PAPER_STATE.READY
+    return
+  }
   try {
     reply = own || waiting ? await postPaperOrders(api, id, orders, [], null, null, null, false, key) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true, key)
   } catch (e) {
@@ -1021,7 +1027,14 @@ function decideUnknownExit(newNet, readId, sentAt = NaN) { // Opus round 2 (R2-6
   legsBeforeExit = null
   return true
 }
-async function recheckUnknownExit() { // the automatic re-read; a failed or too-early one leaves the lock (the Orderbook link and a reload read again)
+let recheckingExit = null // F1b (Opus review, finding 4): ONE re-read loop per unknown record; a storage event never starts a second one
+async function recheckUnknownExit() {
+  const u = exitUnknown.value
+  if (!u || recheckingExit === u) return
+  recheckingExit = u
+  try { await recheckUnknownExitLoop() } finally { if (recheckingExit === u) recheckingExit = null }
+}
+async function recheckUnknownExitLoop() { // the automatic re-read; a failed or too-early one leaves the lock (the Orderbook link and a reload read again)
   const u = exitUnknown.value
   if (!u || !paper.value) return
   const { id } = paper.value

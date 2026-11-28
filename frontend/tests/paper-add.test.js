@@ -159,7 +159,7 @@ describe('Add to Paper: answer states of the POST', () => {
     await flushPromises()
     // fix/paper-dialog-safe (ADR-017): a refusal (4xx) shows the server's text; no answer is an UNKNOWN outcome, never "not placed"
     if (text) expect(t(w, 'paper-error').text()).toBe(text)
-    else expect(t(w, 'paper-unknown').text()).toContain('We could not confirm the order. Check Orderbook before trying again.')
+    else expect(t(w, 'paper-unknown').text()).toContain('We could not confirm the order. Check the Orderbook; no second order is sent until the answer is known.')
     expect(w.find('[data-testid="paper-confirm"]').exists()).toBe(true)
     expect(w.find('[data-testid="paper-toast"]').exists()).toBe(false)
     w.unmount()
