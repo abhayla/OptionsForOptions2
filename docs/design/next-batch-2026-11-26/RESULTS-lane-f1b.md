@@ -1,4 +1,4 @@
-STATUS 22:55 | batch 1 + I-86 committed; check 4 running (check 3 failed only screen-inventory-guard: the new Retry control needed its inventory row, added) | next push after TOTAL PASS | blocker: none
+STATUS 23:20 | PUSHED fix/r3-frontend-f1b-1128 at 83baad95c, prepush TOTAL PASS 1245 s jobs 4 (vitest 417 files, 4336 tests, all pass; exit-lock-second-tab, exit-lock-builder-wiring, unknown-locks-reload green) | open: browser walk, review round 2, F-G second half (Question 1) | blocker: none (messages to the coordinator refused: device trust)
 
 # RESULTS Lane F1b, branch fix/r3-frontend-f1b-1128, base origin/fix/r3-frontend-2-1128 (d93fce449)
 
@@ -68,3 +68,10 @@ Reviewer's "not covered": the server block; real browser quota or "clear site da
 | W-25 browser render | Sonnet | 10 |
 
 Scratch worktree ../wt-next (purpose: build W-25 while the check ran on the main tree, rule 4; created 28 Nov 21:36 IST) merged back and removed with plain `git worktree remove` at 21:48 IST; tracked files 5411 before, 5411 after plus the new test files (merged).
+
+## Friction (rule I1; docs/process is outside this lane's files, so here)
+- The box lacked ruff, fastapi and sqlalchemy: the gate would not start until `pip install -r requirements-dev.txt -r requirements-app.txt` and `ruff==0.15.12` (same as FJ2's note).
+- Three full checks (about 22 min each) each failed on ONE frontend test the targeted runs missed (an old pin of changed behaviour, the ADR-008 `Math.min` lib scan, screen-inventory-guard for a new control). Running the whole vitest suite once before starting prepush would have caught all three. Suggest: a `npm test` run in the pre-check list for any lane that adds a control or touches lib/.
+- The kit write-guard blocked `git add` for the whole run of a reviewer subagent; a removed worktree path stayed blocked by the prod-gate hook (a new path worked); `git stash` in a worktree is blocked.
+
+SAFE TO CLOSE (head 83baad95c pushed with prepush TOTAL PASS; left: the FJ2 browser walk (needs the app with its backend), Opus review round 2 of the batch-2 diff, F-G second half and FJ2 Question 1 (owner), the deferred-issue texts above)
