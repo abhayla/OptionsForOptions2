@@ -45,6 +45,7 @@ import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBook
 import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
+import { dropExitLock, exitLockFor, saveExitLock } from '@/lib/unknownLocks'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import { STOP_OFFER_LABEL, legStopsGone, triggerListOf, triggersPath } from '@/lib/paperTriggers'
@@ -512,6 +513,18 @@ function enterDrafts(id, read) {
   if (addUnknown && netKey(read.net) !== addUnknown.net) addUnknown = null // a read shows the book moved: the earlier add was stored, the unknown is decided
   paper.value = { id, book: read.book, net: read.net }
   openSaved(copyLegs(read.net), id, null, read.book.name ?? null)
+  restoreExitLock(id, read)
+}
+// F1 second path: this page instance was opened (or reloaded) while an exit of unknown outcome from an earlier instance is still undecided: the lock comes back, and this very read
+// may decide it (book moved = stored; unchanged only past the commit window); otherwise the re-reads go on until the server's answer decides
+function restoreExitLock(id, read) {
+  if (exitUnknown.value) return
+  const rec = exitLockFor(id)
+  if (!rec) return
+  const attempt = exitRec.begin(EXIT_KEY, rec.names)
+  exitRec.settle(EXIT_KEY, attempt, 'unknown')
+  exitUnknown.value = { id, attempt, names: rec.names, waiting: null, at: rec.at, before: rec.before, expected: rec.expected }
+  if (!decideUnknownExit(read.net, id)) void recheckUnknownExit()
 }
 const leaveDrafts = () => { addUnknown = null; stagedNote.value = ''; paper.value = null; paperStale.value = false; cancelReread(); clearStopOffer() }
 // GC-ICFIX round 2 (F4): the page's ONE read of the paper book per refresh; its reply feeds the paper panel, the tracking box's total and
@@ -681,6 +694,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   if (paperBusy.value || !paper.value || !paperDialog.value) return // a Confirm for a dialog that is no longer open (the page closed it) posts nothing
   if (exitBlocked.value) { if (paperContractsChanged.value) closeChanged(); return } // post nothing (the watch may not have run yet); a failed read keeps the dialog and its sentence
   const { id } = paper.value
+  if (exitLockFor(id)) return // F1 second path (Opus review F2): a lock of an earlier page instance for THIS strategy: post nothing until a read of its book decides it
   const names = paperLegNames()
   const wasExit = exitOrigin.value
   const waiting = exitAllWaiting.value // ADR-330 (59): an Exit all that discards a staged change posts the exits alone, like a per-leg Exit
@@ -701,10 +715,15 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
     return
   }
   const check = { id, stops: stopsNow.filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
+  const sendsExit = orders.some((o) => o?.kind === 'exit')
+  const expNet = own ? legsAfterExit(own.net, own.net, own.id, own.lots) : null
+  // F1 second path (Opus review F1): the lock is written BEFORE the post, so a page left or reloaded while the post is still out is covered; a definite answer removes it
+  if (sendsExit) saveExitLock(id, { at: Date.now(), before: netKey(paper.value.net), expected: expNet ? netKey(expNet) : null, names })
   try {
     reply = own || waiting ? await postPaperOrders(api, id, orders, [], null, null, null, false, newRequestId()) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true, newRequestId())
   } catch (e) {
     const outcome = paperPostOutcome(e)
+    if (sendsExit && outcome === PAPER_STATE.REFUSED) dropExitLock(id) // the server itself refused: nothing stored
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
       paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
     }
@@ -715,6 +734,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
       if (orders.some((o) => o?.kind === 'exit')) { // ADR-017: this exit may be stored; it is never sent again until a re-read decides it (any post that carries an exit row, wherever the click came from)
         const exp = own ? legsAfterExit(own.net, own.net, own.id, own.lots) : null
         exitUnknown.value = { id, attempt, names, waiting, at: Date.now(), before: netKey(paper.value?.net), expected: exp ? netKey(exp) : null }
+        saveExitLock(id, exitUnknown.value) // F1 second path: the lock outlives this page instance (see lib/unknownLocks.js); `at` is now when the client gave up
         if (waiting) { exitAllWaiting.value = null; stagedNote.value = KEPT_UNTIL_KNOWN_TEXT(waiting.names) }
         void recheckUnknownExit()
       }
@@ -731,6 +751,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
     return
   }
   // STORED (201). From here nothing may offer these orders again: a failure below is only a failed refresh.
+  if (sendsExit) dropExitLock(id) // the server answered: the lock written before the post ends
   exitRec.settle(EXIT_KEY, attempt, 'placed', wasExit ? exitEndText('done', names, { orders: reply?.orders, sent: orders.length }) : '') // the server answered: placed replaces a page-side guess
   paperStale.value = true
   exitAllWaiting.value = null // cleared at once (Opus review): a later throw or a new Exit all during the re-read must not meet a stale value
@@ -815,6 +836,7 @@ function decideUnknownExit(newNet, readId) {
   const key = netKey(newNet)
   if (key === u.before && Date.now() - u.at < UNKNOWN_EXIT_WINDOW_MS) return false // the order may still commit: stays locked, never "not stored" yet
   exitUnknown.value = null
+  dropExitLock(u.id) // decided by the server's answer: the remembered lock ends with it
   if (key === u.before) { // not stored: say so, put the other legs' edits back without the exit
     restoreStaged(newNet, true)
     exitRec.put(EXIT_KEY, 'not_stored', exitEndText('not_stored', u.names))
