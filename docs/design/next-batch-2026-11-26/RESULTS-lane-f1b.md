@@ -1,4 +1,4 @@
-STATUS 21:35 | items 1 and 2 built (local commits), push 1 check running | item 3 (W-25 + browser walk) after the push | next push 07:30 | blocker: none (messages to the coordinator are refused: device trust; this line is the report)
+STATUS 21:50 | batch 1 (items 1, 2, W-25, two coordinator Exit-dialog items) committed; full check about to run | batch 2: I-86 builder Retry, browser walk, residuals | next push after TOTAL PASS (due 01:30) | blocker: none (messages to the coordinator are refused: device trust; this line is the report)
 
 # RESULTS Lane F1b, branch fix/r3-frontend-f1b-1128, base origin/fix/r3-frontend-2-1128 (d93fce449)
 
@@ -19,8 +19,18 @@ Successor of Lane FJ2 / F1. Paper only, no broker endpoint, money untouched (uni
 
 Item 1 attacks run (reasoning plus tests): site data cleared (REAL: fixed above); a lock REPLACED by another tab (the page keeps blocking: `takeNewerGiveUp` moves the give-up time on, nothing is released); key-only storage events (the handler runs but releases only when the lock is missing AND the marker matches); the page's own drops (a storage event never reaches its own page); a reload in the middle of an open read (`out` locks are decided only by a read SENT past the window after `at`: unchanged by this lane). The marker can be forged only by a page of this browser; a wipe removes it with everything else.
 
-## Opus review
-Item 1 review (Why Opus: an early unlock allows a double order): see "Review" at the end of this file once it returns; findings that can cost money are fixed before the push, the rest go to batch 2.
+## Opus review of item 1 (reviewer agent, Opus): REVISE, round 1 fixed
+Attack: can the release paths let a second order be SENT while an outcome is unknown? No regression found (nothing releases earlier than before the lane). What it found and what was done (every one tested first, red without the fix):
+| Finding | Severity | Done |
+|---|---|---|
+| 1 the builder's ADD lock (and the save bar's) was still released when it vanished (a wipe), a second add went out under a new key | can cost money | FIXED structurally: every page keeps the raw lock records it wrote or read (`held`); on a storage event a held lock missing from the store WITHOUT a decided marker is written back with its request key (`restoreVanished`), with a marker the hold ends. One rule for Positions, builder (exit and add) and save bar. Tests: builder-add-key-f1b-1128, save-bar-f1b-1128 (red without) |
+| 2 `canPersistLocks` said yes while the real lock write failed (a nearly full store) | can cost money | FIXED: `lockPersisted(kind, id, key)` reads the store back after the writes and before the post (lock AND key); on failure the lock and key are dropped, nothing is sent, the sentence below shows. The probe stays as the early check. Test: exit-lock-wipe-f1b-1128 (red without) |
+| 3 F-G: the NEXT lock save over an unreadable store writes over the garbage | minor | NOT FIXED (a fix needs Question 1): listed under residuals |
+| 4 each storage event started another re-read loop on the builder | minor, not money | FIXED: one loop per unknown record (`recheckingExit`) |
+| 5 the marker names a lock by (key, at); a clamped `at` or a reused key could match | minor | FIXED: every lock write has a nonce, copied into the marker and matched first |
+| 6 `mergeNewer` can bring back a lock another tab decided | minor, fails closed | not changed (blocks again until a read decides) |
+| 7 `sentNow` tokens unique only among the last 64 | minor | not changed |
+Reviewer's "not covered": the server block; real browser quota or "clear site data" events (simulated with dispatched events); a reload in the middle of an open read at component level; a possible older gap: PaperStrategies has no stale-screen gate like the builder's `paperStale` after a marker release (until `refreshNow` answers it may offer Exit on old rows under a new key; the server block covers it). Round 2 of the review has NOT been run (the second round is for the batch-2 diff).
 
 ## For the owner lane
 - None needed from this lane's files.
@@ -34,10 +44,18 @@ Item 1 review (Why Opus: an early unlock allows a double order): see "Review" at
 1. (FJ2 Question 1, unchanged, nothing built) Is a permanent block on unreadable or unchanged lock storage acceptable, or a release such as "I checked the Orderbook"? Real case: FJ2 / Lane W2, 28 Nov: a clock moved forward by 200 s across a reload released a lock after 46 real seconds (D-W2-1); the fix counts the window from first sight on the reloaded page, so an old lock waits up to one more window; a release by the user's own word would need an Orderbook check first. Recommendation: no release in the app; the Orderbook is the authority (ADR-016).
 
 ## New wording for the owner to read (pending owner read)
+- `We could not confirm the order. Check the Orderbook; no second order is sent until the answer is known.` (PAPER_UNKNOWN_TEXT; replaces `... Check Orderbook before trying again.`)
 - `This browser is not letting the page keep its safety record, so nothing was sent. Allow site data for this page, then try again.` (LOCK_STORAGE_REFUSED_TEXT in unknownLocks.js; shown in the Positions Exit dialog, the builder dialog and the save bar when the browser refuses the write)
 
+## Coordinator items done in batch 1 (messages 15:50 and 16:03 UTC)
+- Unknown-outcome sentence (no retry invited): was `We could not confirm the order. Check Orderbook before trying again.` now `We could not confirm the order. Check the Orderbook; no second order is sent until the answer is known.` Test dialog-unknown-f1b-1128 (red first); the pin in paper-add moved.
+- "Two minutes have passed ..." followed the wall clock on a dialog opened while a lock stood: now counted on the lock's own monotonic stamp (`monoAgeOfAt`), else the dialog's first sight; never the wall age. Test dialog-unknown-f1b-1128 (red first); exit-lock-window-r2-fa2 "dialog opened later" now stamps the lock like a page does.
+- W-25 (found in a real browser: Chromium, 1366 x 768, the real PaperConfirmDialog with four exit rows): the Exit all discard note sat below the four rows inside a body that scrolls (608 px of content in 512 px), out of sight while Confirm was in view. Now the note comes first. Test dialog-note-first-f1b-1128 (red first); screenshot after: the note is the first thing in the dialog.
+- Builder Retry (I-86) and the W2 defects D-W2-1 to D-W2-3: batch 2.
+
 ## Not done / to file as deferred issues
-- Item 3 (W-25 text cut off at 1366 x 768; the browser walk) and the Opus review result: see below once run.
+- The rest of item 3 (the FJ2 browser walk: unknown exit on the builder and Positions with a second tab, moved leg with a stop, Add to Paper after close, Live card Plan door, list Retry; UX-AF2, UX-B03): not run yet (needs the app with its backend and a market state; only the dialog was rendered in a real browser). Batch 2.
+- I-86 Retry on the builder: batch 2.
 - Residual (deferred issue text): TITLE "A new lock written into an UNREADABLE lock store frees the strategies that were unreadable". EVIDENCE: `writeLock` starts from `entriesOf` (`{}` for an unreadable store) and writes a readable object over the garbage, so every OTHER strategy whose lock was inside it is gone after the first new lock. FILES: frontend/src/lib/unknownLocks.js (`writeLock`, `entriesOf`). A fix needs the owner's answer to Question 1 (a permanent block vs. a release).
 - Residual: a wipe in one tab leaves a tab that opens AFTER the wipe with no lock (nothing to read). Only the server block (Lane B2) covers it. FILES: n/a (browser storage cannot keep what was deleted).
 - Residual: a builder PRICE TICK between a "not stored" and its resend is not driven in a page test (see R2-5).
@@ -46,4 +64,7 @@ Item 1 review (Why Opus: an early unlock allows a double order): see "Review" at
 | task | model | minutes |
 |---|---|---|
 | items 1 and 2 (code and tests) | Sonnet | 60 |
-| Opus review of item 1 | Opus | pending |
+| Opus review of item 1 | Opus | 12 |
+| W-25 browser render | Sonnet | 10 |
+
+Scratch worktree ../wt-next (purpose: build W-25 while the check ran on the main tree, rule 4; created 28 Nov 21:36 IST) merged back and removed with plain `git worktree remove` at 21:48 IST; tracked files 5411 before, 5411 after plus the new test files (merged).
