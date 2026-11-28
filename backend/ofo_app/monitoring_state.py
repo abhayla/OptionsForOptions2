@@ -121,16 +121,18 @@ def _row(e: Entry) -> dict[str, Any]:
 
 def encode(entries: Iterable[Entry], at: datetime.datetime,
            readings: Mapping[str, tuple[IndexReading, datetime.datetime]] | None = None,
-           kept: Iterable[Entry] = ()) -> str:
+           kept: Iterable[Entry] = (), market_open: bool | None = None) -> str:
     """The snapshot. ``readings`` (Lane FE): slot ("index:NIFTY", "leg:<instrument id>") -> (the reading, when the
     worker last noted it): the prices a trade was called watched on travel in the SAME write as that call.
     ``kept`` (Lane FE3 item 4, issue 880): the pause starts of trades paused before a restart that the new worker has
     not answered for yet. They are NOT strategies of this snapshot (a reader never sees them: such a trade reads
     "not listed"); a second restart reads them back, so the "since" of a pause survives any number of restarts."""
-    return json.dumps({"at": _aware(at).isoformat(), "strategies": {str(e.strategy_id): _row(e) for e in entries},
-        "kept": {str(e.strategy_id): _row(e) for e in kept},
-        "readings": {slot: _reading_body(r, noted) for slot, (r, noted) in sorted((readings or {}).items())}},
-        sort_keys=True)
+    body = {"at": _aware(at).isoformat(), "strategies": {str(e.strategy_id): _row(e) for e in entries},
+            "kept": {str(e.strategy_id): _row(e) for e in kept},
+            "readings": {slot: _reading_body(r, noted) for slot, (r, noted) in sorted((readings or {}).items())}}
+    if market_open is not None:  # Lane B1b item 6: the worker's market answer AT ``at`` (the one clock)
+        body["market_open"] = market_open
+    return json.dumps(body, sort_keys=True)
 
 
 def _time(raw: Any) -> datetime.datetime | None:
@@ -279,9 +281,10 @@ class Publisher:
         self._written, self._written_at = None, None  # the first real snapshot is written whatever it says
         return True
 
-    async def publish(self, status: Mapping[int, Any], reasons: Mapping[int, Any], whys: Mapping[int, str],
+    async def publish(self, status: Mapping[int, Any], reasons: Mapping[int, Any], whys: Mapping[int, str],  # noqa: PLR0913
                       now: datetime.datetime,
-                      readings: Mapping[str, tuple[IndexReading, datetime.datetime]] | None = None) -> bool:
+                      readings: Mapping[str, tuple[IndexReading, datetime.datetime]] | None = None,
+                      market_open: bool | None = None) -> bool:
         """True when a snapshot was written."""
         if self._client is None:
             return False
@@ -291,12 +294,13 @@ class Publisher:
             self._kept = {}  # a restored pause no check has answered for in a day is not carried any longer
         kept = {sid: e for sid, e in self._kept.items() if sid not in answered}  # FE3 item 4: not forgotten unseen
         seen = [(k, str(r.value), r.at.isoformat(), r.source) for k, (r, _n) in sorted((readings or {}).items())]
-        fingerprint = json.dumps([[(e.strategy_id, e.status, e.reason, e.why) for e in entries], seen])
+        fingerprint = json.dumps([[(e.strategy_id, e.status, e.reason, e.why) for e in entries], seen, market_open])
         due = self._written_at is None or (now - self._written_at).total_seconds() >= REFRESH_S
         if fingerprint == self._written and not due:
             return False
         try:
-            await self._client.set(key(), encode(entries, now, readings, kept.values()), ex=SNAPSHOT_STALE_S)
+            await self._client.set(key(), encode(entries, now, readings, kept.values(), market_open),
+                                    ex=SNAPSHOT_STALE_S)
         except Exception as exc:  # noqa: BLE001 - never stops a cycle; the reader then sees an old snapshot
             log.warning("background: writing the monitoring state failed: %s", type(exc).__name__)
             return False
@@ -469,6 +473,32 @@ async def read_readings(client: Any, now: datetime.datetime) -> Readings | None:
     if at is None or not _current(at, now) or not isinstance(items, dict):
         return None
     return Readings(items)
+
+
+MARKET_CLOCK_MAX_AGE_S: Final = 120  # the worker's market answer is used by the monitor only while this young
+
+
+async def read_market_open(client: Any, now: datetime.datetime) -> bool | None:
+    """Lane B1b item 6 (FE4 F7, RA2's design): the worker's market-open answer from its snapshot, AT the snapshot's own
+    instant, when the snapshot is under ``MARKET_CLOCK_MAX_AGE_S`` old; None (the reader uses its own clock) when the
+    snapshot is missing, unreadable, not carrying the field, old or ahead of ``now``. Never raises."""
+    if client is None:
+        return None
+    try:
+        raw = await client.get(key())
+    except Exception as exc:  # noqa: BLE001 - a store that cannot answer gives no clock
+        log.warning("paper monitor: the worker's market answer could not be read: %s", type(exc).__name__)
+        return None
+    text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+    try:
+        body = json.loads(text) if isinstance(text, str) else None
+    except ValueError:
+        return None
+    at = _time(body.get("at")) if isinstance(body, dict) else None
+    answer = body.get("market_open") if isinstance(body, dict) else None
+    if at is None or not isinstance(answer, bool) or not _current(at, now):
+        return None
+    return answer if 0 <= (now - at).total_seconds() <= MARKET_CLOCK_MAX_AGE_S else None
 
 
 WRITE_TRIES: Final = 3  # a report write is verified and repeated this often at most (two writers can cross)

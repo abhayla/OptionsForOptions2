@@ -2208,9 +2208,23 @@ class Worker:
         monitored = {w.strategy_id for w in self.monitors}  # FE2 review F2: what is not monitored is never published
         await self._monitoring.publish({k: v for k, v in self.status.items() if k in monitored},
                                        self.paused_reason, self.paused_why, self._clock(),
-                                       self._readings)  # never raises
+                                       self._readings,
+                                       self._market_open_now())  # never raises
         if self._steps is not None:
             self.valve.observe(self._clock(), slowest, n - visited, self._steps)
+
+    def _market_open_now(self) -> bool | None:
+        """Lane B1b item 6 (FE4 F7): the worker's ONE market answer of this cycle, carried by the snapshot (its ``at``
+        is the instant): open only when no monitored trade's provider says closed (the strict side); None = no trade
+        or a provider that cannot answer (the monitor then uses its own clock)."""
+        now = self._clock()
+        try:
+            owners = {w.feed_owner for w in self.monitors}
+            if not owners:
+                return None
+            return not any(market_closed_for(self._provider_for(o), now) for o in owners)
+        except Exception:  # noqa: BLE001 - the snapshot is still written; no answer is not "open"
+            return None
 
     def stop(self) -> None:
         self._stop = True
