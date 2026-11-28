@@ -33,6 +33,7 @@ import asyncio
 import dataclasses
 import datetime
 import logging
+import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
@@ -72,7 +73,7 @@ from ofo.timeutil import IST
 from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import entitlement_store, live_market, order_audit, tracked_contracts
+from ofo_app import entitlement_store, live_market, order_audit, request_key, tracked_contracts
 from ofo_app import execute_plan as ep
 from ofo_app import execution_plan_store as plans
 from ofo_app import order_book_store as books
@@ -112,6 +113,9 @@ class ExecuteIn(BaseModel):
     #: is refused (``execute_plan_changed``) before any Zerodha read, plan number or plan row
     revision: int = Field(gt=0, le=INTEGER_MAX, description="the saved revision the review was built from")
     seq: Optional[RequestSeq] = None  # noqa: UP045 - REQ-119 AC-1: echoed unchanged as the reply's seq
+    #: Lane FD2 item 2 (#869, #871; ADR-017): one UUID per press; a repeat of the same key, strategy and request answers
+    #: the first result and prepares nothing (``ofo_app.request_key``)
+    client_request_id: Optional[uuid.UUID] = Field(default=None, strict=False)  # noqa: UP045
 
 
 class BasketOrderOut(ApiModel):
@@ -293,32 +297,49 @@ class _Request:
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut, response_model_exclude_unset=True)
-async def execute_strategy(  # noqa: PLR0913 - FastAPI dependencies
+async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
     strategy_id: int, body: ExecuteIn,
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
     quotes: Annotated[QuoteReader, Depends(get_quote_reader)],
     clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
     rates: Annotated[Optional[ChargeRates], Depends(load_charge_rates)],  # noqa: UP045
+    keys: Annotated[request_key.KeyStore, Depends(request_key.get_key_store)],
 ) -> ExecuteOut:
+    key = body.client_request_id
+    sent = body.model_dump(mode="json", exclude={"client_request_id", "seq"})
+    claimed = committing = False
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if stored.revision != body.revision:  # W-151: FIRST after the load, before any Zerodha read or plan write
             raise _refuse("execute_plan_changed")
         if session is None:
             raise _refuse("gate_broker_not_connected")
+        if key is not None:  # ADR-017: a repeat of this press answers the first result and prepares nothing
+            first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
+            if first is not None:  # never the same sealed Kite form twice: the repeat is refused by name
+                raise _refuse("request_key_already_prepared")
+            claimed = True
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
                              stored)
         out = echo_seq(out, body.seq)  # REQ-119 AC-1: before the commit, so a failed echo rolls the plan back
+        committing = True  # from here an exception leaves the outcome unknown: the key stays claimed until it expires
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
+        if claimed and not committing and key is not None:
+            await request_key.free(keys, user_ref, key)
         if exc.code == store.NOT_FOUND:
             raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND) from None
         raise _refuse("strategy_stored_unreadable") from None
     except Exception:
         await db.rollback()
+        if claimed and not committing and key is not None:
+            await request_key.free(keys, user_ref, key)
         raise
+    if key is not None:
+        await request_key.finish(keys, user_ref, key,
+                                 request_key.done(strategy_id, sent, {"plan_number": out.plan_number}))
     return out
 
 
