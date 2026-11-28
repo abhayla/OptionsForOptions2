@@ -1308,6 +1308,11 @@ def _is_fill(leg: Any, fills: Mapping[str, tuple[int, Decimal]]) -> bool:
     return side_ok and abs(net) == leg.quantity and shown_price(average) == leg.planned_entry
 
 
+def _is_running(booked: Booked | None) -> bool:
+    """I-202: the strategy has open paper orders (a paper id and a readable book with an open position): not a draft."""
+    return booked is not None and booked.paper and bool(booked.fills)
+
+
 def _with_price_basis(out: Outcome, booked: Booked | None) -> Outcome:
     """GC-ICLIVE-B D-15: the summary names the prices its Get uses, DERIVED from the paper book (no client claim): plan
     prices with no paper strategy; paper fill prices when every leg matches the book's open position; else which legs
@@ -1348,7 +1353,7 @@ def outcome_response(req: OutcomeRequest, ctx: MarketContext | None,  # noqa: PL
         out = (from_entries(definition, None, stored, answered_at, view=View(req.view), rates=rates, config=config,
                             override=override, both_views=req.both_views, payoff_step=req.table_step(),
                             sd_bands=req.sd_bands, target=ask, settings=settings)  # REQ-077 AC-9: every leg priced -> At Expiry from the user's prices
-               or not_connected(definition, None, stored))
+               or not_connected(definition, None, stored, running=_is_running(booked)))
     else:
         answered_at = ctx.clock()  # one clock reading: the push and the REST answer of one snapshot are equal
         shared = feed_scope(ctx)

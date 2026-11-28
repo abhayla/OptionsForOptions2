@@ -1537,6 +1537,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         {"days": Days, "time": ClockHm}),
     # --- W-066 (issue #151, REQ-034 AC-7): every text of the outcome API, with typed slots --------------------------
     ExplanationTemplate("outcome_not_connected", "values_seen", "Draft — Live data not connected"),
+    # Lane B3 I-202 (O-P-03): a RUNNING paper trade (it has open orders) is not a draft: its figures are not live
+    ExplanationTemplate("outcome_running_not_live", "values_seen", "Prices are not live"),
     # REQ-077 AC-9: no live data, At Expiry numbers from the user's own prices (never a live price)
     ExplanationTemplate("outcome_from_entries", "values_seen", "From your prices — no live data"),
     # REQ-133 AC-3: the feed just (re)connected and no price frame arrived yet, inside the staleness limit: no number

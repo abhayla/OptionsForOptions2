@@ -85,6 +85,7 @@ from ofo.table import ColumnSpec, Table, build_table, visible_columns
 from ofo.timeutil import IST
 
 NOT_CONNECTED_LABEL: Final = render_explanation("outcome_not_connected")
+RUNNING_NOT_LIVE_LABEL: Final = render_explanation("outcome_running_not_live")  # I-202: a trade with orders
 #: REQ-077 AC-9: the label of an At Expiry answer built from the user's own prices when there is no live data
 FROM_ENTRIES_LABEL: Final = render_explanation("outcome_from_entries")
 #: REQ-133 AC-3: a just (re)connected feed with no price frame yet, inside the staleness limit
@@ -381,12 +382,14 @@ def _unpriced_legs(definition: StrategyDefinition, snapshot: MarketSnapshot | No
 
 
 def not_connected(definition: StrategyDefinition,
-                  snapshot: MarketSnapshot | None = None, stored=None) -> Outcome:
+                  snapshot: MarketSnapshot | None = None, stored=None, *, running: bool = False) -> Outcome:
     """No provider or no Zerodha session (ADR-068 consequence, ADR-020 Q185): a state, never an error. With a
     ``snapshot`` (a session that ended) the legs name their contract; with none, ``stored`` (instrument id -> the stored
-    catalogue entry, #249) names them, and a contract it lacks stays unnamed."""
-    legs = _unpriced_legs(definition, snapshot, NOT_CONNECTED_LABEL, stored)
-    return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, NOT_CONNECTED_LABEL,
+    catalogue entry, #249) names them, and a contract it lacks stays unnamed. ``running`` (I-202, O-P-03): the strategy
+    has open orders, so it is not a draft: the label says its prices are not live."""
+    label = RUNNING_NOT_LIVE_LABEL if running else NOT_CONNECTED_LABEL
+    legs = _unpriced_legs(definition, snapshot, label, stored)
+    return Outcome(OutcomeState.NOT_CONNECTED, definition.underlying, label,
                    render_explanation("outcome_reason_no_provider"), legs, MARGIN)
 
 
