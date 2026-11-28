@@ -1,4 +1,4 @@
-STATUS 18:30 | round 3 page DRAFT added (page "Round 3 page", build integration/weekend-r3-1129 first push 4d975129, only tests above round 2; IF MERGED rows; migration 0062 only if RA merges; AF-07 and the real triggers route added PC ONLY) | version 6b (round 2 commit 829ff65f) pushed at 023543349 | next: round 2 results fold-in after the PC run, then the round 3 final at the 10:00 Sunday freeze
+STATUS 19:00 | round 3 page: waves of Lane Z3 (wave 0 now, 22:45, 01:45 Sunday, final 10:00 Sunday), 0062 database step in the pull order, PC ONLY list (W-04, W-22 passed, AF-07, D-1, D-2, I-85, R3-T) and live list (I-09, I-21, I-108); rule 18 PC keep-alive (I-95 not closed: owner go-ahead not on record) | build seen 4d975129 | board rows I-96, I-109, I-110: waiting for Lane T's evidence
 
 # Test plan for the closed-market weekend, 28 and 29 Nov 2026 (rounds 1 to 3)
 
@@ -13,6 +13,17 @@ Version log: v1b Fri 19:40; v1 Fri 22:30 (all lane result files read); **v2 Sat 
 **Build.** Branch `integration/weekend-r3-1129` (Lane Z3). First push `4d975129f273300fc61096a0704784ee42537337` (28 Nov): only three commits above round 2 (`829ff65f2`): FJ's tests (`1ad97343`), the merge of `fix/r3-frontend-joins-1128` at that commit, and Z3's RESULTS file. **Today's diff against round 2 is tests and notes only: no product file differs, so round 3 as it stands today behaves exactly like round 2.** Z3's own line: "ROUND 3 READY FOR THE PC: no (first batch only)". More merges arrive at 21:00 IST Saturday, 07:00 and 10:00 IST Sunday; the build is frozen at 10:00 Sunday and the coordinator sends the final commit. **The next version of this page names that commit and re-marks each lane below with `git merge-base --is-ancestor <branch tip> <commit>`; until then every row says "IF MERGED".**
 
 **Round 3 rules (same as round 2).** Cloud first (rule 17): the PC runs only the lists below. One browser window, one helper at a time, free memory above 3 GB (rule 15). Paper only; never a broker order. Restart the API, the worker, the feed and the screen server (vite) after the checkout; the API's environment carries `FEED_MODE=bus` and `REDIS_URL` (R2-0). Write `git rev-parse HEAD` first. Keep `test/weekend-r1` and `test/weekend-r2` as they are; round 3 uses `test/weekend-r3`. Never `alembic downgrade` except the stated rollback.
+
+**Waves of Lane Z3 (coordinator, 28 Nov 18:45 IST): wave 0 now, wave 1 at 22:45 IST, wave 2 at 01:45 IST Sunday, final at the 10:00 IST Sunday freeze. Each version of this page says the build head it was written against; this version: `4d975129` (wave 0 not yet seen).** Migration 0062 arrives with wave 0, so the round 3 pull order has a database step before the restart:
+1. Back up the database; the owner's typed yes before any apply ([OWNER APPROVAL]).
+2. `git checkout -b test/weekend-r3 <final commit>`; `git rev-parse HEAD` equals it.
+3. Migrate: the section 2 step 3 command; `alembic heads` prints ONE head, `0062_order_request_keys_expiry`; `alembic current` prints the same.
+4. The "back and up" check (down to 0061 and up again) is the lane's proof on a FRESH TEST database (`db_run_fresh.py`); it is NOT run on the production database. A downgrade on the real database only on the owner's written word (the rollback is `alembic downgrade 0061_order_request_keys`, nothing else).
+5. Restart API, worker, feed, then vite; the route check R2-0b.
+
+**PC ONLY list, round 3 (kept current, coordinator 28 Nov 18:45):** W-04, W-22 (PASSED in round 1: not repeated), AF-07, D-1, D-2, I-85, and R3-T (the real triggers route content). **Live list (Monday only, market open):** I-09, I-21, I-108. (I-85, I-09, I-21 and I-108 are board rows; this plan does not carry their wording: the board text is the source, and the PC reads it there.)
+
+**PC keep-alive (board row I-95):** the PC stays awake for the whole run: power plugged in, sleep and screen lock off, the screen server, API, worker and feed left running between checks, and the machine checked at the start of each round (the PC session is reused for all three rounds). This line is written in rule 18 of section 0. **I-95 is NOT closed by this line: the owner's go-ahead is not on record.**
 
 ### R3-A. What the PC does first (set-up delta, about 25 minutes)
 1. `git fetch origin integration/weekend-r3-1129`, `git checkout -b test/weekend-r3 <the final commit>`, `git rev-parse HEAD` must equal it.
@@ -447,6 +458,7 @@ LQ-2 (Live card "Entry price"), LR-Q18 (which time the builder banner shows for 
 15. **Memory rule (PC round 1, 13:37: free memory fell to 1.7 GB and the API, worker and feed had to be stopped):** one browser window, one helper at a time, tabs closed after each check; **check free memory before each block of checks and stop below 3 GB** (write the figure). Chrome is opened again for round 2 and kept to one window.
 16. **Speed checks (Plan watch, Alerts, anything timed) are never run with a second tester working** at the same time; write the server's own answer time beside what the page showed.
 17. **Cloud first (owner, 28 Nov; version 6): the PC runs only its own list**: the set-up, the PC ONLY checks and the cross-check sample of the page "Version 6: CLOUD FIRST". **Every other check is NOT run on the PC**; it is proven in the cloud (Lane TG's walk and the lanes' tests) and stays in this file as the cloud list. If a PC check on the list fails and its cloud proof said PASS, write it as new and send it back: the cloud proof was wrong.
+18. **PC keep-alive (board row I-95):** the PC stays awake for the whole run (power plugged in, sleep and screen lock off); the API, worker, feed and screen server are not stopped between checks except where a check says so; at the start of each round the PC writes the machine's free memory and that it did not sleep since the last round.
     `| Check | Items proved | Build head | What I did on the screen | What the screen showed (exact text) | Screenshot file(s) | PASS / FAIL / PARTIAL (unrun steps) / BLOCKED (what) | State (one of the four) | Build commit | Time IST |`. Screenshots stay on the PC (never copy images into the repo).
 
 ## 1. Round 1 and what the build carries
