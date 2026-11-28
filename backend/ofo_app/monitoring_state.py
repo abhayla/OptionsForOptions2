@@ -81,11 +81,16 @@ def _aware(at: datetime.datetime) -> datetime.datetime:
     return at
 
 
-def encode(entries: Iterable[Entry], at: datetime.datetime) -> str:
+def encode(entries: Iterable[Entry], at: datetime.datetime,
+           readings: Mapping[str, tuple[IndexReading, datetime.datetime]] | None = None) -> str:
+    """The snapshot. ``readings`` (Lane FE): slot ("index:NIFTY", "leg:<instrument id>") -> (the reading, when the
+    worker last noted it): the prices a trade was called watched on travel in the SAME write as that call."""
     return json.dumps({"at": _aware(at).isoformat(), "strategies": {
         str(e.strategy_id): {"status": e.status, "reason": e.reason, "why": e.why,
                              "since": None if e.since is None else _aware(e.since).isoformat()}
-        for e in entries}}, sort_keys=True)
+        for e in entries},
+        "readings": {slot: _reading_body(r, noted) for slot, (r, noted) in sorted((readings or {}).items())}},
+        sort_keys=True)
 
 
 def _time(raw: Any) -> datetime.datetime | None:
@@ -152,17 +157,19 @@ class Publisher:
         self._written_at: datetime.datetime | None = None
 
     async def publish(self, status: Mapping[int, Any], reasons: Mapping[int, Any], whys: Mapping[int, str],
-                      now: datetime.datetime) -> bool:
+                      now: datetime.datetime,
+                      readings: Mapping[str, tuple[IndexReading, datetime.datetime]] | None = None) -> bool:
         """True when a snapshot was written."""
         if self._client is None:
             return False
         entries = snapshot(status, reasons, whys, self._previous, now)
-        fingerprint = json.dumps([(e.strategy_id, e.status, e.reason, e.why) for e in entries])
+        seen = [(k, str(r.value), r.at.isoformat(), r.source) for k, (r, _n) in sorted((readings or {}).items())]
+        fingerprint = json.dumps([[(e.strategy_id, e.status, e.reason, e.why) for e in entries], seen])
         due = self._written_at is None or (now - self._written_at).total_seconds() >= REFRESH_S
         if fingerprint == self._written and not due:
             return False
         try:
-            await self._client.set(key(), encode(entries, now))
+            await self._client.set(key(), encode(entries, now, readings))
         except Exception as exc:  # noqa: BLE001 - never stops a cycle; the reader then sees an old snapshot
             log.warning("background: writing the monitoring state failed: %s", type(exc).__name__)
             return False
@@ -225,14 +232,6 @@ def _paused_unreadable(entry: Entry) -> Entry:
 
 # ---- the index reading (worker -> monitor) and the index-exit report (monitor -> read_states) -----------------------
 
-def index_key(underlying: str) -> str:
-    return f"{feed_bus.KEY_PREFIX}:background:index:{underlying}"
-
-
-def leg_key(instrument_id: str) -> str:
-    return f"{feed_bus.KEY_PREFIX}:background:leg:{instrument_id}"
-
-
 def exits_key() -> str:
     return f"{feed_bus.KEY_PREFIX}:background:index_exits"
 
@@ -246,79 +245,70 @@ class IndexReading:
     source: str
 
 
-def encode_reading(reading: IndexReading, published: datetime.datetime) -> str:
-    return json.dumps({"underlying": reading.underlying, "value": str(reading.value),
-                       "at": _aware(reading.at).isoformat(), "source": reading.source,
-                       "published": _aware(published).isoformat()}, sort_keys=True)
-
-
-def decode_reading(raw: Any, now: datetime.datetime, max_age: datetime.timedelta | None,
-                   published_max_s: float = INDEX_READING_TTL_S, *, expect: str | None = None) -> IndexReading | None:
-    """The stored reading, or None: missing, not our shape, no time zone, a quote older than ``max_age`` (the one index
-    age rule; None for an option leg, whose quote is current while the feed is, however long ago it last changed), a
-    quote from the future, one published more than ``published_max_s`` ago (a worker that stopped writing), a value that
-    is not a plausible price, or (``expect``) a reading of another instrument than the one asked for."""
-    text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
-    try:
-        body = json.loads(text) if isinstance(text, str) else None
-        value = Decimal(body["value"]) if isinstance(body, dict) and isinstance(body.get("value"), str) else None
-    except (ValueError, InvalidOperation, KeyError, TypeError):
-        return None
-    if body is None or value is None or not value.is_finite() or not 0 < value < MAX_READING_VALUE \
-            or body.get("source") not in ("feed", "rest") or not isinstance(body.get("underlying"), str) \
-            or (expect is not None and body["underlying"] != expect):
-        return None
-    at, published = _time(body.get("at")), _time(body.get("published"))
-    if at is None or published is None:
-        return None
-    if (max_age is not None and now - at > max_age) or at - now > FUTURE_SKEW \
-            or abs((now - published).total_seconds()) > published_max_s:
-        return None
-    return IndexReading(body["underlying"], value, at, body["source"])
+def _reading_body(reading: IndexReading, noted: datetime.datetime) -> dict[str, str]:
+    return {"underlying": reading.underlying, "value": str(reading.value), "at": _aware(reading.at).isoformat(),
+            "source": reading.source, "published": _aware(noted).isoformat()}
 
 
 FUTURE_SKEW: Final = datetime.timedelta(seconds=2)
 
 
-async def publish_index(client: Any, reading: IndexReading, published: datetime.datetime, *,
-                        leg: bool = False) -> bool:
-    """The worker's write (an index reading by underlying; with ``leg``, an option leg's by instrument id, carried in
-    ``reading.underlying``). Never raises; True when written."""
-    if client is None:
-        return False
-    key = leg_key(reading.underlying) if leg else index_key(reading.underlying)
+def reading_from(body: Any, now: datetime.datetime, max_age: datetime.timedelta | None,
+                 noted_max_s: float, expect: str) -> IndexReading | None:
+    """One stored reading, or None: not our shape, no time zone, a quote older than ``max_age`` (the one index age rule;
+    None for an option leg, whose quote is current while the feed is, however long ago it last changed), a quote from
+    the future, one the worker noted more than ``noted_max_s`` ago (it stopped re-reading), a value that is not a
+    plausible price, or a reading of another instrument than ``expect``."""
     try:
-        await client.set(key, encode_reading(reading, published))
-    except Exception as exc:  # noqa: BLE001 - the monitor then finds no reading and says so
-        log.warning("background: writing the %s reading failed: %s", "leg" if leg else "index", type(exc).__name__)
-        return False
-    return True
+        value = Decimal(body["value"]) if isinstance(body, dict) and isinstance(body.get("value"), str) else None
+    except (InvalidOperation, ValueError):
+        return None
+    if value is None or not value.is_finite() or not 0 < value < MAX_READING_VALUE \
+            or body.get("source") not in ("feed", "rest") or body.get("underlying") != expect:
+        return None
+    at, noted = _time(body.get("at")), _time(body.get("published"))
+    if at is None or noted is None:
+        return None
+    if (max_age is not None and now - at > max_age) or at - now > FUTURE_SKEW \
+            or abs((now - noted).total_seconds()) > noted_max_s:
+        return None
+    return IndexReading(expect, value, at, body["source"])
 
 
-async def read_index(client: Any, underlying: str, now: datetime.datetime,
-                     max_age: datetime.timedelta) -> IndexReading | None:
-    """The monitor's read. Never raises; None = no usable reading (the caller does not evaluate and says so)."""
+@dataclass(frozen=True)
+class Readings:
+    """The prices in the worker's last snapshot, one read per monitor pass (``read_readings``)."""
+    items: Mapping[str, Any]
+
+    def index(self, underlying: str, now: datetime.datetime, max_age: datetime.timedelta) -> IndexReading | None:
+        """The index value the worker used for ``underlying``: the quote within ``max_age``, noted within 120 s."""
+        return reading_from(self.items.get(f"index:{underlying}"), now, max_age, INDEX_READING_TTL_S, underlying)
+
+    def leg(self, instrument_id: str, now: datetime.datetime) -> IndexReading | None:
+        """The price the worker used for one option leg: current while the worker keeps re-reading it."""
+        return reading_from(self.items.get(f"leg:{instrument_id}"), now, None, LEG_READING_MAX_AGE_S, instrument_id)
+
+
+async def read_readings(client: Any, now: datetime.datetime) -> Readings | None:
+    """The monitor's one read of the worker's prices: the snapshot's own ``readings``. Never raises; None = no usable
+    snapshot (missing, unreadable, old: the caller judges nothing from the worker and says so)."""
     if client is None:
         return None
     try:
-        raw = await client.get(index_key(underlying))
+        raw = await client.get(key())
     except Exception as exc:  # noqa: BLE001 - a store that cannot answer gives no reading
-        log.warning("paper monitor: the index reading could not be read: %s", type(exc).__name__)
+        log.warning("paper monitor: the worker's readings could not be read: %s", type(exc).__name__)
         return None
-    return None if raw is None else decode_reading(raw, now, max_age, expect=underlying)
-
-
-async def read_leg(client: Any, instrument_id: str, now: datetime.datetime) -> IndexReading | None:
-    """The monitor's read of the price the worker used for one option leg: current while the worker keeps writing it
-    (``LEG_READING_MAX_AGE_S``). Never raises; None = no usable reading."""
-    if client is None:
-        return None
+    text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
     try:
-        raw = await client.get(leg_key(instrument_id))
-    except Exception as exc:  # noqa: BLE001 - a store that cannot answer gives no reading
-        log.warning("paper monitor: the leg reading could not be read: %s", type(exc).__name__)
+        body = json.loads(text) if isinstance(text, str) else None
+    except ValueError:
         return None
-    return None if raw is None else decode_reading(raw, now, None, LEG_READING_MAX_AGE_S, expect=instrument_id)
+    at = _time(body.get("at")) if isinstance(body, dict) else None
+    items = body.get("readings") if isinstance(body, dict) else None
+    if at is None or abs((now - at).total_seconds()) > SNAPSHOT_STALE_S or not isinstance(items, dict):
+        return None
+    return Readings(items)
 
 
 def encode_exits(not_run: Mapping[int, str], at: datetime.datetime) -> str:

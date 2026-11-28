@@ -379,7 +379,8 @@ class PaperMonitor:
                 self._blocked.add(tid)  # crossed and not run (no live leg price here, a failed write): reported
         return fired
 
-    async def _index_reading(self, feed: LiveFeed, underlying: str, now: datetime.datetime) -> _Reading | None:
+    async def _index_reading(self, feed: LiveFeed, underlying: str, now: datetime.datetime,
+                             readings: monitoring_state.Readings | None) -> _Reading | None:
         """The index reading an exit of ``underlying`` is judged on: the newer of this feed's own live index and the
         reading the worker used (never an older one over a newer one; none within the age -> None). Both are live by the
         one age rule: this feed's quote by its health, the worker's by ``index_quote_max_age`` from its own time."""
@@ -389,18 +390,16 @@ class PaperMonitor:
                 and held.at - now <= monitoring_state.FUTURE_SKEW:  # a quote stamped in the future is no reading
             own = _Reading(held.price, held.at, OWN_FEED)
         worker = None
-        client = _bus_client()
-        if client is not None:
-            await self._read_index_age()
-            found = None if self._index_age is None else await monitoring_state.read_index(
-                client, underlying, now, self._index_age)
+        if readings is not None and self._index_age is not None:
+            found = readings.index(underlying, now, self._index_age)
             if found is not None and _is_paise(found.value):
                 worker = _Reading(found.value, found.at, found.source)
         if own is not None and (worker is None or worker.at <= own.at):
             return own
         return worker
 
-    async def _leg_reading(self, feed: LiveFeed, key: str, now: datetime.datetime) -> _Reading | None:
+    async def _leg_reading(self, feed: LiveFeed, key: str, now: datetime.datetime,
+                           readings: monitoring_state.Readings | None) -> _Reading | None:
         """The reading a leg-price exit on ``key`` is judged on: the newer of this feed's own live quote of that
         contract and the price the worker used (``monitoring_state.read_leg``); none -> None (not evaluated and
         reported)."""
@@ -416,9 +415,8 @@ class PaperMonitor:
                     and quote.timestamp is not None and quote.timestamp - now <= monitoring_state.FUTURE_SKEW:
                 own = _Reading(answer.price, quote.timestamp, OWN_FEED)
         worker = None
-        client = _bus_client()
-        if client is not None and key:
-            found = await monitoring_state.read_leg(client, key, now)
+        if readings is not None and key:
+            found = readings.leg(key, now)
             if found is not None and _is_paise(found.value):
                 worker = _Reading(found.value, found.at, found.source)
         if own is not None and (worker is None or worker.at <= own.at):
@@ -439,13 +437,18 @@ class PaperMonitor:
             not_run = {w.armed.trigger.strategy_id: _why_of(w) for w in self._exits}
         elif may_act.market_open(feed.ctx, now):
             judged = list(self._exits)
+            client = _bus_client()
+            readings = None
+            if client is not None and judged:  # the worker's prices: one read of its snapshot per pass
+                await self._read_index_age()
+                readings = await monitoring_state.read_readings(client, now)
             groups: dict[tuple[str, str], list[_Watch]] = {}
             for w in judged:
                 kind = w.armed.trigger.kind
                 groups.setdefault((kind, w.armed.underlying if kind == "conditional_exit" else w.key), []).append(w)
             for (kind, subject), group in sorted(groups.items()):
-                reading = await (self._index_reading(feed, subject, now) if kind == "conditional_exit"
-                                 else self._leg_reading(feed, subject, now))
+                reading = await (self._index_reading(feed, subject, now, readings) if kind == "conditional_exit"
+                                 else self._leg_reading(feed, subject, now, readings))
                 if reading is None:
                     not_run.update({w.armed.trigger.strategy_id: _why_of(w) for w in group})
                 elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once

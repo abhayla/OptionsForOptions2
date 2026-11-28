@@ -53,7 +53,7 @@ async def test_f3_the_workers_tick_key_is_read_with_the_prices_before_the_publis
 
     class _Moving(_Client):
         async def set(self, k, v, **kw):
-            if ":index:" in k and not moved:
+            if k == monitoring_state.key() and not moved:
                 moved.append(1)
                 prov.move_spot(prov.spot.ltp + D("5"), scn.clock_at)  # a tick during the write
             await super().set(k, v, **kw)
@@ -65,15 +65,16 @@ async def test_f3_the_workers_tick_key_is_read_with_the_prices_before_the_publis
 
 def test_minor_a_reading_of_another_instrument_is_refused():
     at = datetime.datetime(2026, 11, 6, 11, 40, tzinfo=datetime.UTC)
-    raw = monitoring_state.encode_reading(monitoring_state.IndexReading("BANKNIFTY", D("1.00"), at, "rest"), at)
-    assert monitoring_state.decode_reading(raw, at, datetime.timedelta(seconds=60), expect="NIFTY") is None
-    assert monitoring_state.decode_reading(raw, at, datetime.timedelta(seconds=60), expect="BANKNIFTY") is not None
+    body = monitoring_state._reading_body(monitoring_state.IndexReading("BANKNIFTY", D("1.00"), at, "rest"), at)
+    age = datetime.timedelta(seconds=60)
+    assert monitoring_state.reading_from(body, at, age, 120, "NIFTY") is None
+    assert monitoring_state.reading_from(body, at, age, 120, "BANKNIFTY") is not None
 
 
 def test_minor_an_absurd_value_is_refused():
     at = datetime.datetime(2026, 11, 6, 11, 40, tzinfo=datetime.UTC)
-    raw = monitoring_state.encode_reading(monitoring_state.IndexReading("NIFTY", D("1E+30"), at, "rest"), at)
-    assert monitoring_state.decode_reading(raw, at, datetime.timedelta(seconds=60), expect="NIFTY") is None
+    body = monitoring_state._reading_body(monitoring_state.IndexReading("NIFTY", D("1E+30"), at, "rest"), at)
+    assert monitoring_state.reading_from(body, at, datetime.timedelta(seconds=60), 120, "NIFTY") is None
 
 
 async def test_minor_an_own_reading_from_the_future_is_not_a_reading(db, scn, monkeypatch):  # noqa: F811

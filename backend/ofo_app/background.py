@@ -1004,7 +1004,8 @@ class Worker:
         #: no REST door (scenario / tests): the index tick of the book is the only source, as before
         self._rest_spot = rest_spot
         self._rest_deadline = REST_SPOT_DEADLINE_S
-        self._index_written: dict[str, tuple[tuple, datetime.datetime]] = {}  # underlying -> (reading, written at)
+        #: slot -> (the reading a FRESH check used, when it was noted): written with the monitoring snapshot (Lane FE)
+        self._readings: dict[str, tuple[monitoring_state.IndexReading, datetime.datetime]] = {}
         self._rest_cycle: dict[str, SourceReading] = {}  # underlying -> this cycle's ONE REST answer (F4/F5)
         self.paused_why: dict[int, str] = {}  # strategy -> the REST stand-in's reason that paused it ("rest_stale")
         self._spot_logged: set[tuple[str, str]] = set()  # (IST minute, underlying) of the not-available lines written
@@ -1507,7 +1508,7 @@ class Worker:
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
         sig = read.signature(now)
-        await self._publish_index(w, read, now)  # Lane FE: the reading that made it watched is the exits' reading
+        self._note_index(w, read, now)  # Lane FE: the reading that made it watched is the exits' reading
         changed = self._plan_changed(w)
         if sig == self._signature.get(sid) and not changed:
             self._tick[sid] = tick
@@ -1551,36 +1552,26 @@ class Worker:
         _keep_recent(self.checks, (sid, now))
         return True
 
-    async def _publish_index(self, w: Watched, read: PriceRead, now: datetime.datetime) -> None:
-        """Lane FE (review F2): the index value this FRESH read used (the feed tick or the REST stand-in, with the
-        time of that quote) goes to the paper monitor, which evaluates the index exits from it (``paper_monitor``); a
-        trade is called watched only on a reading the exits can use. Written when it changed, and at least every
-        ``monitoring_state.REFRESH_S``; never raises (a failed write is logged; the monitor then finds no reading)."""
+    def _note_index(self, w: Watched, read: PriceRead, now: datetime.datetime) -> None:
+        """Lane FE (review F2): the index value this FRESH read used (the feed tick or the REST stand-in, with the time
+        of that quote) and each leg's price are noted for the monitoring snapshot, which carries them in the SAME write
+        as "watched" (``monitoring_state.Publisher``); the paper monitor judges its exits on them, so a trade is called
+        watched only on readings the exits can use. No await here: nothing can tick between the read and its note."""
         spot = read.spot
         if self._want_client is None or spot is None:
             return
-        underlying = w.tracked.position.underlying
         source = "rest" if getattr(spot.source, "feed_id", "") == REST_INDEX_FEED_ID else "feed"
-        await self._publish_one(underlying, spot, source, now, leg=False)
-        for quote in read.legs.values():  # item 2: the option legs' prices this read used, for the leg-price exits
-            await self._publish_one(quote.instrument_id, quote, "feed", now, leg=True)
+        underlying = w.tracked.position.underlying
+        self._note(f"index:{underlying}", underlying, spot, source, now)
+        for quote in read.legs.values():  # item 2: the option legs' prices, for the leg-price exits
+            self._note(f"leg:{quote.instrument_id}", quote.instrument_id, quote, "feed", now)
 
-    async def _publish_one(self, key: str, quote: Any, source: str, now: datetime.datetime, *, leg: bool) -> None:
-        """One reading, written when it changed and at least every ``monitoring_state.REFRESH_S``."""
-        if quote.ltp is None or quote.timestamp is None:
-            return
-        stamp = (quote.ltp, quote.timestamp, source)
-        slot = f"{'leg' if leg else 'index'}:{key}"
-        kept = self._index_written.get(slot)
-        if kept is not None and kept[0] == stamp and _seconds(now - kept[1]) < monitoring_state.REFRESH_S:
-            return
-        if len(self._index_written) > MAX_PUBLISHED_READINGS:  # forget what has not been written for a while
-            keep_after = now - datetime.timedelta(seconds=monitoring_state.REFRESH_S * 6)
-            self._index_written = {k: v for k, v in self._index_written.items() if v[1] >= keep_after}
-        if await monitoring_state.publish_index(
-                self._want_client, monitoring_state.IndexReading(key, quote.ltp, quote.timestamp, source), now,
-                leg=leg):
-            self._index_written[slot] = (stamp, now)
+    def _note(self, slot: str, key: str, quote: Any, source: str, now: datetime.datetime) -> None:
+        if quote.ltp is not None and quote.timestamp is not None:
+            self._readings[slot] = (monitoring_state.IndexReading(key, quote.ltp, quote.timestamp, source), now)
+        if len(self._readings) > MAX_PUBLISHED_READINGS:  # forget what was not re-read for a while
+            keep_after = now - datetime.timedelta(seconds=monitoring_state.INDEX_READING_TTL_S)
+            self._readings = {k: v for k, v in self._readings.items() if v[1] >= keep_after}
 
     async def _read_with_either_spot(self, provider: Any, w: Watched, now: datetime.datetime) -> PriceRead:
         """The price read; when THIS book's index quote is missing or not AVAILABLE, the shared REST read stands in for
@@ -2019,7 +2010,8 @@ class Worker:
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
         await self._close_pass(checked)
-        await self._monitoring.publish(self.status, self.paused_reason, self.paused_why, self._clock())  # never raises
+        await self._monitoring.publish(self.status, self.paused_reason, self.paused_why, self._clock(),
+                                       self._readings)  # never raises
         if self._steps is not None:
             self.valve.observe(self._clock(), slowest, n - visited, self._steps)
 

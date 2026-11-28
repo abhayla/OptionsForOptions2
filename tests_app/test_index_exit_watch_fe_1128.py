@@ -86,7 +86,7 @@ async def test_core_b_a_trade_whose_exit_cannot_be_checked_is_never_shown_as_wat
 
     class _NoIndexRead(_Client):
         async def get(self, k):
-            if ":index:" in k:
+            if k == monitoring_state.key():
                 raise OSError("down")
             return await super().get(k)
     blind = _NoIndexRead()
@@ -141,9 +141,8 @@ async def test_no_reading_anywhere_nothing_is_evaluated_and_the_trade_reads_paus
 async def test_a_worker_reading_older_than_the_index_age_is_not_a_reading(db, scn, monkeypatch):  # noqa: F811
     market, stored, _ids, _keys, tid, client, now = await _armed(db, scn)
     old = monitoring_state.IndexReading("NIFTY", REST_VALUE, now - datetime.timedelta(minutes=11), "rest")
-    await monitoring_state.publish_index(client, old, now)  # published just now, but the quote is 11 min old
-    client.data[monitoring_state.key()] = monitoring_state.encode(
-        [monitoring_state.Entry(stored.id, monitoring_state.ACTIVE, "", "", now)], now)
+    client.data[monitoring_state.key()] = monitoring_state.encode(  # noted just now, but the quote is 11 min old
+        [monitoring_state.Entry(stored.id, monitoring_state.ACTIVE, "", "", now)], now, {"index:NIFTY": (old, now)})
     _bus(monkeypatch, client)
     monitor = _monitor(db, market)
     assert await monitor.step() == 0

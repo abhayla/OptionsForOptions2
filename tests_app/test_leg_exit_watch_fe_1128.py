@@ -82,10 +82,10 @@ async def test_core_d_a_silent_leg_tick_and_no_worker_reading_is_not_checked_and
 async def test_a_leg_reading_the_worker_stopped_writing_is_not_a_reading(db, scn, monkeypatch):  # noqa: F811
     market, stored, _ids, keys, tid, client, now = await _armed(db, scn, worker_ran=False)
     old = monitoring_state.IndexReading(keys[0], WORKER_LEG_PRICE, now, "feed")
-    await monitoring_state.publish_index(client, old, now - datetime.timedelta(
-        seconds=monitoring_state.LEG_READING_MAX_AGE_S + 5), leg=True)  # written 25 s ago, never refreshed
+    noted = now - datetime.timedelta(seconds=monitoring_state.LEG_READING_MAX_AGE_S + 5)  # never re-read since
     client.data[monitoring_state.key()] = monitoring_state.encode(
-        [monitoring_state.Entry(stored.id, monitoring_state.ACTIVE, "", "", now)], now)
+        [monitoring_state.Entry(stored.id, monitoring_state.ACTIVE, "", "", now)], now,
+        {f"leg:{keys[0]}": (old, noted)})
     _bus(monkeypatch, client)
     monitor = _monitor(db, market)
     assert await monitor.step() == 0
@@ -97,9 +97,9 @@ async def test_a_leg_reading_the_worker_stopped_writing_is_not_a_reading(db, scn
 async def test_a_leg_reading_not_beyond_the_stop_fires_nothing_and_the_trade_stays_watched(db, scn, monkeypatch):  # noqa: F811
     market, stored, _ids, keys, tid, client, now = await _armed(db, scn, worker_ran=False)
     below = monitoring_state.IndexReading(keys[0], D("119.95"), now, "feed")
-    await monitoring_state.publish_index(client, below, now, leg=True)
     client.data[monitoring_state.key()] = monitoring_state.encode(
-        [monitoring_state.Entry(stored.id, monitoring_state.ACTIVE, "", "", now)], now)
+        [monitoring_state.Entry(stored.id, monitoring_state.ACTIVE, "", "", now)], now,
+        {f"leg:{keys[0]}": (below, now)})
     _bus(monkeypatch, client)
     monitor = _monitor(db, market)
     assert await monitor.step() + await monitor.step() == 0
