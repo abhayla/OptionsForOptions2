@@ -7,7 +7,7 @@
 import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import api from '@/services/api'
 import { PAPER_NO_FIGURE, PAPER_PAUSED, readPaperList } from '@/lib/paperList'
-import { usePriceFreshness } from '@/lib/priceState'
+import { pausedText, usePriceFreshness } from '@/lib/priceState'
 import { UNREADABLE_TEXT } from '@/lib/tracking'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 
@@ -20,10 +20,11 @@ export const FIGURE_READ_FAILED_TEXT = 'Could not be read right now.' // pending
 
 /** One P&L figure as the screen shows it. `fig` is an `afterFigure` result ({kind, text, label, reason}) from readPaperList, or null
  *  (not readable). `notLive`: the list itself is old (a failed refresh) or the strategy's state says prices are not live. */
-export function pnlFigure(fig, notLive = false) {
+export function pnlFigure(fig, notLive = false, asOf = null) {
   if (!fig) return { kind: 'failed', text: PAPER_NO_FIGURE, label: '', note: UNREADABLE_TEXT }
-  if (notLive) return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: PAPER_PAUSED }
-  if (fig.kind === 'paused') return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: fig.reason ?? PAPER_PAUSED } // the list's own sentence, with its as-of time (REQ-109 AC-5)
+  // FJ2-1 (T1-20): the paused sentence always says when the prices were last read, as Positions does: the server's own time when it sent one, else the answer's
+  if (notLive) return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: pausedText(asOf) }
+  if (fig.kind === 'paused') return { kind: 'paused', text: PAPER_NO_FIGURE, label: '', note: fig.reason && fig.reason !== PAPER_PAUSED ? fig.reason : pausedText(asOf) } // the list's own sentence, with its as-of time (REQ-109 AC-5)
   if (fig.text === null) return { kind: 'failed', text: PAPER_NO_FIGURE, label: '', note: fig.reason ?? UNREADABLE_TEXT }
   return { kind: 'value', text: fig.text, label: fig.label, note: fig.reason }
 }
@@ -33,13 +34,14 @@ export function usePaperPnl() {
   const list = ref(null) // {groups, totals} of the last answer that read
   const failed = ref(false) // the newest read failed or did not read: what is shown is paused
   const loaded = ref(false)
+  const answeredAt = ref(null) // the newest good answer's own time (never a load time)
   const { refresh } = usePaperRefresh({
     key: () => 'paper-pnl',
     read: async () => (await api.get('/paper/strategies')).data,
     onData: (data) => {
       const read = readPaperList(data)
       if (read === null) failed.value = true
-      else { list.value = read; failed.value = false }
+      else { list.value = read; failed.value = false; answeredAt.value = typeof data?.answered_at === 'string' ? data.answered_at : null }
       loaded.value = true
     },
     onError: () => { failed.value = true; loaded.value = true },
@@ -63,7 +65,7 @@ export function usePaperPnl() {
     const g = list.value.groups.find((x) => x.id === id)
     if (!g) return { kind: 'none' }
     if (!g.readable) return pnlFigure(null)
-    return pnlFigure(g.totalAfter, stale.value)
+    return pnlFigure(g.totalAfter, stale.value, answeredAt.value)
   }
   /** The total over every paper strategy (the Positions totals strip). */
   const totalCell = computed(() => {
@@ -71,7 +73,7 @@ export function usePaperPnl() {
     if (list.value === null) return pnlFigure(null)
     if (list.value.totals === null) return pnlFigure(null)
     // AC-R06 / N-46 (ADR-324): the server's count line (strategies left out of the total) rides with the figure, as sent
-    return { ...pnlFigure(list.value.totals.totalAfter, stale.value), leftOut: list.value.totals.leftOut ?? null,
+    return { ...pnlFigure(list.value.totals.totalAfter, stale.value, answeredAt.value), leftOut: list.value.totals.leftOut ?? null,
       closedNote: list.value.totals.closedNote ?? null } // ADR-330 (15) 27 Nov: the same closed_text line Positions prints
   })
   return { cellFor, totalCell, loaded }
