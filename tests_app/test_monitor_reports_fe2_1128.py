@@ -144,9 +144,12 @@ def test_review_f1_a_claim_renewed_every_ten_seconds_stays_a_claim():
     assert monitoring_state.decode_exits(raw, NOW) == {}
 
 
-def test_review_f5_one_bad_slot_is_skipped_and_a_report_of_only_bad_slots_is_unreadable():
+def test_review_f5_a_report_with_any_bad_slot_is_unreadable_never_a_skipped_slot():
+    """Lane RA2 (FE3's deferred issue): a slot that cannot be read may be a monitor that WAS evaluating; it is not
+    dropped (it was skipped before): the whole report is unreadable, every trade reads ``state_unreadable``."""
     good = _slot(NOW, watching=[1])
-    assert monitoring_state.decode_exits(_report(a=good, bad={"at": "x"}), NOW) == {}
+    assert monitoring_state.decode_exits(_report(a=good, bad={"at": "x"}), NOW) is None
+    assert monitoring_state.decode_exits(_report(a=good), NOW) == {}
     assert monitoring_state.decode_exits(_report(bad={"at": "x"}), NOW) is None
     assert monitoring_state.decode_exits(_report(), NOW) is None
 

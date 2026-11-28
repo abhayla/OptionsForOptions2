@@ -486,7 +486,7 @@ def encode_exits(not_run: Mapping[int, str], at: datetime.datetime) -> str:
 
 def _slots(body: Any) -> dict[str, dict[str, Any]] | None:
     """The monitors' slots of a stored report (FE2 item 1: one slot per monitor, never one shared answer), or None
-    when it is not our shape."""
+    when it is not our shape or ANY slot cannot be read (never dropped: it is not known what it claimed)."""
     owners = body.get("owners") if isinstance(body, dict) else None
     if not isinstance(owners, dict):
         return None
@@ -494,7 +494,9 @@ def _slots(body: Any) -> dict[str, dict[str, Any]] | None:
     for owner, slot in owners.items():
         at = _time(slot.get("at")) if isinstance(slot, dict) else None
         if at is None or not isinstance(slot.get("not_run"), dict) or not isinstance(slot.get("watching"), list):
-            continue  # one bad slot is skipped (it claims nothing); a report with no good slot is unreadable below
+            return None  # Lane RA2 (FE3's deferred issue): a slot that cannot be read may be a monitor that WAS
+            # evaluating index exits: skipping it let its trades read "judged". The whole report is unreadable then
+            # (the caller fails closed: ``state_unreadable``); the next write of a live monitor removes the bad slot
         out[str(owner)] = {"at": at, "not_run": slot["not_run"], "watching": slot["watching"]}
     return out
 
