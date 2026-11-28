@@ -410,3 +410,31 @@ async def test_f_a_failing_catalogue_read_keeps_the_claim_and_stores_orders_with
     state = (await db.execute(text("SELECT state FROM public.order_request_keys WHERE request_key = :k"),
                               {"k": key})).scalar_one()
     assert state == "done"
+
+
+async def test_ra_n5_f1_the_deadline_counts_the_dependency_stage_before_the_handler_body(
+        db, notified, keys, monkeypatch):
+    """Opus review F-1: the clock started at the handler's first line, after the dependencies (settings, charge rates,
+    the pool wait). Here the dependency stage takes 3 s and the orders' work 7.5 s more: 10.5 s after ARRIVAL (past the
+    page's 10 s) but 7.5 s after the handler's first line: the old start committed it (201, orders stored). Now it
+    refuses."""
+    from ofo_app import paper_limit  # noqa: PLC0415
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    now = {"t": 0.0}
+    monkeypatch.setattr(route, "_monotonic", lambda: now["t"])
+
+    async def slow_dependency():
+        now["t"] = 3.0  # settings, charge rates and the pool wait before the handler body
+    app.dependency_overrides[route.load_charge_rates] = slow_dependency
+    real_place = paper_limit.place_checked
+
+    async def slow_work(*a, **k):
+        now["t"] = 10.5
+        return await real_place(*a, **k)
+    monkeypatch.setattr(paper_limit, "place_checked", slow_work)
+    late = await _post(app, stored, _body(orders, uuid.uuid4()))
+    assert late.status_code == HTTPStatus.CONFLICT and "took too long" in late.text, late.text[:300]
+    assert await _count(db, stored) == 0
