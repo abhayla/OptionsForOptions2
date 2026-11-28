@@ -1,0 +1,60 @@
+{
+  "_comment": "Example of the coordinator state file (schema in the docstring of lane_watch.py). The real file is docs/process/.run/coordinator-state.json, outside git. Case: 28 Nov 2026, 22:40 IST. Session ids are placeholders.",
+  "migrations_path": "backend/ofo_app/alembic/versions",
+  "base_branch": "fix/ic-live-test-1123",
+  "build": {"branch": "integration/weekend-r3-1129", "pull_request": 881},
+  "items": "docs/design/next-batch-2026-11-26/plan-items.json",
+  "lanes": [
+    {"name": "RA2", "session_id": "session_RA2_placeholder", "branch": "feat/ra2-basket-facts-1128",
+     "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-ra2.md",
+     "owns": ["backend/ofo_app/alembic/versions/0063_basket_facts_spot_at.py", "docs/design/next-batch-2026-11-26/RESULTS-lane-ra2.md"],
+     "state": "working", "started_at": "2026-11-28T17:00:00+05:30", "first_push_due": "2026-11-28T18:15:00+05:30",
+     "next_push_due": "2026-11-28T22:30:00+05:30", "context_note": "held at F3's as-of; instructions queued 17:37 heard 21:42"},
+    {"name": "B2", "session_id": "session_B2_placeholder", "branch": "feat/b2-order-attempts-1128",
+     "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-b2.md",
+     "owns": ["backend/ofo_app/alembic/versions/0063_order_attempts.py", "docs/design/next-batch-2026-11-26/RESULTS-lane-b2.md"],
+     "state": "working", "started_at": "2026-11-28T17:00:00+05:30", "first_push_due": "2026-11-28T18:15:00+05:30",
+     "next_push_due": "2026-11-28T22:30:00+05:30", "context_note": "migration 0063 collides with RA2 and R1"},
+    {"name": "R1", "session_id": "session_R1_placeholder", "branch": "feat/r1-position-tags-1128",
+     "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-r1.md",
+     "owns": ["backend/ofo_app/alembic/versions/0063_position_tags.py", "docs/design/next-batch-2026-11-26/RESULTS-lane-r1.md"],
+     "state": "working", "started_at": "2026-11-28T17:00:00+05:30", "first_push_due": "2026-11-28T18:15:00+05:30",
+     "next_push_due": "2026-11-28T22:30:00+05:30", "context_note": "the 22:30 push was missed"},
+    {"name": "F1b", "session_id": "session_F1b_placeholder", "branch": "feat/f1b-1128",
+     "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-f1b.md",
+     "owns": ["docs/design/next-batch-2026-11-26/RESULTS-lane-f1b.md"],
+     "state": "working", "started_at": "2026-11-28T21:17:00+05:30", "first_push_due": "2026-11-28T22:32:00+05:30",
+     "next_push_due": null, "context_note": "no branch on origin 83 minutes after start"},
+    {"name": "F3", "session_id": "session_F3_placeholder", "branch": "feat/f3-1128",
+     "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-f3.md",
+     "owns": ["docs/design/next-batch-2026-11-26/RESULTS-lane-f3.md"],
+     "state": "working", "started_at": "2026-11-28T17:00:00+05:30", "first_push_due": "2026-11-28T18:15:00+05:30",
+     "next_push_due": "2026-11-28T21:00:00+05:30", "context_note": "STATUS line said 23:20 at 22:40: lane clock ahead"},
+    {"name": "TG2", "session_id": "session_TG2_placeholder", "branch": "feat/tg2-1128",
+     "results_file": "docs/design/next-batch-2026-11-26/RESULTS-lane-tg2.md",
+     "owns": ["docs/design/next-batch-2026-11-26/RESULTS-lane-tg2.md"],
+     "state": "closing", "started_at": "2026-11-28T17:00:00+05:30", "first_push_due": "2026-11-28T18:15:00+05:30",
+     "next_push_due": null, "context_note": "went to closing with no SAFE TO CLOSE line"}
+  ],
+  "holds": [
+    {"branch": "feat/ra2-basket-facts-1128", "not_newer_than": "0000000000000000000000000000000000000000",
+     "reason": "RA2 waits for F3's as-of; placed at the lane AND at the build (replace the sha with F3's as-of commit)",
+     "until": "2026-11-29T06:00:00+05:30"}
+  ],
+  "conditions": [
+    {"what": "F3 as-of commit on origin", "by": "2026-11-28T22:00:00+05:30", "met": false}
+  ],
+  "waves": [
+    {"name": "wave 1", "due": "2026-11-28T22:45:00+05:30", "commit": null, "ci": null},
+    {"name": "wave 2", "due": "2026-11-29T01:45:00+05:30", "commit": null, "ci": null}
+  ],
+  "commitments": [
+    {"what": "freeze with a green CI run on the frozen commit", "by": "2026-11-29T10:00:00+05:30"}
+  ],
+  "instructions": [
+    {"to_lane": "RA2", "sent_at": "2026-11-28T17:37:00+05:30", "text_short": "take F3's as-of before your push",
+     "acknowledged_at": "2026-11-28T21:42:00+05:30"},
+    {"to_lane": "R1", "sent_at": "2026-11-28T21:50:00+05:30", "text_short": "renumber your migration to 0064",
+     "acknowledged_at": null}
+  ]
+}
