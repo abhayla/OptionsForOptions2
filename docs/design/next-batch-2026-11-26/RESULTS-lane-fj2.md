@@ -1,4 +1,4 @@
-STATUS 20:05 | Lane F1 batch 1 ready for the final check: items 1-2 on origin (68a46dd62); local on top (merged with integration/weekend-r3-1129, frontend 405 files / 4293 tests green before the last pins): I-206, F5, closed-market and blocked Exit line, group A review fixes F-A F-B F-C F-D, I-139 + I-14 page-wiring pins (builder and Positions), hand-off branch pushed (fix/r3-frontend-f23-handoff-1128, 4297f7065, TOTAL PASS) | next: full check jobs 4, push | blocker: none
+STATUS 20:20 | Lane F1 batch 1: head b0349e9b7+RESULTS, merged with integration/weekend-r3-1129, frontend 407 files / 4302 tests green; now ruff, repo_scan, prepush jobs 4, push | on origin: 68a46dd62 (items 1-2), 4297f7065 (F2/F3 hand-off branch) | blocker: none
 
 # RESULTS Lane F1 (was FJ2), branch fix/r3-frontend-2-1128, base origin/fix/r3-frontend-joins-1128 (ddd656805)
 
@@ -64,7 +64,8 @@ LiveStrategyCard: the card itself is correct and pinned (Exit and Stops only whe
 
 ## Not done
 - W-25 (Exit all text cut off at 1366 by 768) and the browser walk (item 13): not run; the layout needs a browser.
-- Moved to F2 / F3 (built locally, red-first, kept on the local branch `fj2-f23-handoff` at 218dbc3ab; NOT pushed): D-TG-3 Positions raw 409 JSON, D-TG-4 stale Stop box, plan card Target/Stop (O-R-09), My Strategies empty state (T2-17), Retry on the Positions Paper list (T3-10).
+- Worktree ../wt-f23 (purpose: the F2/F3 hand-off branch and its own check, created 28 Nov 19:25 IST) removed with plain `git worktree remove` at 20:15 IST; tracked files in the main tree 5401 before, 5401 after.
+- Moved to F2 / F3 (pushed as fix/r3-frontend-f23-handoff-1128 = 4297f7065, prepush TOTAL PASS; a local backup branch `fj2-f23-handoff` at 218dbc3ab also exists): D-TG-3 Positions raw 409 JSON, D-TG-4 stale Stop box, plan card Target/Stop (O-R-09), My Strategies empty state (T2-17), Retry on the Positions Paper list (T3-10).
 - Not reproduced: T3-09 (a dismissed row's reason word): the Opportunities row prints the server's `detail`; a dismissal with no reason carries none by the server's design (adjustment_opportunities.py:158).
 
 ## Tasks
