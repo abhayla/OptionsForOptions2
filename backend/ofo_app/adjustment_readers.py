@@ -133,18 +133,21 @@ def index_name(underlying: str) -> str | None:
 
 # ---- strategy ---------------------------------------------------------------------------------------------------
 
-async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None) -> Tracked | None:
+async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None,
+                       kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> Tracked | None:
     """``db``: the request's own session (a request uses ONE connection, #682); None for the worker, which has no
-    request and reads on a session of its own."""
+    request and reads on a session of its own. ``kinds`` (#864): the worker's record of the expiry kind it read for
+    (underlying, nearest expiry); a recorded kind spares the catalogue read, an absent or empty one reads it."""
     if db is not None:
-        return await _tracked_on(db, strategy_id, rates)
+        return await _tracked_on(db, strategy_id, rates, kinds)
     async with get_sessionmaker()() as own:
-        found = await _tracked_on(own, strategy_id, rates)
+        found = await _tracked_on(own, strategy_id, rates, kinds)
         await own.commit()  # the worker's own session: keeps a stop base stored once (ADR-330), nothing else is written
         return found
 
 
-async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> Tracked | None:
+async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None,
+                      kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> Tracked | None:
     paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
     real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
     orders: Any = paper or await _real_rows(db, strategy_id)
@@ -157,7 +160,7 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
     if not legs or underlying is None or lot is None:
         raise TrackedExited("no open option leg", closed_at=closed_at_of(orders))
     fresh = entry_stop_base(orders, found, _ENTRY_SOURCE)  # ADR-330 (1): from the entry orders only
-    kind = await _stored_kind_or_empty(db, underlying, legs)  # R3: "" = not known; read BEFORE the backfill write
+    kind = await _stored_kind_or_empty(db, underlying, legs, kinds)  # R3: "" = not known; read BEFORE the backfill write
     base = await stop_base_in_force(db, strategy_id, fresh)  # (a failed catalogue read rolls the session back)
     if real:  # paid charges and adjustments used before the app saw it: not readable yet ("not checked", ADR-276 (4))
         return Tracked(Position(underlying, lot, kind, datetime.date.min, tuple(legs)), book.booked, None,
@@ -175,11 +178,16 @@ async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None) -> T
                    entry_position=entry_position_of(orders, found), stop_base=base, entry_stop_base=fresh)
 
 
-async def _stored_kind_or_empty(db: Any, underlying: str, legs: Any) -> str:
-    """The position's expiry kind from the stored catalogue (``stored_kind``), "" when it cannot be known or read
-    (the live check then checks no stop: never the weekly row by default)."""
+async def _stored_kind_or_empty(db: Any, underlying: str, legs: Any,
+                                kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> str:
+    """The position's expiry kind from the worker's record when it has one for the nearest leg (``kinds``, #864: the
+    worker records only a non-empty kind), else from the stored catalogue (``stored_kind``), "" when it cannot be
+    known or read (the live check then checks no stop: never the weekly row by default)."""
+    nearest = min(x.expiry for x in legs)  # the check's own day: the nearest leg
+    if kinds is not None and (kind := kinds.get((underlying, nearest))):
+        return kind
     try:
-        return await stored_kind(db, underlying, min(x.expiry for x in legs))  # the check's own day: the nearest leg
+        return await stored_kind(db, underlying, nearest)
     except CatalogueUnreadable:
         return ""
 
