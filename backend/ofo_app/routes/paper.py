@@ -1483,8 +1483,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                                cancelled=first.get("result", {}).get("cancelled_stops", []))
     stage = {"commit_started": False}
     try:
-        placed_at, cancelled = await _place_orders(strategy_id, stored, body, (
-            db, user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
+        placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
+            user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
     except BaseException:
         if key is not None and not stage["commit_started"]:  # refused with nothing stored: the key is free again
             await request_key.free(keys, user_ref, key)
@@ -1505,13 +1505,13 @@ async def _stops_out(db: Any, stored: Any, state: Mapping[int, Any], cancelled: 
             for t in cancelled]
 
 
-async def _place_orders(strategy_id: int, stored: Any, body: PaperOrdersIn, deps: tuple,  # noqa: C901
-                        stage: dict
+async def _place_orders(db: Any, strategy_id: int, stored: Any, body: PaperOrdersIn,  # noqa: C901, PLR0913
+                        deps: tuple, stage: dict
                         ) -> tuple[datetime.datetime, list[dict]]:
     """The order door's body: every refusal, the store and the commit. Returns the time it placed at and the stops it
     cancelled (read in the transaction that cancelled them); ``stage['commit_started']`` is set just before the commit
     (from there the outcome is unknown to the caller until it returns)."""
-    db, user_ref, ctx, feed, now, rates, tracked_reader, settings = deps
+    user_ref, ctx, feed, now, rates, tracked_reader, settings = deps
     for order in body.orders:
         if order.kind != "exit" and order.price > 0:  # C10: exit prices are the server's; 0 or less: below
             _check_price(order.price)
