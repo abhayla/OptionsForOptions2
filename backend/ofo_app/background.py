@@ -1489,6 +1489,13 @@ class Worker:
         """A check ran for ``sid``: forget its last skip reason, so the next skip is logged."""
         self._last_skip.pop(sid, None)
 
+    def _record_kind(self, w: Watched, market: MarketInputs) -> None:
+        """FE2 item 7: the kind this check uses (``state_of``'s rule) is kept for the lister; a kind that is not known
+        ("") is never recorded (the reader then reads the catalogue)."""
+        known = market.expiry_kind or w.tracked.position.expiry_kind
+        if known:
+            self.kinds[(w.tracked.position.underlying, primary_expiry(w.tracked.position))] = known
+
     def _plan_changed(self, w: Watched) -> bool:
         """J3 item 3: the plan in the list is not the one this strategy's last check ran with (saved since). Such a
         strategy's first check with the new plan is never held by the tick, signature or style interval holds, whatever
@@ -1546,9 +1553,7 @@ class Worker:
             self._pause(sid, PriceState.CHECK_FAILED, now)
             return self._skipped(sid, "no_gate_read" if load is None else "no_alert_values")
         market = market_inputs(w, read, FeedScope(self.cache, w.feed_owner), now, self._values)
-        known = market.expiry_kind or w.tracked.position.expiry_kind  # the kind the check uses (``state_of``'s rule)
-        if known:  # a kind that is not known ("") is never recorded: the reader then reads the catalogue
-            self.kinds[(w.tracked.position.underlying, primary_expiry(w.tracked.position))] = known
+        self._record_kind(w, market)
         self._queue_daily_iv(daily_iv_of(w, read, market, now))
         # ADR-245: the carry gap in force (plan, else the user's own, else the admin default) is resolved inside
         # state_of; with no user read path there is no user layer (None), never the admin values posing as the user's
