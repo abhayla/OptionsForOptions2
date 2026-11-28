@@ -12,6 +12,7 @@ import datetime
 from decimal import Decimal
 
 import pytest
+from ofo.errors import CATALOGUE
 from ofo.errors.explanations import render_explanation
 from ofo.settings import defaults as _d
 from ofo_app.routes import outcome as route
@@ -53,3 +54,18 @@ def test_every_other_state_keeps_the_draft_label(booked):
     out = _answer(booked)
     assert out["status_label"] == DRAFT
     assert [leg["label"] for leg in out["legs"]] == [DRAFT]
+
+
+def test_the_return_door_changed_sentence_does_not_claim_no_order_was_prepared():
+    """Lane FD5 review F1 (real case): Return said "no order was prepared", false when a plan exists. The new sentence
+    says only what is true at Return: nothing was recorded from this return."""
+    t = CATALOGUE["execute_return_changed"]
+    text = " ".join((t.what_happened, t.impact, t.what_is_blocked, t.next_action))
+    assert "prepared" not in text and "nothing was recorded from this return" in t.what_happened
+    assert t.code == "STRATEGY_VALIDATION_589"
+
+
+def test_the_entries_sentences_do_not_repeat_the_market_closed_prefix():
+    """Item 4: the Add-to-Paper line sits beside ``exit_market_closed`` ("The market is closed. ..."), so it says only
+    when orders can be placed (the pins ENTRIES_DAY / ENTRIES_NO_DAY of test_exit_market_adr330_60.py)."""
+    assert render_explanation("exit_market_closed_entries_no_day") == "Orders can be placed when it opens."

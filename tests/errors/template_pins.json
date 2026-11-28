@@ -5358,5 +5358,13 @@
   "explanation:paper_leg_stop_fired_unknown": {
     "sha256": "0c958480648021df01dabc602333b0fbe3eb961723abf2d035d251df27acd9d8",
     "reviewed": "pending owner read"
+  },
+  "execute_return_changed": {
+    "sha256": "70c725d37854dc7e9c551e94a1c6afe447027ed2c6480acaf05b79ce345a28fc",
+    "reviewed": "pending owner read"
+  },
+  "explanation:outcome_running_not_live": {
+    "sha256": "95218db7136e0bf204b13676e825e70dc2fc59af056582e49149b622c8e4d80a",
+    "reviewed": "pending owner read"
   }
 }

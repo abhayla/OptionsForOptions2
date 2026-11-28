@@ -960,6 +960,14 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "No order was prepared and nothing was stored; orders are only prepared from the plan you reviewed.",
           "Preparing orders from an older version of this strategy.",
           "Review the current plan, then prepare the orders again."),
+    # Lane B3 (28 Nov 2026), pending owner read: the Return door (the user comes back from Zerodha) found the plan or the
+    # holdings changed while the user was away. Unlike ``execute_plan_changed`` a plan DOES exist here, so it must not say
+    # "no order was prepared" (Lane FD5 review F1); it says only what is true: nothing was recorded from this return.
+    _gate("execute_return_changed", _SV, 589,
+          "Something changed while you were at Zerodha, so nothing was recorded from this return.",
+          "Your orders at Zerodha are unchanged; the platform has not stored them as placed.",
+          "Recording this return.",
+          "Open the strategy, check the plan against your Zerodha orders, then press Return again."),
     # W-157 (REQ-134 AC-1): the name a user gives a saved strategy.
     _gate("strategy_name_empty", _SV, 430,
           "Give the strategy a name.",
