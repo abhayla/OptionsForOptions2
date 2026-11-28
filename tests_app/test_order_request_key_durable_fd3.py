@@ -235,3 +235,21 @@ async def test_a_claim_lost_to_a_rollback_refuses_and_stores_no_orders(app_engin
         await conn.begin()
         with pytest.raises(StrategyRefused, match="request_key_store_unavailable"):
             await request_key.finish_in_transaction(conn, USER, key, {"cancelled_stops": []})
+
+
+async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(db, notified, keys, monkeypatch):
+    """Opus review R9: the page gives up at 10 s and may press again; a request that only reaches its commit after the
+    server deadline (8 s) refuses ``store_busy`` with nothing stored, and its key is free again."""
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    clock = iter([0.0] + [route.COMMIT_DEADLINE_S + 1.0] * 20)
+    monkeypatch.setattr(route, "_monotonic", lambda: next(clock))
+    key = uuid.uuid4()
+    late = await _post(app, stored, _body(orders, key))
+    assert late.status_code == HTTPStatus.CONFLICT and "busy with another action" in late.text, late.text[:300]
+    assert await _count(db, stored) == 0
+    monkeypatch.setattr(route, "_monotonic", lambda: 0.0)  # the same key on time: placed (the late one freed it)
+    again = await _post(app, stored, _body(orders, key))
+    assert again.status_code == HTTPStatus.CREATED, again.text[:300]

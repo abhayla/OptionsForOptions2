@@ -10,6 +10,7 @@ from ofo.marketdata.kite_provider import IST
 from ofo_app import held_entry_store
 from test_paper_adjustment_limit import _book
 from test_paper_save_paths_fx2 import _count, db  # noqa: F401 - fixture
+from test_paper_triggers_routes import notified  # noqa: F401 - fixture
 from test_strategy_store import _client
 
 REAL_SENTENCE = "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."
@@ -85,3 +86,25 @@ async def test_item3_a_failing_kinds_read_propagates_and_is_never_no_kinds(db):
     with pytest.raises(SQLAlchemyError):
         await strategy_store.kinds_of(Broken(), [1])
     assert await strategy_store.kinds_of(Broken(), []) == {}  # nothing asked, nothing read
+
+
+async def test_r6_an_old_armed_stop_on_a_real_position_reads_not_applicable_never_live(db, notified):
+    """Coordinator 09:12 / Opus review R6: the row stays stored (nothing is removed without the owner), but the list
+    never offers it as a live stop: state ``not_applicable`` with the position-kind sentence; paper is unchanged."""
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo_app import paper_trigger_store as triggers  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    tid = await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", Decimal("120.00"),
+                                                                contract_id=ids[0]))
+    async with _client(app) as c:
+        paper = (await c.get(f"/paper/strategies/{stored.id}/triggers")).json()["triggers"]
+    assert [(t["id"], t["state"], t["not_applicable_text"]) for t in paper] == [(tid, "armed", None)]
+    await held_entry_store.record(db, stored.id, datetime.datetime(2026, 11, 27, 10, 0, tzinfo=IST), "Zerodha")
+    async with _client(app) as c:
+        for path in (f"/paper/strategies/{stored.id}/triggers", f"/real/strategies/{stored.id}/triggers"):
+            rows = (await c.get(path)).json()["triggers"]
+            assert [(t["id"], t["state"]) for t in rows] == [(tid, "not_applicable")], path
+            assert rows[0]["not_applicable_text"] == REAL_SENTENCE
+    assert [r.cancelled_at for r in await triggers.list_for(db, stored.id)] == [None]  # kept, not cancelled

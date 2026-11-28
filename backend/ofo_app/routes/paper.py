@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import time
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
@@ -97,6 +98,7 @@ from ofo_app import (
     paper_trigger_store,
     plan_ending,
     playbook_store,
+    position_kind,
     request_key,
     tracked_contracts,
 )
@@ -435,6 +437,12 @@ def _held_out(row: Any) -> dict | None:
     broker = None if row.broker_text is None else sf.shown_broker(row.broker_text)
     return {"source": "held_elsewhere", "entry_at": row.entry_at, "broker": broker,
             "rules_start_at": row.rules_start_at}
+
+
+#: R9: the page's own request timeout is 10 s (frontend services/api.js); a request that reaches its commit after this
+#: many seconds refuses instead of committing late (the user has seen a failure and may press again)
+COMMIT_DEADLINE_S = 8.0
+_monotonic = time.monotonic  # the clock the deadline reads (a test replaces it)
 
 
 class CancelledStopOut(ApiModel):
@@ -1494,7 +1502,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
             return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
                                cancelled=await _replayed_stops(
                                    db, stored, first.get("result", {}).get("cancelled_stops", [])))
-    stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent}
+    stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent,
+                             "deadline": _monotonic() + COMMIT_DEADLINE_S}
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
             user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
@@ -1598,6 +1607,8 @@ async def _place_orders(  # noqa: C901, PLR0912, PLR0913, PLR0915
             raise StrategyRefused("held_entry_not_a_first_open_basket")  # rolled back below: nothing stored
         await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction
         cancelled_out = await _stops_out(db, stored, state, cancelled)
+        if _monotonic() > stage["deadline"]:  # R9: the page has given up by now; a late commit would surprise the user
+            raise StrategyRefused("store_busy", Failure.CONFLICT)
         if stage.get("key") is not None:
             await request_key.finish_in_transaction(db, user_ref, stage["key"], {"cancelled_stops": cancelled_out})
         stage["commit_started"] = True
@@ -1762,7 +1773,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     for cid, found in state.items():
         if found.stored is not None:
             _, instrument, strike, expiry = _identity(found)
-            names[str(cid)] = describe_contract((stored.saved.definition.underlying, instrument, strike, expiry))
+            names[str(cid)] = display_contract((stored.saved.definition.underlying, instrument, strike, expiry))
             terms[str(cid)] = ContractTerms(instrument, strike, expiry)
     try:
         legs = [PaperOrder(str(o.contract_id), o.side, o.quantity,
@@ -1930,7 +1941,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------
 TriggerKind = Literal["conditional_exit", "leg_stop"]
 Direction = Literal["above", "below"]
-TriggerState = Literal["armed", "fired", "cancelled"]
+TriggerState = Literal["armed", "fired", "cancelled", "not_applicable"]
 
 
 class TriggerIn(BaseModel):
@@ -1961,6 +1972,9 @@ class TriggerOut(ApiModel):
     cancelled_at: datetime.datetime | None
     set_before_adjustment: bool = False  # D-03 (ADR-317 (7)): armed index exit older than the latest paper adjustment
     adjustment_note: CatalogueText | None = None  # the server's sentence naming the new short strike on that side
+    #: R6 (ADR-330 (64)): an old armed paper stop on a REAL (or unreadable) position stays stored but is never live: its
+    #: state is "not_applicable" and this carries the position-kind sentence ("Real position: exit and protect it ...")
+    not_applicable_text: CatalogueText | None = None
 
 
 class TriggersOut(ApiModel):
@@ -2046,6 +2060,8 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
     ids = sorted({r.trigger.contract_id for r in rows if r.trigger.contract_id is not None})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     marks = await _adjustment_marks(db, await paper_store.load(db, strategy_id), rows)
+    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown") if rows else "paper"
+    off = kind in _NO_PAPER_ACTION_KINDS  # R6: a real or unreadable position has no live paper stop
     return TriggersOut.model_validate({"already_set": already_set, "already_armed": list(already_armed), "triggers": [{
         "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
         "direction": r.trigger.direction, "level": r.trigger.level,
@@ -2053,9 +2069,12 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
         "contract_id": r.trigger.contract_id,
         "contract_text": None if r.trigger.contract_id is None else describe_contract(
             _identity(found[r.trigger.contract_id])),
-        "underlying": r.trigger.underlying, "state": _state(r), "created_at": r.created_at,
+        "underlying": r.trigger.underlying,
+        "state": "not_applicable" if off and _state(r) == "armed" else _state(r), "created_at": r.created_at,
         "fired_at": r.fired_at, "cancelled_at": r.cancelled_at,
-        "set_before_adjustment": r.trigger.id in marks, "adjustment_note": marks.get(r.trigger.id)} for r in rows]})
+        "set_before_adjustment": r.trigger.id in marks, "adjustment_note": marks.get(r.trigger.id),
+        "not_applicable_text": position_kind.line_of(kind) if off and _state(r) == "armed" else None}
+        for r in rows]})
 
 
 @router.get("/paper/strategies/{strategy_id}/triggers", response_model=TriggersOut)

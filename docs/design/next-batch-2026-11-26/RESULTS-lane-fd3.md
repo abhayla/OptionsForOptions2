@@ -1,4 +1,4 @@
-STATUS 09:50 | items 1, 2 (kept) and 3, 4, 5, 6, 8 (dropped by the 09:25 cut but ALREADY DONE here: Lane FD4 skips them) fixed, not tested live; gate on the pushed head; item 7 and the 09:12 additions (cancelled_stops from returned ids; real position's old armed stops shown as not applicable) NOT done | blocker: none
+STATUS 11:25 | PUSHED e6b48eb57 (gate TOTAL PASS): items 1 (R5), 2 (R8), 3-6, 8 | round 2 built, gate running: R9 deadline, R6 not-applicable stops (paper triggers list + plan watch), UX-A18 date | NOT done: item 7, cancelled_stops from returned ids | blocker: none
 
 # Lane FD3 RESULTS (backend, third batch)
 
@@ -133,5 +133,24 @@ read back under the strategy lock; the stale-stop cancel inside `paper_store.pla
 (2) a real position's old armed stops must read "not applicable: real position" in `GET /paper|real/strategies/{id}/triggers`
 and `routes/plan_watch.py`. Question for the owner: should such rows be cancelled or kept and shown as not applicable?
 Recommendation: kept and shown as not applicable (nothing is removed without the owner).
+
+## Round 2 (after the push of e6b48eb57)
+
+- R9 (server deadline, `routes/paper.py` `COMMIT_DEADLINE_S` 8 s, the page times out at 10 s): a request that reaches its commit
+  later refuses `store_busy` (409, "This strategy is busy with another action, so nothing was changed."), nothing stored, key
+  freed. Test first: `test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing`. Not done: the same deadline on the real door.
+- R6 (route half): an old armed paper stop on a real or unknown position stays stored (never cancelled or deleted) and reads
+  `state: "not_applicable"` with `not_applicable_text` (the position-kind sentence) on `GET /paper|real/strategies/{id}/triggers`;
+  `routes/plan_watch.py` armed lines of such a position are `not_applicable` with that sentence as reason, no price, no distance.
+  Test: `test_r6_an_old_armed_stop_on_a_real_position_reads_not_applicable_never_live` (triggers list; the plan-watch half has no
+  new test of its own). For Lane FJ: the stop list must treat `not_applicable` as not live; `docs/api/openapi.json` and
+  `reply_inventory.py` regenerated.
+- UX-A18: the exit-risk warning names the sold leg with the app's formatter ("13 Oct 22800 CE"), not an ISO date (`routes/paper.py`
+  names of `exit_risk_answer`); red before (`... PE 2026-10-13.`), green after: `test_ux_a18_...` in test_paper_exit_risk.py.
+- Question for the owner (from the coordinator, 09:12): should the old armed stops of a real position be cancelled or kept and
+  shown as not applicable? Recommendation: kept and shown as not applicable (nothing is removed without the owner); decided so now.
+- Not done: `cancelled_stops` built from the ids the cancel UPDATEs return: the stale-stop sweep inside `paper_store.place`
+  (not my file) returns no ids; it is now read under the strategy lock. Exact change for the owner lane: `paper_store.place`
+  returns the ids `_STALE_CANCEL` returns; `_cancel_leaving_stops` unions them with `paper_trigger_store.cancel`'s returns.
 
 SAFE TO CLOSE: not yet.
