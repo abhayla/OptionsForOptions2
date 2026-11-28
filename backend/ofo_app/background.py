@@ -2026,6 +2026,7 @@ class Worker:
         self._stop = True
 
     async def run(self) -> None:
+        await self._monitoring.restore(self._clock())  # FE2 item 4: a restart leaves no old "watched" standing
         if not self._rebuild_tried:
             await self._rebuild_safely()
         rebuilder = asyncio.create_task(self._rebuild_loop(), name="background-rebuild")

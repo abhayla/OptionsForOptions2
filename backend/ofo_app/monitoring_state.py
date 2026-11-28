@@ -131,6 +131,30 @@ def decode(raw: Any, now: datetime.datetime) -> dict[int, Entry] | None:  # noqa
     return out
 
 
+RESTORE_MAX_AGE_S: Final = 86400  # a stored snapshot older than this says nothing a restart should keep
+
+
+def _entries_of(raw: Any, now: datetime.datetime) -> dict[int, Entry]:
+    """The PAUSED entries of an old snapshot for their ``since`` only (no reader freshness rule; an active trade was
+    not watched while the worker was down, so its ``since`` starts again): {} when it is missing, not our shape or
+    older than ``RESTORE_MAX_AGE_S``."""
+    text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+    try:
+        body = json.loads(text) if isinstance(text, str) else None
+        at = _time(body.get("at")) if isinstance(body, dict) else None
+        rows = body.get("strategies") if isinstance(body, dict) else None
+        if at is None or not isinstance(rows, dict) or abs((now - at).total_seconds()) > RESTORE_MAX_AGE_S:
+            return {}
+        out: dict[int, Entry] = {}
+        for sid_text, row in rows.items():
+            since = _time(row.get("since"))
+            if row.get("status") == PAUSED and isinstance(row.get("reason"), str) and since is not None:
+                out[int(sid_text)] = Entry(int(sid_text), row["status"], row["reason"], str(row.get("why", "")), since)
+        return out
+    except (ValueError, TypeError, AttributeError):
+        return {}
+
+
 def snapshot(status: Mapping[int, Any], reasons: Mapping[int, Any], whys: Mapping[int, str],
              previous: Mapping[int, Entry], now: datetime.datetime) -> list[Entry]:
     """The worker's entries from its own dicts. ``status`` values are ``MonitoringStatus`` (``.name`` PAUSED/ACTIVE),
@@ -156,6 +180,28 @@ class Publisher:
         self._previous: dict[int, Entry] = {}
         self._written: str | None = None
         self._written_at: datetime.datetime | None = None
+
+    async def restore(self, now: datetime.datetime) -> bool:
+        """A worker's start (FE2 item 4, REQ-165 AC-6): the dead worker's answers must not stand as this one's. Keeps
+        each strategy's ``since`` (while its status and reason stay the same the pause is the same pause) and writes a
+        snapshot that names NO strategy, so every trade reads paused (``not_listed``) until its first check has run.
+        A snapshot older than ``RESTORE_MAX_AGE_S``, of another shape, or a store that cannot answer restores nothing.
+        Never raises. True when the empty snapshot was written."""
+        if self._client is None:
+            return False
+        try:
+            raw = await self._client.get(key())
+        except Exception as exc:  # noqa: BLE001 - nothing to keep; the first cycle writes as before
+            log.warning("background: reading the old monitoring state failed: %s", type(exc).__name__)
+            return False
+        self._previous = _entries_of(raw, now)
+        try:
+            await self._client.set(key(), encode([], now))
+        except Exception as exc:  # noqa: BLE001 - the old snapshot then ages out by itself (``SNAPSHOT_STALE_S``)
+            log.warning("background: writing the restart monitoring state failed: %s", type(exc).__name__)
+            return False
+        self._written, self._written_at = None, None  # the first real snapshot is written whatever it says
+        return True
 
     async def publish(self, status: Mapping[int, Any], reasons: Mapping[int, Any], whys: Mapping[int, str],
                       now: datetime.datetime,
