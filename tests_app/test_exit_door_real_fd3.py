@@ -278,7 +278,7 @@ async def test_n7_a_stop_stored_then_a_failed_kind_read_still_answers_success_wi
 
     async def second_call_fails(conn, sids):
         calls["n"] += 1
-        if calls["n"] > 1:  # the first read is the door's own check, before the commit
+        if calls["n"] > 1:  # any second read fails: pins that there is none
             raise SQLAlchemyError("kind read failed after the commit")
         return await real(conn, sids)
 
@@ -289,4 +289,6 @@ async def test_n7_a_stop_stored_then_a_failed_kind_read_still_answers_success_wi
     assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
     (line,) = [t for t in reply.json()["triggers"] if t["kind"] == "leg_stop"]
     assert line["state"] == "armed" or line["not_applicable_text"] is not None  # stored, and reported, never a 5xx
-    assert calls["n"] >= 2  # noqa: PLR2004
+    # Lane R1 / RA (28 Nov): the kind is read ONCE, before the commit (the door's own check); that read decides, and the
+    # answer built after the commit reuses it (a second read is a second chance to fail after the stop is stored).
+    assert calls["n"] == 1

@@ -1,7 +1,8 @@
 # ruff: noqa: F811 - the imported fixture is used as a test argument
 """Lane R1 stage 1 (28 Nov 2026; ADR-330 (58), owner: "the tag never changes"): the position tag is a STORED fact
-(``strategy_position_tags``, migration 0062), written once and never updated; ``kinds_of`` reads it. Real PostgreSQL,
-rolled back. Answer states: draft (no tag), paper, real by Execute, real by held entry, no tag stored yet with an order."""
+(``strategy_position_tags``, migration 0063), written once and never updated; ``kinds_of`` reads it. Real PostgreSQL,
+rolled back. Spec basis: ADR-330 (73), (58). Answer states: draft (no tag), paper, real by Execute, real by held
+entry, an order with no tag stored yet."""
 from __future__ import annotations
 
 import datetime
@@ -16,7 +17,7 @@ from test_exit_door_real_fd3 import _held_book, _sent_basket
 from test_paper_adjustment_limit import _book
 from test_paper_save_paths_fx2 import db  # noqa: F401 - fixture
 
-MIGRATION = "0062_position_tags.py"
+MIGRATION = "0063_position_tags.py"
 AT = datetime.datetime(2026, 11, 27, 11, 0, tzinfo=IST)
 _TAG = text("SELECT tag FROM public.strategy_position_tags WHERE strategy_id = :i")
 _ORDER = text("INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, placed_at) "
@@ -176,7 +177,8 @@ async def test_the_backfill_rule_matches_the_old_derivation(db):
     _b, sent, _j = await _sent_basket(db)
     for sid, want in ((held.id, "real"), (paper.id, "paper"), (sent.id, "real")):
         got = (await db.execute(text(
-            "SELECT CASE WHEN EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = :s) THEN 'real' "
+            "SELECT CASE WHEN EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = :s) "
+            "THEN 'real' "
             "WHEN EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = :s) THEN 'paper' "
             "WHEN EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = :s) THEN 'real' END"),
             {"s": sid})).scalar()

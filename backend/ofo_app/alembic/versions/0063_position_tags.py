@@ -10,7 +10,7 @@ written once, never updated.
 
 Changes (owner-run, one transaction; ADDITIVE: two new tables, nothing existing changed):
 - public.strategy_position_tags(strategy_id PK -> strategies, tag 'paper'|'real', created_at). INSERT-ONLY: a guard
-  trigger refuses every UPDATE and DELETE (SQLSTATE OF062). The application role has SELECT and INSERT; the code writes
+  trigger refuses every UPDATE and DELETE (SQLSTATE OF063). The application role has SELECT and INSERT; the code writes
   the row once (``strategy_store.claim_tag``: under the strategy row lock at a first paper order, or when a real
   strategy's tag is first read); ON CONFLICT DO NOTHING, so the first write decides. No row and no order reads "none";
   no row and an order reads "unknown" (fail closed). (No trigger on paper_orders, execution_plans or
@@ -19,15 +19,15 @@ Changes (owner-run, one transaction; ADDITIVE: two new tables, nothing existing 
   paper order -> paper; else an execution plan -> real).
 - public.real_action_records: append-only book of what a user stored for a REAL position (open, add, exit, stop) and
   what the worker stored when a stop was reached (stop_fired). No broker field: nothing is sent. Insert-only guard
-  (OF062), SELECT and column-limited INSERT for the application role. Unique (user_ref, request_key) where a key is
+  (OF063), SELECT and column-limited INSERT for the application role. Unique (user_ref, request_key) where a key is
   set (a repeated press stores one record); unique (trigger_id) for stop_fired (a fired stop is claimed once).
 - downgrade: refuses while real_action_records holds a row (it exists nowhere else); else drops both tables and the
   guard function.
 
 Old-code compatibility: additive. Old code never reads the tables.
 
-Revision ID: 0062_position_tags
-Revises: 0061_order_request_keys
+Revision ID: 0063_position_tags
+Revises: 0062_order_request_keys_expiry
 """
 from __future__ import annotations
 
@@ -36,8 +36,8 @@ from pathlib import Path
 
 from alembic import op
 
-revision = "0062_position_tags"
-down_revision = "0061_order_request_keys"
+revision = "0063_position_tags"
+down_revision = "0062_order_request_keys_expiry"
 branch_labels = None
 depends_on = None
 
@@ -52,17 +52,17 @@ def _load(filename: str, name: str):
     return module
 
 
-_BASE = _load("0009_minute_history.py", "ofo_migration_0009_for_0062")._BASE
+_BASE = _load("0009_minute_history.py", "ofo_migration_0009_for_0063")._BASE
 
 TAGS = "public.strategy_position_tags"
 RECORDS = "public.real_action_records"
 SEQUENCE = "public.real_action_records_id_seq"
 GUARD = "public.position_tag_tables_guard"
-SQLSTATE = "OF062"
+SQLSTATE = "OF063"
 ACTIONS = ("open", "add", "exit", "stop", "stop_fired")
 RECORD_INSERT_COLUMNS = ("user_ref", "strategy_id", "action", "legs", "reason", "trigger_id", "request_key",
                          "stored_at")
-#: the one derivation, shared by the backfill and the setter (held -> real; else paper order -> paper; else plan -> real)
+#: the one derivation of the backfill (held -> real; else paper order -> paper; else plan -> real)
 _TAG_OF = """CASE
             WHEN EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = {sid}) THEN 'real'
             WHEN EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = {sid}) THEN 'paper'

@@ -153,7 +153,7 @@ def status_word(status: str | None, has_order: bool) -> StatusWord:
     return "Unknown"
 
 
-#: Lane R1: the stored tag (insert-only table, migration 0062); no row = no tag stored yet
+#: Lane R1: the stored tag (insert-only table, migration 0063); no row = no tag stored yet
 _TAG_SQL = "(SELECT t.tag FROM public.strategy_position_tags t WHERE t.strategy_id = s.id)"
 _KINDS = text(
     f"SELECT s.id AS id, {_HAS_ORDER_SQL} AS has_order, {_TAG_SQL} AS tag, {_HELD_SQL} AS held "  # noqa: S608
@@ -867,7 +867,7 @@ async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
 
 
 async def _tag_of_row(conn: Any, r: Any) -> str | None:
-    """The stored tag of a list row; a strategy with an order, no tag and no held entry stores it now (``claim_tag``)."""
+    """The stored tag of a list row; an order, no tag and no held entry: it is stored now (``claim_tag``)."""
     if r.position_tag is None and r.has_order is True and r.held_at_broker is False:
         return await claim_tag(conn, int(r.id))
     return r.position_tag
