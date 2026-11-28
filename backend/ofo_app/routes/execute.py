@@ -325,12 +325,13 @@ async def execute_strategy(  # noqa: PLR0913, PLR0912, C901 - FastAPI dependenci
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
     rates: Annotated[Optional[ChargeRates], Depends(load_charge_rates)],  # noqa: UP045
     keys: Annotated[request_key.KeyStore, Depends(request_key.get_key_store)],
-    request: Request,
+    request: Request = None,  # type: ignore[assignment]  # FastAPI injects it; a direct call (a test) passes none
 ) -> ExecuteOut:
     key = body.client_request_id
     sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id", "seq"})
     claimed = committing = False
-    deadline = getattr(request.state, "arrived_at", _monotonic()) + COMMIT_DEADLINE_S  # B2 item 3: from arrival
+    # B2 item 3: the deadline counts from arrival (the first dependency stamps it)
+    deadline = getattr(getattr(request, "state", None), "arrived_at", _monotonic()) + COMMIT_DEADLINE_S
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if stored.revision != body.revision:  # W-151: FIRST after the load, before any Zerodha read or plan write
