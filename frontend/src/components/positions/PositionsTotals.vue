@@ -48,6 +48,7 @@ const tone = computed(() => ({ profit: 'text-profit', loss: 'text-loss' })[signO
       <p v-if="paperFig.basis" class="text-xs text-ink-muted" data-testid="totals-paper-basis">{{ paperFig.basis }}</p>
       <p v-if="paperFig.reason" class="text-xs text-ink-muted" data-testid="totals-paper-reason">{{ paperFig.reason }}</p>
       <p v-if="paper && paper.loaded && paper.closedNote" class="text-xs text-ink-muted" data-testid="totals-paper-closed-note">{{ paper.closedNote }}</p>
+      <p v-if="paper && paper.loaded && paper.storedAsOf && !paper.stale" class="text-xs text-ink-muted" data-testid="totals-paper-as-of">{{ paper.storedAsOf }}</p>
     </div>
   </div>
 </template>

@@ -13,7 +13,7 @@
     <p v-for="l in noteLines" :key="l.key" class="mt-2 text-xs text-ink-muted" data-testid="paper-exit-link-note">{{ l.text }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
-    <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
+    <ListLoadFailed v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" @retry="onRetry" />
     <p v-if="pageLine" class="mt-2 text-sm text-ink-muted" role="status" data-testid="paper-paused-notice">{{ pageLine }}</p>
     <p v-if="!exitOnlyFor && !loading && items && !items.length" class="mt-2" data-testid="paper-empty">{{ EMPTY }}</p>
     <template v-else-if="!exitOnlyFor && !loading && items">
@@ -40,6 +40,7 @@
       <!-- ADR-330 (15): the server's line under the Paper total ("Includes N closed strategies"), printed as sent, only when served -->
       <p v-if="totals && !compact && !headlineAbove && totals.closedNote" class="mt-1 text-xs text-ink-muted" data-testid="totals-closed-note">{{ totals.closedNote }}</p>
       <p v-if="totals && !compact && totals.leftOut" class="mt-1 text-xs text-ink-muted" data-testid="totals-left-out">{{ totals.leftOut }}</p>
+      <p v-if="totals && !compact && !headlineAbove && totals.storedAsOf && !stale" class="mt-1 text-xs text-ink-muted" data-testid="totals-as-of">{{ totals.storedAsOf }}</p>
       <label class="mt-2 flex items-center gap-2"><input v-model="showClosed" type="checkbox" data-testid="show-closed" /> {{ SHOW_CLOSED_LABEL }}</label>
       <p v-if="!shown.length" class="mt-2" data-testid="paper-all-closed">{{ ALL_CLOSED_TEXT }}</p>
       <!-- GC-UI 6b D-C14 (ADR-201 (2); S-118): the builder's Paper tab is a compact list - name, positions count, the server's paper total
@@ -127,7 +128,7 @@
                     <td data-testid="paper-instrument"><span v-if="p.side" class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ p.side }}</span> <span>{{ p.name }}</span></td>
                     <td data-testid="paper-qty">{{ p.qtyText }}<span v-if="p.qtyNote" class="block text-xs text-ink-muted" data-testid="paper-qty-note">{{ p.qtyNote }}</span></td>
                     <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
-                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpText !== null" class="block text-xs text-ink-muted" data-testid="paper-ltp-at">{{ istClock(p.priceAt) ?? QUOTE_TIME_UNAVAILABLE_TEXT }}</span><span v-if="!stale && p.ltpReason && p.ltpText === null && !quiet(p.ltpReason)" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
+                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpText !== null" class="block text-xs text-ink-muted" data-testid="paper-ltp-at">{{ istStamp(p.priceAt) ?? QUOTE_TIME_UNAVAILABLE_TEXT }}</span><span v-if="!stale && p.ltpReason && p.ltpText === null && !quiet(p.ltpReason)" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
                     <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ stale ? pnlText(null) : p.noPrice ?? pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>
@@ -173,11 +174,11 @@
 <script setup>
 import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { strategyListLabel } from '@/lib/saveDraft'
-import { istClock } from '@/lib/displayFormat'
+import { istClock, istStamp } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
@@ -319,6 +320,7 @@ const pausedNow = computed(() => pausedText(lastGoodAt.value))
 const summary = computed(() => ({
   totalAfter: totals.value ? (quiet(totals.value.totalAfter.reason) ? { ...totals.value.totalAfter, reason: null } : totals.value.totalAfter) : null, // UX-A09: the page notice says it once
   closedNote: totals.value ? totals.value.closedNote : null,
+  storedAsOf: totals.value ? totals.value.storedAsOf ?? null : null, // F3 MUST: the oldest stored-close time, with its date, for the totals strip
   stale: stale.value || (!loading.value && !!errorParts.value), // a failed FIRST read (no list held) is paused too, with the same reason as the list (ADR-330 (10))
   pausedLine: pausedNow.value, // FJ2-1: the paused sentence with the time of the last good prices, for the totals strip
   loaded: !loading.value && items.value !== null,
@@ -478,6 +480,8 @@ const { refresh, refreshNow } = usePaperRefresh({
 })
 onMounted(refresh)
 // N-21: a Save / Cancel / fired stop in the Stops panel: read the list now, not at the next tick (no new timer)
+// FJ2-9 (T3-10): the one failed-load rule: a Retry under the failed read (the list, if one is held, stays under the banner)
+function onRetry() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 function onStopsChanged() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 
 // a read that changes the open contracts of the group being exited ends the exit's open question
