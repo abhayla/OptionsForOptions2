@@ -1,6 +1,6 @@
 """Lane RA2 item 9 (decision-support wording, ADR-003; every new sentence is "pending owner read"):
 (1) an index exit that HAS fired words its line in the past tense (the preview keeps "After these orders");
-(2) the three fired leg-stop ids and the two new fired-exit ids are in ``STOP_LINE_TEMPLATES``, so a stored line reads back;
+(2) the 3 fired leg-stop ids and the 2 new fired-exit ids are in ``STOP_LINE_TEMPLATES``; a stored line reads back;
 (3) the Return door says what really happened when the strategy changed while the user was at Kite.
 Real case (ADR-330 (6), 25 Nov): the exit of the condor's short 26000 CE left max loss at -2,860 before and -12,005.51
 after, with the sold 25400 PE less protected."""
@@ -15,7 +15,7 @@ from ofo.errors.explanations import render_explanation, restore_explanation
 from ofo.tracking.paper_alert import STOP_LINE_TEMPLATES
 from ofo_app.routes import paper as paper_routes
 
-MINUS = "−"
+MINUS = "\u2212"  # the server's minus sign on money text
 
 
 def _leg():

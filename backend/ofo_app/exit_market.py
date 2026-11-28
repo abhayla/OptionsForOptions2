@@ -45,7 +45,8 @@ def entries_sentence(opens: datetime.datetime | None) -> ExplanationText | None:
     "The market is closed. Orders can be placed from 09:15 on <day>." beside ``sentence``, the same day. Only the
     catalogue mints a line, and the two templates (``exit_market_closed_entries`` with a ``day`` slot, ``..._no_day``)
     are Lane FC3's file (explanations.py; FD4 RESULTS "For the owner lane" has the exact rows): until they land
-    the field is None, never a string built here, never a guessed day. ``opens`` None = the calendar cannot name the next open (no day)."""
+    the field is None, never a string built here, never a guessed day. ``opens`` None = the calendar cannot name the
+    next open (no day)."""
     try:
         if opens is None:
             return render_explanation(_ENTRIES_NO_DAY)

@@ -638,7 +638,8 @@ async def _return_with_change(app_engine, admin_engine, monkeypatch, change):
 async def test_r3_a_holding_adopted_during_the_read_refuses_the_return_and_stores_nothing(app_engine, admin_engine,
                                                                                           monkeypatch):
     """R3 (W-151): the adopted holdings were read before the Zerodha wait; another tab adopts one before the lock ->
-    409 ``execution_return_changed`` (RA2 item 9; the Execute-only "no order was prepared" sentence would be false: a plan exists);
+    409 ``execution_return_changed`` (RA2 item 9; the Execute-only "no order was prepared" sentence would be false:
+    a plan exists);
     the plan stays open and no first-fill facts are stored (ADR-276)."""
     from ofo.errors import render  # noqa: PLC0415
     from ofo_app import order_book_store as books  # noqa: PLC0415
