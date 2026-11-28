@@ -1,4 +1,4 @@
-STATUS 23:40 | items 4, 5, 6 + monitoring-state answer + issue 876 cases built; RA2 1f8e0018c merged and verified (F1 no hole, F2 hole fixed); items 1 to 3 DROPPED (RA2's); one quiet full check running | next push: this head after TOTAL PASS | blocker: none (messages to the coordinator are refused: owner's device trust; this line is the report)
+STATUS 23:50 | pushed 686b24ccd and 0f3f21974 (both prepush TOTAL PASS): items 4, 5, 6, RA2 1f8e0018c verified (F1 no hole, F2 hole fixed), W-34 heartbeat fix; items 1 to 3 dropped (RA2's); now: a trade's badge returns when its own first check ends + the start-up statement list for Lane B2, full check running | next push: after TOTAL PASS, before 01:45 | blocker: none
 
 # Lane B1b: worker, monitor, alerts, paper P&L (successor of Lane RA2; base origin/fix/r3-leftovers-2-1128 dc1aeebd8, integration/weekend-r3-1129 already merged there)
 
