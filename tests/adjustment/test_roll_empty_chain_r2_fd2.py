@@ -6,7 +6,7 @@ from dataclasses import replace
 
 import pytest
 from ofo.adjustment.approaches import build_approach
-from test_roll_basis import CFG20, SPOT, _basis, _chain, _condor
+from test_roll_basis import CFG20, SPOT, _chain, _condor
 
 
 @pytest.mark.parametrize("approach", ["A-02", "A-04", "A-05"])

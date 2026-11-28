@@ -10,6 +10,8 @@ from types import SimpleNamespace
 import pytest
 from ofo_app.routes import plan_watch_batch as batch
 
+ROWS, SECONDS_LIMIT, FIRST_HANGING = 20, 2.0, 3
+
 
 class _Db:
     def __init__(self) -> None:
@@ -26,7 +28,7 @@ def _call(ids: str, db: _Db):
 
 
 def test_the_budget_is_one_and_under_the_browsers_limit():
-    assert 0 < batch.BATCH_BUDGET_S < 20  # the browser gives up at 20 s
+    assert 0 < batch.BATCH_BUDGET_S < ROWS  # the browser gives up at 20 s
     assert "not_read" in batch.PlanWatchItemOut.model_fields["state"].annotation.__args__
 
 
@@ -41,11 +43,11 @@ async def test_twenty_hanging_rows_end_at_the_one_budget_not_at_twenty_budgets(m
     monkeypatch.setattr(batch, "BATCH_BUDGET_S", 0.3)
     db = _Db()
     started = asyncio.get_running_loop().time()
-    out = await _call(",".join(str(i) for i in range(1, 21)), db)
+    out = await _call(",".join(str(i) for i in range(1, ROWS + 1)), db)
     took = asyncio.get_running_loop().time() - started
-    assert took < 2.0, took  # one budget (0.3 s), not twenty
-    assert [i.state for i in out.items] == ["not_read"] * 20
-    assert [i.strategy_id for i in out.items] == list(range(1, 21))  # every asked row is named, in order
+    assert took < SECONDS_LIMIT, took  # one budget (0.3 s), not twenty
+    assert [i.state for i in out.items] == ["not_read"] * ROWS
+    assert [i.strategy_id for i in out.items] == list(range(1, ROWS + 1))  # every asked row is named, in order
     assert seen == [1]  # the first hung and used the whole budget; the rest were never waited for
     assert db.rollbacks == 1  # the cut row left the shared session usable
 
@@ -55,7 +57,7 @@ async def test_rows_read_before_the_budget_ends_keep_their_answer_and_a_slow_row
 
     async def fast_then_slow(sid, **_kw):
         calls.append(sid)
-        if sid >= 3:
+        if sid >= FIRST_HANGING:
             await asyncio.sleep(30)
         return SimpleNamespace(as_of=datetime.datetime(2026, 11, 27, 10, 0, tzinfo=datetime.UTC))
 
@@ -69,5 +71,5 @@ async def test_rows_read_before_the_budget_ends_keep_their_answer_and_a_slow_row
 
 @pytest.mark.parametrize("ids", ["", "0", "1,x"])
 async def test_a_bad_id_list_is_still_the_request_refusal(ids):
-    with pytest.raises(Exception):  # noqa: B017, PT011 - the 422 request refusal, unchanged
+    with pytest.raises(Exception):  # noqa: B017 - the 422 request refusal, unchanged
         await _call(ids, _Db())

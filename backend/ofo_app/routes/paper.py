@@ -1589,8 +1589,8 @@ class ExitRiskOut(ApiModel):
     #: ADR-330 (55): a leg stop that leaves a sold option bare answers three lines, each its own fact, built here (the
     #: page prints them as sent); ``warning_text`` is the same lines joined by newlines. None for every other answer.
     warning_lines: list[CatalogueText] | None = None
-    #: FD2 item 4: the server's own aware clock when this answer was made, so the dialog tells the age of a price against
-    #: it, never the browser's clock. Filled by the exit-risk answer.
+    #: FD2 item 4: the server's own aware clock when this answer was made, so the dialog tells the age of a price
+    #: against it, never the browser's clock. Filled by the exit-risk answer.
     server_time: datetime.datetime | None = None
 
 

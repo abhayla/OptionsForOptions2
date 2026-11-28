@@ -2340,6 +2340,18 @@
             "items": {},
             "title": "Lines",
             "type": "array"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Time"
           }
         },
         "required": [
@@ -5316,12 +5328,18 @@
               }
             ],
             "title": "Sentence"
+          },
+          "server_time": {
+            "format": "date-time",
+            "title": "Server Time",
+            "type": "string"
           }
         },
         "required": [
           "closed",
           "sentence",
-          "next_open_at"
+          "next_open_at",
+          "server_time"
         ],
         "title": "ExitMarketOut",
         "type": "object"
@@ -5359,6 +5377,18 @@
               }
             ],
             "title": "Max Loss Before"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Time"
           },
           "state": {
             "enum": [
@@ -7967,6 +7997,29 @@
           "id": {
             "title": "Id",
             "type": "integer"
+          },
+          "now_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Now As Of"
+          },
+          "now_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Now Value"
           },
           "outcome": {
             "enum": [
@@ -12621,7 +12674,8 @@
           "state": {
             "enum": [
               "ok",
-              "refused"
+              "refused",
+              "not_read"
             ],
             "title": "State",
             "type": "string"
@@ -23503,6 +23557,46 @@
           }
         },
         "summary": "Read Positions"
+      }
+    },
+    "/real/strategies/{strategy_id}/triggers": {
+      "get": {
+        "description": "FD2 item 4 (ADR-330 (58)): the armed and fired exits of a strategy read for a REAL trade, the same answer as\n``GET /paper/strategies/{id}/triggers`` (one function, ``_triggers_out``), so a real trade's screen reads them the\nway a paper trade's does. Read only. Rows exist only where the trigger store holds them (the paper route refuses\nto set any for a real position, #877); a real strategy with none answers an empty list, never a made-up row.",
+        "operationId": "list_real_triggers_real_strategies__strategy_id__triggers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Real Triggers"
       }
     },
     "/strategies": {

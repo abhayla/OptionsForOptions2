@@ -64,7 +64,7 @@ def _decode(raw: Any) -> Readings:
     return out
 
 
-async def read(client: Any, now: datetime.datetime) -> Readings:  # noqa: ARG001 - the time is kept for a freshness rule
+async def read(client: Any, now: datetime.datetime) -> Readings:  # the time is kept for a freshness rule
     """Every stored reading, or ``{}`` when none is stored or the store cannot be read (the screens then show none)."""
     try:
         raw = await client.get(key())

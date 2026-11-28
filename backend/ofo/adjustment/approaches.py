@@ -478,7 +478,7 @@ class _Builder:
             points = self.cfg.roll_points_without_delta[self.p.underlying]
             self.basis = ("points", points)
             return points if up else -points
-        target = self.cfg.target_short_delta.get(self.p.expiry_kind)  # #857: an unknown expiry kind is a refusal, not a KeyError
+        target = self.cfg.target_short_delta.get(self.p.expiry_kind)  # #857: unknown kind: a refusal, no KeyError
         if target is None:
             raise _refusal("adjust_roll_basis_unreadable", leg=self.ref(leg))
         self.basis = ("delta", target)

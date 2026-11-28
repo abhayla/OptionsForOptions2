@@ -21,7 +21,10 @@ WAIT_NAMES = frozenset({
     "_server_exit_prices", "owner_kite_reads", "index_spot", "market_reader", "rest_reader", "read_market",
     "to_thread", "wait_for", "read_rest_spot", "get_rest_spot_reader"})
 #: (file, function) -> why the connection is held on purpose or is not this lane's to change
-ALLOW: dict[tuple[str, str], str] = {}  # adjustment_history's entry was removed: it releases first now
+ALLOW: dict[tuple[str, str], str] = {  # adjustment_history's entry was removed: it releases first now
+    ('plan_watch_batch.py', 'plan_watch_batch'):
+        'FD2 #859: the rows share the request session (each row reads the database between its market waits); the '
+        'whole request is cut by ONE time budget (BATCH_BUDGET_S), so the connection is held at most that long'}
 # Seen by hand, not by this scan (takes ``req``, not ``db``): execution_return._return keeps its connection on purpose,
 # the strategy row lock (store.lock_strategy, held to commit) makes one return close a plan once.
 #: guarded = functions that wait AND release first; pinned so a lost release or a new waiter shows

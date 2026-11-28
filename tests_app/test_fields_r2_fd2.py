@@ -92,7 +92,8 @@ async def test_the_workers_readings_round_trip_through_the_store_and_a_bad_snaps
         assert await rule_readings.read(client, AT) == {}
         await client.set(rule_readings.key(), json.dumps({"at": "2026-11-27T11:05:00", "values": {"7:T-13": "1"}}))
         assert await rule_readings.read(client, AT) == {}  # a time with no zone is not a reading
-        await client.set(rule_readings.key(), json.dumps({"at": AT.isoformat(), "values": {"7:T-13": "1.5e2", "x": "1"}}))
+        both = {"at": AT.isoformat(), "values": {"7:T-13": "1.5e2", "x": "1"}}
+        await client.set(rule_readings.key(), json.dumps(both))
         assert await rule_readings.read(client, AT) == {(7, "T-13"): (D("150"), AT)}  # the bad key is dropped alone
     finally:
         await client.aclose()

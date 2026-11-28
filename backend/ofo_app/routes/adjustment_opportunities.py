@@ -247,7 +247,8 @@ def _popup_due(s: store.Suggestion, facts: PopupFacts | None) -> bool:
 def _record(s: store.Suggestion, paper: bool, popup: PopupFacts | None = None,
             readings: Mapping[tuple[int, str], tuple[Decimal, datetime.datetime]] | None = None) -> dict:
     now_value, now_as_of = (readings or {}).get((s.strategy_id, s.rule_id), (None, None))
-    return {"now_value": now_value, "now_as_of": now_as_of, "popup_due": _popup_due(s, popup), "id": s.id, "rule_id": s.rule_id, "trigger_id": s.trigger_id,
+    return {"now_value": now_value, "now_as_of": now_as_of, "popup_due": _popup_due(s, popup), "id": s.id,
+            "rule_id": s.rule_id, "trigger_id": s.trigger_id,
             "stage": stage_name_text(s.stage), "value": s.value, "threshold": s.threshold,
             "condition": condition_text(s), "shown_at": s.shown_at, "outcome": s.shown_outcome,
             "outcome_text": outcome_text(s, paper), "detail": _detail(s), "can_act": s.outcome == "open",
@@ -333,7 +334,7 @@ async def _close(db: Any, work: Any) -> SuggestionOut:
 
 
 async def read_rule_values(now: datetime.datetime) -> dict:
-    """The seam a test replaces: the worker's stored readings (Redis). No bus (the in-process feed) = no worker = none."""
+    """The seam a test replaces: the worker's stored readings (Redis). No bus (in-process feed) = no worker = none."""
     if feed_mode.feed_mode() != feed_mode.BUS:
         return {}
     client = feed_bus.new_client(feed_mode.redis_url())

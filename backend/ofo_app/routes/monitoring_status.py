@@ -30,7 +30,8 @@ from ofo_app.errors import ClosedRoute
 log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 _SAFE = re.compile(r"[A-Za-z0-9_]{1,64}")  # ASCII only: the Identifier type's own pattern
-_WHY = {ms.WORKERS_DOWN, ms.STATE_UNREADABLE, ms.NOT_LISTED, "expiry_kind_unknown", "stale", "disconnected", "leg_missing", "check_failed",
+_WHY = {ms.WORKERS_DOWN, ms.STATE_UNREADABLE, ms.NOT_LISTED, "expiry_kind_unknown", "stale", "disconnected",
+        "leg_missing", "check_failed",
         "market_closed", "user_paused"}
 
 
@@ -62,7 +63,7 @@ def compose(found: Mapping[int, ms.Entry], ids: list[int], now: datetime.datetim
                                      health_text=None, reason_text=None, since_at=since, since_text=since_text))
             continue
         code = e.reason if e.reason in _WHY else "unknown"
-        if f"monitoring_why_{code}" not in EXPLANATIONS:  # FD2 item 4: a code whose sentence is not in the catalogue yet
+        if f"monitoring_why_{code}" not in EXPLANATIONS:  # FD2 item 4: a code with no catalogue sentence yet
             code = "unknown"
         reason = e.reason if _SAFE.fullmatch(e.reason or "") else "unknown"
         out.append(MonitoringOut(strategy_id=sid, watch_state="paused", reason=reason,

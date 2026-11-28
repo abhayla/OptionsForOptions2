@@ -240,7 +240,8 @@ def _forget_app_engines() -> None:
 
 
 def clone_for_file(admin_url: str, app_url: str) -> str:
-    """CREATE <template>_f<pid>_<n> TEMPLATE <template> plus the database-level grants CI gives the app role (a template does
+    """CREATE <template>_f<pid>_<n> TEMPLATE <template> plus the database-level grants CI gives the app role (a template
+    does
     not copy them; schema and table privileges are inside the database and are copied). Raises on any failure, after
     dropping a half-made clone: the caller's tests then ERROR, they never fall back to the shared database."""
     template = _db_name(admin_url)

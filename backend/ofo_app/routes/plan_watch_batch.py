@@ -48,7 +48,7 @@ class PlanWatchItemOut(ApiModel):
     ``status`` (404 not found, 409 ..., 500)."""
 
     strategy_id: int
-    state: Literal["ok", "refused", "not_read"]  # not_read (#859): the request's one time budget ran out before this row
+    state: Literal["ok", "refused", "not_read"]  # not_read (#859): the one time budget ran out before this row
     watch: PlanWatchOut | None = None
     refusal: CatalogueText | None = None
     status: int | None = None
@@ -99,7 +99,7 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
         except asyncio.CancelledError:
             raise
         except Exception as exc:  # noqa: BLE001 - one row's failure is that row's refusal, never the whole reply
-            if isinstance(exc, TimeoutError) and time.monotonic() >= deadline:  # cut by the one budget, not a row's fault
+            if isinstance(exc, TimeoutError) and time.monotonic() >= deadline:  # cut by the one budget
                 items.append({"strategy_id": sid, "state": "not_read"})
             else:
                 message, status = row_answer(exc, f"GET /api/plan-watch row {sid}")
