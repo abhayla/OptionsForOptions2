@@ -85,7 +85,7 @@
             <!-- owner 28 Nov: a REAL group is the same card; its row line says the actions are only stored, and a stored action says it was not sent. It never changes a figure above. -->
             <p v-if="g.positionKind === 'real'" class="mt-1 text-xs text-ink-muted" data-testid="paper-real-line">{{ g.positionKindText ?? REAL_ROW_TEXT }}</p>
             <p v-else-if="g.positionKind === 'unknown'" class="mt-1 text-xs text-ink-muted" data-testid="paper-unknown-kind-line">{{ g.positionKindText ?? KIND_UNREAD_LINE }}</p>
-            <p v-if="g.positionKind === 'real' && recordLineOf(g)" class="mt-1 text-sm font-semibold" role="status" data-testid="paper-record-line">{{ recordLineOf(g) }}</p>
+            <p v-if="g.positionKind === 'real' && groupRecordLine(g)" class="mt-1 text-sm font-semibold" role="status" data-testid="paper-record-line">{{ groupRecordLine(g) }}</p>
             <!-- GC-TP R-19b (Sensibull 090): Breakeven, Max Profit and Max Loss on the card, and a Greeks toggle (off) with per-leg and
                  net Greeks. All server texts; a figure the reply lacks is a dash with its reason, never 0. -->
             <dl class="mt-2 flex flex-wrap items-start gap-6" data-testid="paper-summary">
@@ -234,6 +234,7 @@ const legsText = (g) => {
 const NO_TOTAL = 'No paper total yet: prices are not live'
 const BANNER = 'Paper trades - not real money'
 const MIXED_BANNER = 'Paper trades are not real money. A real position here only stores your actions; nothing is sent to Zerodha.' // pending owner read
+const groupRecordLine = (g) => recordLineOf({ stored_not_sent: g.storedNotSent, record: g.record })
 const hasReal = computed(() => (items.value ?? []).some((g) => g.readable && g.positionKind === 'real'))
 const kindOfId = (id) => (items.value ?? []).find((g) => g.readable && String(g.id) === String(id))?.positionKind ?? 'paper'
 const confirmKind = computed(() => (confirm.value && kindOfId(confirm.value.id) === 'real' ? 'real' : 'paper'))
