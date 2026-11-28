@@ -72,5 +72,5 @@ async def test_flagged_crossed_or_unpriced_index_is_refused_even_when_ticked(quo
 
 
 def test_the_door_passes_the_tick_to_the_entry_facts_call():
-    src = inspect.getsource(paper.place_paper_orders)
+    src = inspect.getsource(paper._place_orders)  # FD2: the door body moved behind place_paper_orders
     assert "confirmed=body.prices_not_live_confirmed" in src.split("entry_facts(", 1)[1].split("if first", 1)[0]

@@ -86,3 +86,18 @@ Opus review of items 1, 2 and #877 (read-only reviewer, Tier A): see the section
 |---|---|---|
 | items 1 to 5, TE (build, tests) | Sonnet (this session) | 130 |
 | Opus review of items 1, 2, #877 | Opus (reviewer) | see below |
+
+## Opus review (items 1, 2, #877): verdict REVISE, handled
+- F1 MAJOR, NOT FIXED in my files: `routes/tracking.py::exit_tracking` (POST /strategies/{id}/tracking/exit) stores paper exits for a REAL (held) position: #877 is bypassed there (200, a paper exit stored). The structural fix is in the one write both user save paths use: in `paper_limit.place_checked` (paper_limit.py:176) refuse any reducing kind (exit) when `strategy_store.kinds_of(db, [strategy_id])` is `real`, with `StrategyRefused("real_position_exit_refused", Failure.CONFLICT)` (the template exists). Needs paper_limit.py or tracking.py: not in this lane's May edit list. For Lane FD / the owner lane; add the test "tracking exit on a held strategy -> 409, orders unchanged".
+- F2 minor FIXED: the `keep` route is refused for a real position too (test_877_keeping_an_exit...).
+- F3 minor, deferred: `cancelled_stops` reads the armed stops before the strategy lock; a stop cancelled by another tab in between can be named, one stored in between is not. Fix: name exactly the ids the cancel UPDATEs return (paper_trigger_store.cancel returns them) or read under the lock; wording only, no leg loses protection.
+- F4 minor, kept: an unknown position kind is not refused here (a failed kinds read aborts the transaction and the next statement fails, nothing is stored). Spec text says fail closed: a decision for the owner lane.
+- F5 known: key store not durable (migration, Lane FD). F6 FIXED: the real-door comment now says a repeat is refused. F7: no route-level test for "unknown outcome keeps the key" or "a stop the monitor fired first is not named" (both behave correctly in the reviewer's runs).
+- Also to file: paper_monitor.py:325 still fires legacy armed stops on real positions as paper orders.
+
+## Coordinator's added items (message 05:25 IST): NOT DONE (tool-call budget)
+1. UX-A18 date "2026-12-01" in the Exit dialog's sold-option warning: not started. Find the sentence (grep the `paper_leg_stop_*` and `paper_exit_*` explanations for a date slot rendered with `str(date)`); if it is in explanations.py it is Lane FC3's: use the one date formatter (`display_contract`'s "1 Dec").
+2. UX-A08 plan read 15 to 60 s: not measured.
+3. Real first fill holds the connection while the broker is waited on: not started (execute.py `_execute`: release before `_banded` / `_reserve_number`'s `asyncio.to_thread`).
+4. test_pool_not_held_across_market_wait failing twice for plan-watch on the unmodified build: not investigated.
+5. F6 refused order shows no sentence: not started (the refusal reply already carries `what_happened` etc.; the page prints only some).

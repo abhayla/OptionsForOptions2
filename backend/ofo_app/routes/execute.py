@@ -113,8 +113,8 @@ class ExecuteIn(BaseModel):
     #: is refused (``execute_plan_changed``) before any Zerodha read, plan number or plan row
     revision: int = Field(gt=0, le=INTEGER_MAX, description="the saved revision the review was built from")
     seq: Optional[RequestSeq] = None  # noqa: UP045 - REQ-119 AC-1: echoed unchanged as the reply's seq
-    #: Lane FD2 item 2 (#869, #871; ADR-017): one UUID per press; a repeat of the same key, strategy and request answers
-    #: the first result and prepares nothing (``ofo_app.request_key``)
+    #: Lane FD2 item 2 (#869, #871; ADR-017): one UUID per press; a repeat of the same key is REFUSED by name
+    #: (``request_key_already_prepared``): never a second sealed Kite form; it prepares nothing (``ofo_app.request_key``)
     client_request_id: Optional[uuid.UUID] = Field(default=None, strict=False)  # noqa: UP045
 
 
@@ -315,7 +315,7 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
             raise _refuse("execute_plan_changed")
         if session is None:
             raise _refuse("gate_broker_not_connected")
-        if key is not None:  # ADR-017: a repeat of this press answers the first result and prepares nothing
+        if key is not None:  # ADR-017: a repeat of this press is refused by name and prepares nothing
             first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
             if first is not None:  # never the same sealed Kite form twice: the repeat is refused by name
                 raise _refuse("request_key_already_prepared")

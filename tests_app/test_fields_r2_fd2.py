@@ -205,3 +205,14 @@ async def test_the_real_read_names_an_armed_and_a_fired_exit_as_the_paper_read_d
     assert real == paper
     assert {t["id"]: t["state"] for t in real["triggers"]} == {armed: "armed", fired: "fired"}
     assert real["triggers"][0]["level"] in ("120.00", "5.00")  # exact decimal text
+
+
+async def test_877_keeping_an_exit_of_a_real_position_is_refused_too(db, notified):
+    from ofo_app import paper_trigger_store as triggers  # noqa: PLC0415
+    app, stored, _ids = await _held(db)
+    tid = await triggers.add(db, stored.id, triggers.NewTrigger("conditional_exit", "above", D("23100"),
+                                                                underlying="NIFTY"))  # a legacy row
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/triggers/{tid}/keep")
+    assert reply.status_code == HTTPStatus.CONFLICT, reply.text[:200]
+    assert [(r.trigger.id, r.cancelled_at is None) for r in await triggers.list_for(db, stored.id)] == [(tid, True)]

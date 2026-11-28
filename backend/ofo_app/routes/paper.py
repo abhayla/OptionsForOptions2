@@ -2182,6 +2182,7 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
     (``check_trigger_levels``) runs first, before the lock (the price read may wait up to 3 s): a level the live price
     has already reached is refused and the old exit stays as it is."""
     stored = await _load_strategy(db, user_ref, strategy_id)
+    await _refuse_real_position(db, strategy_id)  # #877 (review F2): keeping an exit stores a stop again
     current = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}.get(trigger_id)
     if current is not None and current.trigger.kind == "conditional_exit" and _state(current) == "armed":
         again = paper_trigger_store.NewTrigger("conditional_exit", current.trigger.direction, current.trigger.level,
