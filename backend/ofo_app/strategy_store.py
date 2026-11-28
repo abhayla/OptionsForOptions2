@@ -34,7 +34,6 @@ from ofo.engine.legs import Instrument
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
 from ofo.strategy import stored_form as sf
-from ofo_app import txn_holds
 from ofo_app.catalogue_store import load_contract
 
 NOT_FOUND = "not_found"
@@ -179,8 +178,15 @@ async def paper_order_refused(conn: Any, strategy_id: int, order_kinds: Iterable
     broker (a basket was sent and no paper order exists) takes no paper order of any kind, because the order would
     turn its kind from real to paper; a held entry (ADR-292 (4): the user records each broker change with the paper
     forms) refuses only an exit (ADR-330 (64): no exit here), and its kind stays real whatever is recorded. A read
-    that fails PROPAGATES, like ``kinds_of``."""
-    kind = (await kinds_of(conn, [strategy_id])).get(strategy_id, "unknown")
+    that fails answers the not-available refusal (nothing stored)."""
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415 - only this answer needs it
+
+    try:
+        kind = (await kinds_of(conn, [strategy_id])).get(strategy_id, "unknown")
+    except SQLAlchemyError:  # FD5 D (F4): a failed kind read is a refusal with a catalogue sentence, never a bare 500
+        from ofo_app.errors import Failure  # noqa: PLC0415
+        from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
+        raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
     if kind == "unknown":
         return True
     if kind != "real":
@@ -440,7 +446,6 @@ async def _locked(conn: Any, user_ref: str, strategy_id: int) -> Any:
                                                    "user_ref": user_ref})).one_or_none()
     if row is None:
         raise StrategyStoreError(NOT_FOUND, f"strategy {strategy_id}")
-    txn_holds.mark(conn)  # RA N6: a failing optional read on this session must not roll the lock away
     return row
 
 

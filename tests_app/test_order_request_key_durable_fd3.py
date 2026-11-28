@@ -257,40 +257,34 @@ async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(
     assert again.status_code == HTTPStatus.CREATED, again.text[:300]
 
 
-async def test_ra_n5_the_deadline_counts_from_the_requests_first_line_not_from_after_the_early_work(
-        db, notified, keys, monkeypatch):
-    """Lane RA N5: the page gives up at 10 s. Early work (the key lookup and claim: 3 s here) plus the orders' own work
-    (6 s) is 9 s after arrival: past the 8 s server deadline, so it refuses with nothing stored (before the fix the
-    deadline started AFTER the early work and this commit went through at about 11 s). The clock moves only when the
-    early work and the orders' work run."""
-    from ofo_app import paper_store  # noqa: PLC0415
+async def test_n5_the_deadline_counts_from_the_requests_entry_not_from_after_the_early_work(db, notified, keys,
+                                                                                            monkeypatch):
+    """FD5 N5: the 8 s deadline started after the key lookup and the Redis claim, so a request that spent 3 s there
+    could commit at 11 s, after the page's 10 s timeout. Now the clock starts at the entry: entered at 0, 3 s spent in
+    the early work, the commit check at 9 s is past 8 s from the entry (it would be 6 s from the old start)."""
     from ofo_app.routes import paper as route  # noqa: PLC0415
     app, stored, *_ = await _setup(db)
     _use(app, keys)
     _, orders = _prices(stored)
-    now = [0.0]
-    monkeypatch.setattr(route, "_monotonic", lambda: now[0])
-    real_begin, real_place = request_key.begin, paper_store.place
+    now = {"t": 0.0}
+    real_lookup = request_key.lookup
 
-    async def slow_begin(*args, **kwargs):
-        now[0] += 3.0  # the Redis begin and the lookup before it
-        return await real_begin(*args, **kwargs)
+    async def slow_lookup(*a, **k):
+        now["t"] = 3.0  # the early work took 3 s
+        return await real_lookup(*a, **k)
 
-    async def slow_place(*args, **kwargs):
-        now[0] += 6.0  # the orders' own work
-        return await real_place(*args, **kwargs)
-    monkeypatch.setattr(request_key, "begin", slow_begin)
-    monkeypatch.setattr(paper_store, "place", slow_place)
-    key = uuid.uuid4()
-    late = await _post(app, stored, _body(orders, key))
+    from ofo_app import paper_limit  # noqa: PLC0415
+    real_place = paper_limit.place_checked
+
+    async def place_at_nine(*a, **k):
+        now["t"] = 9.0  # the work before the commit took 6 s more: the commit check reads 9 s after the entry
+        return await real_place(*a, **k)
+    monkeypatch.setattr(request_key, "lookup", slow_lookup)
+    monkeypatch.setattr(paper_limit, "place_checked", place_at_nine)
+    monkeypatch.setattr(route, "_monotonic", lambda: now["t"])
+    late = await _post(app, stored, _body(orders, uuid.uuid4()))
     assert late.status_code == HTTPStatus.CONFLICT and "took too long" in late.text, late.text[:300]
     assert await _count(db, stored) == 0
-    now[0] = 0.0  # the same press again, quicker (2 s + 4 s): the key was freed, the orders are placed once
-    monkeypatch.setattr(request_key, "begin", real_begin)
-    monkeypatch.setattr(paper_store, "place", real_place)
-    again = await _post(app, stored, _body(orders, key))
-    assert again.status_code == HTTPStatus.CREATED, again.text[:300]
-    assert await _count(db, stored) == len(orders)
 
 
 async def test_ra_n6_a_failed_catalogue_read_keeps_the_request_claim_and_the_strategy_row_lock(
@@ -317,32 +311,6 @@ async def test_ra_n6_a_failed_catalogue_read_keeps_the_request_claim_and_the_str
             with pytest.raises(DBAPIError):
                 await other.execute(text("SELECT id FROM public.strategies WHERE id = :i FOR UPDATE NOWAIT"),
                                     {"i": strategy})
-        await conn.rollback()
-
-
-async def test_ra_n6_a_session_that_holds_nothing_takes_no_savepoint_and_a_failed_read_still_refuses(app_engine):
-    """Lane RA N6: a read-only request pays no extra statement (the latency ceilings count them) and a failed catalogue
-    read still raises ``CatalogueUnreadable`` and leaves the session usable (the old whole-session rollback)."""
-    import datetime  # noqa: PLC0415
-
-    from ofo_app.adjustment_readers import CatalogueUnreadable, stored_kind  # noqa: PLC0415
-
-    seen: list[str] = []
-
-    async def broken(db):
-        seen.append("read")
-        await db.execute(text("SELECT 1 / 0"))
-    async with app_engine.connect() as conn:
-        await conn.begin()
-        statements: list[str] = []
-        from sqlalchemy import event  # noqa: PLC0415
-        event.listen(conn.sync_connection, "before_cursor_execute",
-                     lambda _c, _cur, stmt, *_a: statements.append(stmt.strip().split()[0].upper()))
-        with pytest.raises(CatalogueUnreadable):
-            await stored_kind(conn, "NIFTY", datetime.date(2026, 12, 29), load=broken)
-        assert seen == ["read"] and "SAVEPOINT" not in statements, statements
-        await conn.begin()
-        assert (await conn.execute(text("SELECT 1"))).scalar_one() == 1  # usable after the failed read
         await conn.rollback()
 
 
@@ -412,3 +380,33 @@ async def test_ra_n8_a_claim_runs_the_expiry_when_due_and_a_failed_expiry_never_
     async with app_engine.begin() as conn:
         await request_key.claim_in_transaction(conn, USER, key, strategy, BODY, "paper")
     assert key in {r.request_key for r in await _rows_of_keys(admin_engine)}  # the claim committed all the same
+
+
+async def test_f_a_failing_catalogue_read_keeps_the_claim_and_stores_orders_with_their_key(
+        db, notified, keys, monkeypatch):
+    """Class fix (``stored_kind``): on the production tracked-reader shape (the request's OWN session,
+    ``get_tracked_reader`` with no test override) a catalogue read that fails must roll back only its savepoint. It used
+    to call ``db.rollback()``, which dropped the caller's order-key claim and strategy lock, and the orders then
+    committed with no key row. Now: 201, the orders stored, and the key row done."""
+    from ofo_app import adjustment_readers as readers  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_tracked_reader  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+
+    app, stored, _ids = await _open(db)  # an open paper position: the reader reaches ``stored_kind``
+    _use(app, keys)
+    app.dependency_overrides.pop(get_tracked_reader)  # production: ``partial(read_tracked, db=<the request>)``
+    monkeypatch.setattr(readers, "current_user_ref", lambda: stored.user_ref)
+
+    async def broken(_db, _name=None):
+        raise OperationalError("SELECT", {}, Exception("catalogue read failed"))
+    monkeypatch.setattr(readers, "load_catalogue", broken)
+    before = await _count(db, stored)
+    _, orders = _prices(stored)
+    key = uuid.uuid4()
+    reply = await _post(app, stored, _body(orders, key))
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert await _count(db, stored) == before + len(orders)
+    state = (await db.execute(text("SELECT state FROM public.order_request_keys WHERE request_key = :k"),
+                              {"k": key})).scalar_one()
+    assert state == "done"

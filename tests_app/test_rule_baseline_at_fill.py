@@ -194,3 +194,18 @@ def test_already_true_after_adjustment_n_reads_the_adr258_wording():
     assert "Already true after adjustment 2." == result_out(held, None)["wording"].what_happened
     entry = dataclasses.replace(held, after=0)
     assert "Already true when tracking started." == result_out(entry, None)["wording"].what_happened
+
+
+def test_fr_f3_an_unknown_kind_with_every_t10b_stage_blank_is_not_checked_never_a_flag():
+    """FR F3 nit: with a time exit in the plan and the expiry kind unknown (no days left), a copy whose T-10b has no
+    value in any stage answered a Flag; it answers "not checked" (the trigger has no values), as a known kind does."""
+    _scn, _position, now, body = _adj02()
+    body = _with_time_exit(body)
+    body["guards"] = {**body.get("guards", {}), "time_exit": "14:30"}
+    for kind in ("weekly", "monthly"):
+        body["triggers"]["T-10b"][kind] = [""] * len(body["triggers"]["T-10b"][kind])
+    expiry = datetime.date(2026, 11, 6)
+    check_at = dataclasses.replace(_after_basket(now), hhmm="14:31", today=expiry, expiry=expiry, days_left=None)
+    ev = pe.evaluate(body, check_at, {}, None, gap_until="09:30")
+    mine = next(r for r in ev.results if r.rule_id == "T-10b")
+    assert isinstance(mine, pe.NotChecked) and mine.code == "adjust_trigger_no_expiry_values", mine

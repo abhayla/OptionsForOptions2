@@ -160,3 +160,16 @@ async def test_ux_a18_the_warning_names_the_sold_leg_in_the_apps_date_style_neve
     body = (await _ask(app, stored.id, _exit_of(ids, legs, [_bought_call(legs)]))).json()
     assert not re.search(r"\d{4}-\d{2}-\d{2}", body["warning_text"]), body["warning_text"]
     assert re.search(r"\d{1,2} [A-Z][a-z]{2} \d+ [CP]E", body["warning_text"]), body["warning_text"]
+
+
+async def test_the_exit_dialog_names_the_sold_option_in_the_screen_date_style_never_iso(db):
+    """O-R-07 (builder: "Sold option with less protection: NIFTY 25600 PE 2026-12-01" on exiting the bought put): the
+    sentence's leg names come from ``display_contract`` ("NIFTY 1 Dec 25600 PE"), never the ISO record form."""
+    import re  # noqa: PLC0415
+    app, stored, ids, legs = await _condor(db)
+    reply = await _ask(app, stored.id, _exit_of(ids, legs, [_bought_call(legs)]))
+    assert reply.status_code == HTTPStatus.OK, reply.text
+    text = reply.json()["warning_text"]
+    sentence = text[text.index("less protection:"):]
+    assert not re.search(r"\d{4}-\d{2}-\d{2}", sentence), sentence
+    assert re.search(r"less protection: [A-Z]+ \d{1,2} [A-Z][a-z]{2} \d+ (CE|PE)", sentence), sentence

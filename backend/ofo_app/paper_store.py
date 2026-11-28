@@ -53,8 +53,11 @@ _STATUS = text("SELECT status FROM public.strategies WHERE id = :id")
 _STALE = ("FROM public.paper_triggers WHERE strategy_id = :sid AND fired_at IS NULL AND cancelled_at IS NULL "
           "AND (CAST(:none AS BOOLEAN) OR (kind = 'leg_stop' AND NOT contract_id = ANY(CAST(:open AS BIGINT[]))))")
 _STALE_IDS = text("SELECT id " + _STALE + " ORDER BY id")
-_STALE_CANCEL = text("UPDATE public.paper_triggers SET cancelled_at = clock_timestamp() WHERE id IN (SELECT id "  # noqa: S608
-                     + _STALE + ") RETURNING id")
+# FD5 (Opus review F2): the conditions sit on the UPDATE's own row, not in a self-subquery: under READ COMMITTED a row a
+# concurrent cancel already took is re-checked against ITS new version and skipped, so ``RETURNING id`` names only what
+# THIS statement cancelled
+_STALE_CANCEL = text("UPDATE public.paper_triggers SET cancelled_at = clock_timestamp() "  # noqa: S608
+                     + _STALE.replace("FROM public.paper_triggers WHERE", "WHERE") + " RETURNING id")
 _SELECT = text(f"SELECT {_COLUMNS} FROM public.paper_orders "  # noqa: S608 constant columns
                "WHERE strategy_id = :id ORDER BY id")
 _SELECT_TRACKED = text("SELECT DISTINCT strategy_id FROM public.paper_orders "
@@ -139,11 +142,12 @@ async def _refuse_off_paper(conn: Any, strategy_id: int, paper: Sequence[Any]) -
             raise StrategyRefused(position_kind.EXIT_REFUSED, Failure.CONFLICT)
 
 
-async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,
-                entry: EntryFacts | None = None) -> tuple[StoredOrder, ...]:
+async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,  # noqa: C901, PLR0913
+                entry: EntryFacts | None = None, swept: list[int] | None = None) -> tuple[StoredOrder, ...]:
     """Stores ``orders`` as given on an empty book, buys first otherwise (D-02; module docstring) and returns the
     whole book as stored; at the strategy's FIRST fill (the book empty before this call) also its entry facts
-    ``entry`` when known (ADR-243), same transaction."""
+    ``entry`` when known (ADR-243), same transaction. ``swept`` (FD5 2a): when given, the ids of the armed triggers
+    this call's stale-stop sweep cancelled are appended to it (what ``UPDATE ... RETURNING id`` returned)."""
     if not orders:
         raise ValueError("place needs at least one order")
     paper = [o.as_paper() for o in orders]  # refuses a bad side, kind, quantity or price before any write
@@ -168,7 +172,9 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
         if any(o.kind in REDUCING_KINDS for o in paper) and not any(
                 p.net_quantity for p in net_positions(book, {}).positions):
             await conn.execute(_CLOSE, {"id": strategy_id})  # GC-ICGUIDE g23: last open leg went
-        await reconcile_triggers(conn, strategy_id, book)  # ADR-317 (4): every leg change passes here
+        gone = await reconcile_triggers(conn, strategy_id, book)  # ADR-317 (4): every leg change passes here
+        if swept is not None:
+            swept.extend(gone)
         if first_fill and entry is not None:  # written once; a later fill never reaches here (ADR-243)
             await entry_facts_store.record_first(conn, strategy_id, entry)
     return await load(conn, strategy_id)

@@ -62,7 +62,7 @@ class _Cat:
 
 
 def _catalogue(monkeypatch, futures):
-    async def load(_db):
+    async def load(_db, _name=None):
         return _Cat([_Row("NIFTY", d, True) for d in futures] + [_Row("NIFTY", base.EXPIRY, False)])
     monkeypatch.setattr(readers, "load_catalogue", load, raising=False)
 
@@ -115,17 +115,19 @@ def test_a_stored_weekly_trade_reads_the_weekly_row(seams, monkeypatch):
 @pytest.mark.parametrize("futures", [(), (datetime.date(2026, 10, 27),)])
 def test_a_kind_that_cannot_be_known_checks_no_stop_and_never_reads_weekly(seams, monkeypatch, futures):
     """No future listed, or the leg is past the last listed future: the position's kind stays "" and the live check
-    gets no stop lines (not checked), never the weekly row."""
+    checks NO percent stop (not checked), never the weekly row. FD5 3.6: the stop lines now exist for an unknown kind
+    (so a kind-free stop such as the 2x credit has its result), but the percent line carries no figure and says why."""
     _catalogue(monkeypatch, futures)
     seams.plan = base._plan(body=_weekly_monthly_body())
     tracked = base._read(seams, base.ENTRY)
     assert tracked.position.expiry_kind == ""
     line, state = _stop_percent(tracked, _weekly_monthly_body())
-    assert line is None and state.days_left is None
+    assert line is None or (line.figure is None and line.reason == "stop_expiry_kind_unknown")
+    assert state.days_left is None
 
 
 def test_a_catalogue_read_that_fails_leaves_the_kind_empty(seams, monkeypatch):
-    async def broken(_db):
+    async def broken(_db, _name=None):
         raise RuntimeError("database down")
     monkeypatch.setattr(readers, "load_catalogue", broken, raising=False)
     seams.plan = base._plan(body=_weekly_monthly_body())
@@ -136,7 +138,7 @@ def test_a_catalogue_read_that_fails_leaves_the_kind_empty(seams, monkeypatch):
 def test_the_kind_is_read_for_the_nearest_leg_not_the_first_one_ordered(monkeypatch):
     import asyncio  # noqa: PLC0415
 
-    async def load(_db):
+    async def load(_db, _name=None):
         return _Cat([_Row("NIFTY", d, True) for d in FUTURES])
     monkeypatch.setattr(readers, "load_catalogue", load, raising=False)
     far, near = SimpleNamespace(expiry=F2), SimpleNamespace(expiry=datetime.date(2026, 12, 2))

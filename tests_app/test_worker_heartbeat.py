@@ -92,3 +92,33 @@ async def test_the_scenario_role_has_no_bus_client_so_it_never_writes_the_live_h
 def test_the_heartbeat_skew_is_the_snapshots_skew():
     from ofo_app import monitoring_state  # noqa: PLC0415
     assert feed_bus.HEARTBEAT_SKEW_S == monitoring_state.CLOCK_SKEW_S
+
+
+def test_fd5_a_stamp_that_does_not_change_goes_stale_by_the_readers_own_clock_even_when_it_looks_young():
+    """FD5 3.5 (Opus review F1, #879): a worker whose clock runs 4 s ahead and then dies stamps NOW + 4 once; the age
+    rule alone calls that fresh until real time passes the stamp + 120 s. The reader notes when it last CHANGED."""
+    reader = feed_bus.HeartbeatReader()
+    stamp = (NOW + datetime.timedelta(seconds=4)).isoformat()
+    assert reader.judge(stamp, NOW) == feed_bus.FRESH  # the first reading: nothing to compare with
+    at = NOW + datetime.timedelta(seconds=120)
+    assert feed_bus.judge_heartbeat(stamp, at + datetime.timedelta(seconds=1)) == feed_bus.FRESH  # the age rule alone
+    assert reader.judge(stamp, at) == feed_bus.FRESH  # 120 s unchanged: still inside the window
+    assert reader.judge(stamp, at + datetime.timedelta(seconds=1)) == feed_bus.STALE  # 121 s unchanged: stopped
+    moved = (at + datetime.timedelta(seconds=2)).isoformat()
+    assert reader.judge(moved, at + datetime.timedelta(seconds=2)) == feed_bus.FRESH  # a new stamp is live again
+
+
+def test_fd5_a_changing_stamp_stays_fresh_and_the_unreadable_answers_are_not_touched():
+    reader = feed_bus.HeartbeatReader()
+    for n in range(0, 600, 30):
+        at = NOW + datetime.timedelta(seconds=n)
+        assert reader.judge(at.isoformat(), at) == feed_bus.FRESH
+    assert reader.judge(None, NOW + datetime.timedelta(seconds=700)) == feed_bus.UNREADABLE
+    assert reader.judge("not a time", NOW + datetime.timedelta(seconds=760)) == feed_bus.UNREADABLE
+
+
+def test_fd5_the_monitoring_skew_equals_the_feed_bus_skew():
+    """FD5 3.2: ``monitoring_state.CLOCK_SKEW_S`` (Lane FE3's file) and ``feed_bus.HEARTBEAT_SKEW_S`` are one number;
+    FE3 makes the first the second, and until then this holds them equal."""
+    from ofo_app import monitoring_state  # noqa: PLC0415
+    assert monitoring_state.CLOCK_SKEW_S == feed_bus.HEARTBEAT_SKEW_S

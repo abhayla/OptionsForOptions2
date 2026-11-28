@@ -29,7 +29,7 @@ from redis.exceptions import RedisError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
-from ofo_app import feed_bus, feed_mode, txn_holds
+from ofo_app import feed_bus, feed_mode
 from ofo_app.errors import Failure
 from ofo_app.strategy_refused import StrategyRefused
 
@@ -234,7 +234,6 @@ async def claim_in_transaction(db: Any, user_ref: str, key: uuid.UUID, strategy_
         await db.rollback()
         raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY) from None
     if inserted is not None:
-        txn_holds.mark(db)  # RA N6: a failing optional read on this session must not roll the claim away
         await _expire_when_due(db)
         return
     row = await _read(db, user_ref, key)
