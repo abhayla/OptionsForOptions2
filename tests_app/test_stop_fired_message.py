@@ -65,7 +65,9 @@ async def test_a_fired_leg_stop_is_one_informational_history_row_with_the_max_lo
     monitor, stored, _ids, fires = await _fire_leg(db, SHORT_CALL, "140.70", "141.00")
     assert fires == 1 and monitor.fires == 1
     [(title, text)] = await _alerts(db, stored.id)
-    assert "If this stop fires" not in text and "max loss" not in text.lower()  # UX-A03: not a future case
+    # UX-A03 / Lane FE3 item 6: not a future case; the line is the past-tense one with the figure at the fill
+    assert "If this stop fires" not in text and "becomes" not in text
+    assert text.endswith("max loss at that point Rs 12,025.00")
     assert text.startswith("Stop-loss: ")
     assert f"(#{stored.id}" in title
     assert await _paper_alert_rows(db, stored.id) == 0  # not written twice, not in the old table
@@ -111,7 +113,8 @@ async def test_a_long_wing_stop_gets_the_engines_own_answer_no_fixed_maximum(db)
     leaves the short call bare, so the line says there is no fixed maximum loss."""
     _, stored, _, fires = await _fire_leg(db, LONG_CALL, "5.00", "5.50")
     [(_, text)] = await _alerts(db, stored.id)
-    assert fires == 1 and "If this stop fires" not in text and "maximum loss" not in text
+    assert fires == 1 and "If this stop fires" not in text
+    assert text.endswith("there was no fixed maximum loss at that point")  # Lane FE3 item 6: the past tense
 
 
 async def test_m1_a_fired_long_put_stop_names_the_bare_put_as_the_screens_do(db):
@@ -120,7 +123,9 @@ async def test_m1_a_fired_long_put_stop_names_the_bare_put_as_the_screens_do(db)
     _, stored, _, fires = await _fire_leg(db, LONG_PUT, "5.00", "5.50")
     [(_, text)] = await _alerts(db, stored.id)
     assert fires == 1 and "2026-" not in text
-    assert "If this stop fires" not in text and "14,45,502.50" not in text and "less protection" not in text
+    # Lane FE3 item 6: the figure at the fill, said in the past tense (never the preview's "becomes ... (now ...)")
+    assert "If this stop fires" not in text and "less protection" not in text
+    assert text.endswith("max loss at that point Rs 14,45,502.50"), text
 
 
 async def test_an_index_exit_gets_a_line_only_when_the_exit_check_says_yes(db):
