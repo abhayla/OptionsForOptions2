@@ -24,6 +24,7 @@ not found or another user's -> its 404. Writes nothing. Suggest-only (ADR-003): 
 """
 from __future__ import annotations
 
+import asyncio
 import dataclasses
 import datetime
 import logging
@@ -123,6 +124,9 @@ async def prefetch(db: Any, strategy_ids: list[int], user_ref: str) -> BatchRead
         found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)} if ids else {}
         with_rows = [sid for sid, rows in triggers.items() if rows]
         kinds = await strategy_store.kinds_of(db, with_rows) if with_rows else {}
+    except asyncio.CancelledError:  # the request went away between the install and the return: put the session back
+        restore()
+        raise
     except Exception as exc:  # noqa: BLE001 - the prefetch is only a saving: any failure, each row reads for itself
         log.warning("plan watch batch: shared reads failed, each row reads for itself: %s", type(exc).__name__)
         restore()

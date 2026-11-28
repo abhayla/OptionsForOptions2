@@ -100,8 +100,9 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     items: list[dict] = []
     deadline = time.monotonic() + BATCH_BUDGET_S
     ids = _ids_of(strategy_ids)
-    reads = await prefetch(db, ids, user_ref)  # I-48: the shared reads, once (a failure: each row reads its own)
+    reads = BatchReads()
     try:
+        reads = await prefetch(db, ids, user_ref)  # I-48: the shared reads, once (a failure: each row reads its own)
         try:
             await release_connection(db)  # D-36 (c): shared reads done, rows wait on prices
         except Exception:  # noqa: BLE001 - a broken connection: each row then refuses on its own, the batch still answers

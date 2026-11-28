@@ -1,4 +1,4 @@
-STATUS 00:10 | PUSH 5 pending check: PC W-02 FIX, fixed round trips: one batch answer of nine rows 219 -> 136 (earlier cuts) -> 12 QUERIES, the same 12 for 3 rows (the count no longer grows with rows); at the PC's 134 ms a query that is 12 x 0.134 = 1.6 s of database time, was 88 queries / 11.8 s | page asked 11 times: see 'PC round 2 W-02' | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request | blocker: send_message to @parent refused; this line is the report
+STATUS 23:55 | PC W-02 FIX PUSHED (baa2fb8f0, TOTAL PASS) and review fixes pushed next: one batch answer of nine rows 219 -> 136 -> 12 QUERIES, the same 12 for 3 rows (the count no longer grows with rows); at the PC's 134 ms a query that is 12 x 0.134 = 1.6 s of database time, was 88 queries / 11.8 s | page asked 11 times: see 'PC round 2 W-02' | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request | blocker: send_message to @parent refused; this line is the report
 
 # Lane B3 results (28 Nov 2026)
 
@@ -85,6 +85,16 @@ its database is next door, so the statement counts 219 -> 136 were the wrong goa
   still let an in-flight batch for the same ids finish instead of cancelling it (`readPlanBatches`, `lib/planWatchQueue.js`).
 - Still per answer, not this lane's files: the 3 settings reads of the request dependencies and the savepoint trio of the
   first row's expiry kind could go too (12 -> 6): see "For the owner lane".
+
+- Opus review (Tier A) of this change: REVISE, no finding that can cost money; no row got another row's or another user's
+  data in any run (store level, 39 statements compared, and end to end with a pause in force, open and dismissed records,
+  entry and basket facts, rule memory, a soft-deleted strategy). Fixed, test first: F1 a strategy id the user does not own
+  (or a deleted one) raised inside the prefetch and dropped every shared read (71 queries for 3 rows; now 17 for 3 rows plus
+  one missing id, the row's own refusal costs 5); F2 any statement that is not a read now drops the memory, so the
+  stop-base backfill's re-read sees the write; F3 a cancellation between the install and the return restores the session;
+  F4 the cut-off time memo is kept per parameters. Not fixed, listed: F5 the served rows are namedtuples without
+  `_mapping`, `.keys()`, `.scalars()` (every current caller uses first, all, one_or_none, scalar_one_or_none and
+  positions or field names); M1 triggers, pause and records are as of the request start for every row.
 
 ## Item 3 (I-202, O-P-03): running trade, not a draft
 Real case (plan row I-202): "A running paper trade shows the Draft Live data not connected heading above the monitoring

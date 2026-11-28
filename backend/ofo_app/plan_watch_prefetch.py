@@ -252,11 +252,15 @@ async def read_all(conn: Any, ids: list[int], user_ref: str) -> Prefetch:
             values = dict(zip(table.cols, record, strict=True))
             per.setdefault(int(values[SID]), []).append(named(*[values[c] for c in table.cols if c != SID]))
         data[name] = per
-    for sid, rows in data["strategies"].items():  # a strategy of someone else is not in this table: left to the row
-        if not rows:
-            for per in data.values():
-                per.pop(sid, None)
+    for sid in [sid for sid, rows in data["strategies"].items() if not rows]:  # not the user's (or gone): the row reads
+        for per in data.values():
+            per.pop(sid, None)
     return Prefetch(user_ref, data, learned=await _learn_owns())
+
+
+def _once_key(key: str, params: Any) -> str:
+    """The memo key of a statement with no id: its text and its parameters (another ``reason`` is another question)."""
+    return f"{key}|{sorted(params.items()) if isinstance(params, dict) else params}"
 
 
 def install(db: Any, pre: Prefetch) -> Callable[[], None]:
@@ -265,8 +269,8 @@ def install(db: Any, pre: Prefetch) -> Callable[[], None]:
 
     def serve(statement: Any, params: Any) -> Rows | None:
         key = norm(statement)
-        if key in pre.once:
-            return Rows(pre.once[key])
+        if _once_key(key, params) in pre.once:
+            return Rows(pre.once[_once_key(key, params)])
         match = _MATCH.get(key) or pre.learned.get(key)
         if match is None or not isinstance(params, dict):
             return None
@@ -281,10 +285,14 @@ def install(db: Any, pre: Prefetch) -> Callable[[], None]:
         if served is not None:
             pre.served += 1
             return served
+        key = norm(statement)
+        if not key.upper().startswith(("SELECT", "WITH")):  # a write: the memory may no longer be what the table holds
+            pre.data.clear()
+            pre.once.clear()
         result = await real(statement, params, *args, **kwargs)
-        if norm(statement) in _ONCE and not args and not kwargs:
+        if key in _ONCE and not args and not kwargs:
             rows = result.all()
-            pre.once[norm(statement)] = rows
+            pre.once[_once_key(key, params)] = rows
             return Rows(rows)
         return result
 

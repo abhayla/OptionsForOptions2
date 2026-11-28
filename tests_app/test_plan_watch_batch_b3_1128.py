@@ -8,6 +8,7 @@ from __future__ import annotations
 
 from decimal import Decimal
 
+import pytest
 from httpx import ASGITransport, AsyncClient
 from ofo_app import paper_store, paper_trigger_store
 from test_adjustment_check import (
@@ -68,7 +69,7 @@ async def _batch_and_singles(ids: list[int], single_for: list[int] | None = None
         statements = count[0]
         assert r.status_code == 200, r.text  # noqa: PLR2004
         singles = {}
-        for sid in single_for or ids:
+        for sid in ids if single_for is None else single_for:
             s = await ac.get(f"/api/strategies/{sid}/plan-watch")
             assert s.status_code == 200, s.text  # noqa: PLR2004
             singles[sid] = s.json()
@@ -89,6 +90,8 @@ BATCH_QUERY_CEILING = 12
 #: link is modelled as this constant per query, no sleep and no clock.
 LINK_S_PER_QUERY = Decimal("0.134")
 PAGE_BUDGET_S = Decimal(2)  # the plan's target for one answer of nine strategies
+MISSING_ID_EXTRA = 5  # queries the row of one id that is not the user's may cost on its own (its refusal), measured
+WRITE_AND_REREAD = 2
 
 
 async def test_nine_rows_each_row_its_own_and_a_fixed_number_of_queries(app_db_url, monkeypatch):  # noqa: F811
@@ -264,3 +267,73 @@ def test_every_statement_copy_equals_the_stores_own():
     assert set(stores) == set(pf.ORIGINAL)
     for name, statement in stores.items():
         assert pf.norm(statement) == pf.ORIGINAL[name], name
+
+
+async def test_one_id_the_user_does_not_own_does_not_cost_the_whole_saving(app_db_url, monkeypatch):  # noqa: F811
+    """Opus review F1 (real case: a Positions list holding a strategy deleted meanwhile, or a missing id): the removal
+    of an unowned id used to raise inside the prefetch, which dropped EVERY shared read (71 queries for 3 rows)."""
+    ids = await seed_rows(app_db_url, monkeypatch)
+    _b, _s, three = await _batch_and_singles(ids[:3], single_for=[])
+    body, _s, with_missing = await _batch_and_singles([*ids[:3], 987654], single_for=[])
+    assert [i["state"] for i in body["items"]] == ["ok", "ok", "ok", "refused"]
+    assert with_missing <= three + MISSING_ID_EXTRA, f"3 rows: {three} queries, with one missing id: {with_missing}"
+
+
+class _Real:
+    """A session double: records what reaches the database."""
+
+    def __init__(self):
+        self.reached = []
+
+    async def execute(self, statement, params=None, *args, **kwargs):
+        self.reached.append(str(getattr(statement, "text", statement)))
+        raise RuntimeError("the database")  # a stand-in answer is not needed: the test only looks at who was asked
+
+
+async def test_a_statement_that_is_not_a_read_drops_the_memory():
+    """Opus review F2: a write on the check path (the stop-base backfill) is followed by a re-read of the same table;
+    that re-read must see the write, not the request-start memory."""
+    from ofo_app import plan_watch_prefetch as pf  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
+    plan = text(pf.ORIGINAL["plan"])
+    pre = pf.Prefetch("owner", {"plan": {1: ["memory"]}})
+    db = _Real()
+    restore = pf.install(db, pre)
+    assert (await db.execute(plan, {"strategy_id": 1, "user_ref": "owner"})).all() == ["memory"]
+    with pytest.raises(RuntimeError):
+        await db.execute(text("UPDATE public.strategy_adjustment_plans SET stop_base = NULL"), {})
+    with pytest.raises(RuntimeError):  # now the plan read goes to the database
+        await db.execute(plan, {"strategy_id": 1, "user_ref": "owner"})
+    assert len(db.reached) == WRITE_AND_REREAD  # the write and the re-read
+    restore()
+    assert db.execute.__func__ is _Real.execute  # the class's own method is back
+
+
+async def test_the_adr247_memo_is_kept_per_parameters():
+    """Opus review F4: the cut-off time is the same for every row of one request, but a different ``reason`` is a
+    different question."""
+    from ofo_app import plan_watch_prefetch as pf  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
+
+    class Result:
+        def __init__(self, value):
+            self.value = value
+
+        def all(self):
+            return [(self.value,)]
+
+    class Real:
+        def __init__(self):
+            self.asked = []
+
+        async def execute(self, statement, params=None, *args, **kwargs):
+            self.asked.append(params["reason"])
+            return Result(params["reason"])
+
+    db, pre = Real(), pf.Prefetch("owner", {})
+    pf.install(db, pre)
+    statement = text(pf.ORIGINAL["adr247"])
+    first = (await db.execute(statement, {"reason": "A"})).scalar()
+    again = (await db.execute(statement, {"reason": "A"})).scalar()
+    other = (await db.execute(statement, {"reason": "B"})).scalar()
+    assert (first, again, other) == ("A", "A", "B") and db.asked == ["A", "B"]
