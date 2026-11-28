@@ -1,4 +1,4 @@
-STATUS 21:50 | batch 1 (items 1, 2, W-25, two coordinator Exit-dialog items) committed; full check about to run | batch 2: I-86 builder Retry, browser walk, residuals | next push after TOTAL PASS (due 01:30) | blocker: none (messages to the coordinator are refused: device trust; this line is the report)
+STATUS 22:25 | batch 1 + I-86 Retry committed; check 3 running (check 2 failed only the ADR-008 scan on a Math.min in my lib: fixed) | D-W2-1 and D-W2-2 are mine and fixed in 4201d3af2 (D-W2-3 is Lane F2's plan block) | browser walk not run | next push after TOTAL PASS | blocker: none
 
 # RESULTS Lane F1b, branch fix/r3-frontend-f1b-1128, base origin/fix/r3-frontend-2-1128 (d93fce449)
 
@@ -51,11 +51,11 @@ Reviewer's "not covered": the server block; real browser quota or "clear site da
 - Unknown-outcome sentence (no retry invited): was `We could not confirm the order. Check Orderbook before trying again.` now `We could not confirm the order. Check the Orderbook; no second order is sent until the answer is known.` Test dialog-unknown-f1b-1128 (red first); the pin in paper-add moved.
 - "Two minutes have passed ..." followed the wall clock on a dialog opened while a lock stood: now counted on the lock's own monotonic stamp (`monoAgeOfAt`), else the dialog's first sight; never the wall age. Test dialog-unknown-f1b-1128 (red first); exit-lock-window-r2-fa2 "dialog opened later" now stamps the lock like a page does.
 - W-25 (found in a real browser: Chromium, 1366 x 768, the real PaperConfirmDialog with four exit rows): the Exit all discard note sat below the four rows inside a body that scrolls (608 px of content in 512 px), out of sight while Confirm was in view. Now the note comes first. Test dialog-note-first-f1b-1128 (red first); screenshot after: the note is the first thing in the dialog.
-- Builder Retry (I-86) and the W2 defects D-W2-1 to D-W2-3: batch 2.
+- Builder Retry (I-86): done (builder-open-retry-f1b-1128, red first: a failed open showed the sentence and no Retry; Retry reads the URL's strategy again; not-found keeps its own door and shows no Retry). Merged into this push (non-money).
+- Lane W2 defects: D-W2-1 (clock +200 s across a reload) and D-W2-2 (second tab stayed locked after a stored exit) are in this lane's files and were fixed in 335e9d1bf and 3a7986145 (inside 4201d3af2); this lane tightened D-W2-2's release (marker or deciding read). D-W2-3 (Plan block stop/target) is Lane F2's.
 
 ## Not done / to file as deferred issues
 - The rest of item 3 (the FJ2 browser walk: unknown exit on the builder and Positions with a second tab, moved leg with a stop, Add to Paper after close, Live card Plan door, list Retry; UX-AF2, UX-B03): not run yet (needs the app with its backend and a market state; only the dialog was rendered in a real browser). Batch 2.
-- I-86 Retry on the builder: batch 2.
 - Residual (deferred issue text): TITLE "A new lock written into an UNREADABLE lock store frees the strategies that were unreadable". EVIDENCE: `writeLock` starts from `entriesOf` (`{}` for an unreadable store) and writes a readable object over the garbage, so every OTHER strategy whose lock was inside it is gone after the first new lock. FILES: frontend/src/lib/unknownLocks.js (`writeLock`, `entriesOf`). A fix needs the owner's answer to Question 1 (a permanent block vs. a release).
 - Residual: a wipe in one tab leaves a tab that opens AFTER the wipe with no lock (nothing to read). Only the server block (Lane B2) covers it. FILES: n/a (browser storage cannot keep what was deleted).
 - Residual: a builder PRICE TICK between a "not stored" and its resend is not driven in a page test (see R2-5).
