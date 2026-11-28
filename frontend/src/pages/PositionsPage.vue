@@ -74,6 +74,8 @@ const brokerOffLine = computed(() => { const r = result.value?.real_pnl?.reason;
 const realTotals = computed(() => {
   if (figureOld.value && !errorParts.value) return { text: null, reason: OLD_FIGURE_TEXT, caption: null, note: null }
   if (errorParts.value) return { text: null, reason: errorParts.value.what_happened ?? null, caption: null, note: null }
+  // I-113 (F3, TC walk AF-07 / D-13): a read that says no broker is connected never prints a figure, even if the reply still carries one
+  if (brokerOff.value) { const r0 = result.value?.real_pnl; return { text: null, reason: typeof r0?.reason === 'string' && r0.reason.trim() !== '' ? r0.reason : NOT_CONNECTED_LINE, caption: null, note: null } }
   const r = result.value?.real_pnl
   if (result.value && !r) return { text: typeof result.value.pnl_text === 'string' ? result.value.pnl_text : null, legacy: true }
   if (!r) return null
