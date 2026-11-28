@@ -60,6 +60,14 @@ test_dropped_and_skew_fe2_1128, test_monitor_reports_fe2_1128, test_background_c
    (`stops_of` now names the unknown kind for the % lines and keeps the credit line's amount); then `days_left` for the
    state stays None. Needs `adjustment_check.py`; file as a deferred issue.
 
+7. Price-read door guard (`tests/test_price_reads_one_door.py`): item 6 moved the first-fill index read into
+   `_index_quote_held` (a nested `read()` closure, the same shape `_index_spot_held` always had and the scan never
+   listed), so the guard called the `entry_facts_now` exemption stale and asked to delete it; deleted, with its pinning
+   assertion. Blind spot, not fixed here: the scan misses `provider.underlying_quote` inside a nested function, so the
+   "awaiting phase 8" decision read (plan section 6 row 13) is no longer listed, though it still exists (now in
+   `_index_quote_held` and `_index_value_not_live`). Deferred issue: make the scan see nested closures, then re-add one
+   exemption for `_index_quote_held`; the guard's file is not this lane's (neighbour test edited only to stay green).
+
 ## Decided for the owner
 
 - Unknown-kind stop answer: `stops is None` and `days_left is None` is the unknown-kind state (that is how
