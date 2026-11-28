@@ -1,4 +1,4 @@
-STATUS 12:30 | items 1-6, a-c, TF, R1-R4 built; 287c2dfa5 pushed (gated); round 5 (N1-N3, N5) on top, gate running; five Opus reviews run, the fifth found N1 which round 5 closes (not re-reviewed); item 7 browser walk, d, e, not_applicable stops (group B): not run | next push 13:15 | blocker: none
+STATUS 13:10 | items 1-6, a-c, TF, R1-R4 (rounds 1-5), not_applicable stops, PC round 1 items A C D, shared slow-read rule (W-13 W-17 W-03), not_read re-ask built; full suite 391 files / 4230 tests; gate running on this head | not done: item 7 browser walk, d (UX-AF2/UX-B03 re-check), W-15, F5 | next push on gate TOTAL PASS | blocker: none
 
 # RESULTS Lane FJ (frontend joins), branch fix/r3-frontend-joins-1128
 
@@ -66,6 +66,22 @@ The coordinator's build lane runs one more independent review on the merged buil
 ## TF defect (from test lane TF): builder `?strategy=1` says the paper position "could not be read" with no failed request
 Cause: `readPaperBook` threw "unreadable" when the book and the catalogue both answered but the catalogue held none of the book's contracts (D-TD-3 scenario day in the past). Fixed: that state has its own sentence and still blocks the page (fail closed); a failed or malformed read still says "could not be read". Test builder-open-unmatched-r3-fj (3 tests). Not changed: three sites that pass null to `unreadableParts` (book names a different strategy id than the URL; a re-read that is not a paper book) still say "could not be read"; they need their own wording, owner to decide.
 New wording (four parts): "This strategy's paper position was read, but its contracts are not in the catalogue for today, so it is not shown." / "The numbers on this page are not shown, so none of them can be mistaken for current values." / "Nothing was changed and no order was placed." / "Trying again will not help until the catalogue lists these contracts."
+
+## Group B (after the group A push)
+| Item | State | Test (red first) |
+|---|---|---|
+| `state:"not_applicable"` stops (coordinator, ADR-330 (64)) | Fixed, not tested in a browser. PaperStops row, PlanEntry line, legStopsGone: never live, no badge, no Cancel, no move-stop offer; row reads "Not applicable: real position." | stops-not-applicable-real-r3-fj (5; 4 red) |
+| PC O-A-12 greyed Exit opened the dialog | Fixed: ask() and the `exit=` link no longer open it when the exit gate is blocked or a leg has no price; the link writes a note instead. This reverses Lane U's hotfix (link opened a blocked dialog): owner to know | exit-greyed-no-dialog-r3-fj (5; 4 red); exit-not-live-good-read moved (4 tests) |
+| One slow-read rule (W-13, W-17, W-03; coordinator) | Fixed: services/api.js `SLOW_READ_BUDGETS_MS` + interceptor: a listed GET gets twice its route budget (min 30 s), a caller's own timeout wins, unlisted 10 s; Alerts Active/History show a second line after 4 s | slow-read-budget-r3-fj (8; 4 red), still-loading-r3-fj (1) |
+| W-03 plan-watch `not_read` rows re-asked | Fixed: up to 3 re-asks through the queue, "Updating the numbers..." not "not available" | plan-watch-not-read-r3-fj (2) |
+| O-C-05 "Checked at Time not available" | Fixed: each Checked-at line only when the time is known (builder, live card) | checked-at (8; 2 red) |
+| O-A-08 /settings landing | Fixed: /settings redirects to /settings/app-settings | settings-landing-r3-fj (3) |
+| W-20 / O-A-07 one stop, three decision (55) lines, no second wording | Confirmed green on this head, no fix | paper-stops-one-wording-r3-fj |
+| W-01 reset sentence | Confirmed green (plan-reset-p8); "Use playbook as is" shows nothing of its own beyond the normal save result | |
+| W-15 side toggle | OPEN: LegList.vue has no side toggle (B/S badge is a plain span); adding one is a product decision | |
+| W-17 / W-02 / W-31 Positions plan-watch batch cancelled before the server answers | Not reproduced in code: the batch already passes its own 20 s above the 15 s budget and `cancelPlanWatchRead` only drops queued jobs | |
+New wording (pending owner read): "Still loading. The server is taking longer than usual to answer." (Alerts Active/History after 4 s); "Not applicable: real position."; "Updating the numbers..." (existing, now also for a `not_read` row).
+For the owner lane: confirm the server's real budgets for /alerts/active, /alerts/answered, /paper/alerts/records and the catalogue expiries route (12 s is an estimate from the PC notes; edit point `SLOW_READ_BUDGETS_MS` in frontend/src/services/api.js). Opus review of the stop/exit/order items in this group (O-A-12, not_applicable) was NOT run.
 
 ## Not done
 - Item 7 browser walk (unknown exit on builder and Positions with second tab, moved leg with stop, Add to Paper after close, Live card Plan door, list Retry) and the UX-AF2 / UX-B03 re-check: not run.

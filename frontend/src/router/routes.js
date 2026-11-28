@@ -1,7 +1,7 @@
 // Route table split out of index.js (W-055) so the responsive check can read it in Node without a browser history.
 // Structure adapted from abhayla/algochanakya@bf9faf7:frontend/src/router/index.js (ADR-047): lazy routes, meta flags,
 // catch-all. The route table itself is new: the seven sections (REQ-009), /settings/* and /health-status.
-import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_LABEL, FULL_WIDTH_ROUTES, LANDING_PATH, firstBuiltPath } from './nav.js'
+import { SECTIONS, ACCOUNT_ITEMS, ACCOUNT_MENU_ITEMS, ACCOUNT_LABEL, FULL_WIDTH_ROUTES, LANDING_PATH, firstBuiltPath } from './nav.js'
 import { requireOrderPath } from '../lib/orderPath.js'
 
 const Placeholder = () => import('../pages/PlaceholderPage.vue')
@@ -65,7 +65,8 @@ const settingsRoutes = [
   {
     path: '/settings',
     name: 'settings',
-    redirect: firstBuiltPath('settings'),
+    // O-A-08: /settings lands on the page the menu's "Settings" link opens (app-settings), not the first account item
+    redirect: ACCOUNT_MENU_ITEMS.some(([slug]) => slug === 'app-settings') ? '/settings/app-settings' : firstBuiltPath('settings'),
     meta: {
       title: ACCOUNT_LABEL,
       section: 'settings',
