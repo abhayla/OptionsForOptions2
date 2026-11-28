@@ -22,6 +22,7 @@ from test_monitoring_state import _Client, _fresh
 from test_paper_monitor import INDEX, Market, _monitor, _strategy, db  # noqa: F401 - fixture
 
 D = Decimal
+FAILED_LOADS = 2
 BELOW = "23390.00"  # below the exit level 23,400.00: judged, not crossed
 
 
@@ -163,12 +164,12 @@ async def test_review_f3_a_monitor_whose_first_load_failed_publishes_no_slot(db,
 
     async def failing(session):
         calls["n"] += 1
-        if calls["n"] == 1:
+        if calls["n"] <= FAILED_LOADS:  # the first load and its immediate retry both fail
             raise OSError("database down")
         return await real(session)
     monkeypatch.setattr(triggers, "armed", failing)
     monitor = _monitor(db, market)
-    with contextlib.suppress(OSError):
-        await monitor.step()
-    await monitor.step()  # no reload yet (60 s): nothing is loaded, so no claim is made
+    for _ in range(FAILED_LOADS):
+        with contextlib.suppress(OSError):
+            await monitor.step()  # nothing is loaded: no claim is made
     assert monitoring_state.exits_key() not in client.data
