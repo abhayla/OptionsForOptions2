@@ -1152,6 +1152,9 @@ class Worker:
         # paused silently and its candle lost); a NEW strategy whose gate read failed waits for the next rebuild
         self.monitors = [w for w in monitors if w.strategy_id in old or w.strategy_id in self._gate_load]
         self._rebuilt_at = self._clock()
+        # RA2 item 3 (F8): the list was read (a failed read raised above): a kept pause start of a strategy that is not
+        # in it (deleted while the worker was down) is dropped; strategies whose own read failed did not leave the list
+        self._monitoring.forget_unlisted({w.strategy_id for w in monitors} | set(getattr(monitors, "unread", ())))
         log.info("background: %s strategies monitored", len(self.monitors))
 
     async def _lapse_expired_all(self, monitors: list[Watched], today: datetime.date) -> None:

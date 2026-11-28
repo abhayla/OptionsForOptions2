@@ -246,6 +246,18 @@ class Publisher:
         self._kept, self._restored_at = dict(self._previous), now
         return await self._write_restart_snapshot(now)
 
+    def forget_unlisted(self, listed: Iterable[int]) -> list[int]:
+        """Lane RA2 item 3 (F8): after a SUCCESSFUL read of the strategy list, a kept pause start of a strategy that
+        is not in it (the trade was deleted while the worker was down) is dropped, so an id listed later never shows
+        the old "since". The caller never asks after a failed read (a failed read names nobody, so it would drop
+        every kept start). Returns the ids dropped."""
+        keep = set(listed)
+        dropped = sorted(set(self._kept) - keep)
+        for sid in dropped:
+            self._kept.pop(sid, None)
+            self._previous.pop(sid, None)
+        return dropped
+
     async def retry_restore(self, now: datetime.datetime) -> bool:
         """FE3 item 3 (F6): a restart whose empty snapshot could not be written leaves the dead worker's answers
         standing; the worker calls this before every cycle until the write has landed (or a real snapshot has).
