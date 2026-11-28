@@ -5308,6 +5308,15 @@
             "title": "Closed",
             "type": "boolean"
           },
+          "entries_sentence": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entries Sentence"
+          },
           "next_open_at": {
             "anyOf": [
               {
@@ -5338,6 +5347,7 @@
         "required": [
           "closed",
           "sentence",
+          "entries_sentence",
           "next_open_at",
           "server_time"
         ],
