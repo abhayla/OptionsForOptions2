@@ -1,4 +1,4 @@
-STATUS 22:25 | batch 1 + I-86 Retry committed; check 3 running (check 2 failed only the ADR-008 scan on a Math.min in my lib: fixed) | D-W2-1 and D-W2-2 are mine and fixed in 4201d3af2 (D-W2-3 is Lane F2's plan block) | browser walk not run | next push after TOTAL PASS | blocker: none
+STATUS 22:55 | batch 1 + I-86 committed; check 4 running (check 3 failed only screen-inventory-guard: the new Retry control needed its inventory row, added) | next push after TOTAL PASS | blocker: none
 
 # RESULTS Lane F1b, branch fix/r3-frontend-f1b-1128, base origin/fix/r3-frontend-2-1128 (d93fce449)
 
@@ -33,7 +33,7 @@ Attack: can the release paths let a second order be SENT while an outcome is unk
 Reviewer's "not covered": the server block; real browser quota or "clear site data" events (simulated with dispatched events); a reload in the middle of an open read at component level; a possible older gap: PaperStrategies has no stale-screen gate like the builder's `paperStale` after a marker release (until `refreshNow` answers it may offer Exit on old rows under a new key; the server block covers it). Round 2 of the review has NOT been run (the second round is for the batch-2 diff).
 
 ## For the owner lane
-- None needed from this lane's files.
+- OUTSIDE MY EDIT LIST, done because the guard's own message demands it (screen-inventory-guard failed the full check on the new Retry button): one row BUILD-192 added to docs/design/next-batch-2026-11-26/screen-inventory.md and screen-inventory.json regenerated with `node frontend/e2e/support/inventory-extract.mjs` (the JSON diff is large only because line numbers shifted; no other control changed). Another lane that edits the same file will meet a textual conflict: take both rows and regenerate the JSON.
 
 ## Decided for the owner
 - A lock that vanished from the store is NOT a decision. The page waits for a deciding read (stricter than FJ2's "released at once"; a stored exit is still released at the next read, an unchanged book only past the window).
