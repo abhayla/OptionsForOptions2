@@ -23,6 +23,12 @@ CHECK_VIOLATION = "23514"
 _ROWS = (("T59:A", MON), ("T59:A", TUE), ("T59:B", MON))
 
 
+def _ts(text_: str) -> datetime.datetime:
+    """FD2 D-3: asyncpg refuses a str for a timestamptz parameter on the client (SQLSTATE 22000, DataError) before the
+    CHECK runs; the CHECK's own violation (23514, checked by psql too) needs a real datetime."""
+    return datetime.datetime.fromisoformat(text_)
+
+
 def _cols(rows):
     return {"instrument_id": [r[0] for r in rows], "trade_date": [r[1] for r in rows], "price": [r[2] for r in rows],
             "price_at": [r[3] for r in rows], "source": [r[4] for r in rows]}
@@ -72,7 +78,7 @@ async def test_m6_a_time_off_the_trade_date_or_after_the_close_is_refused_by_the
             with pytest.raises(DBAPIError) as err:
                 await conn.execute(text("INSERT INTO public.last_close (instrument_id, trade_date, price, price_at, "
                                         "source) VALUES ('T59:X', :d, 1.00, CAST(:t AS timestamptz), 'feed_book')"),
-                                   {"d": TUE, "t": price_at})
+                                   {"d": TUE, "t": _ts(price_at)})
             assert getattr(err.value.orig, "sqlstate", None) == CHECK_VIOLATION
         finally:
             await trans.rollback()
@@ -84,13 +90,13 @@ async def test_a_snapshot_row_keeps_its_own_later_time_only_the_feed_writer_stop
     async with app_engine.connect() as conn:
         trans = await conn.begin()
         try:
-            await conn.execute(insert, {"d": datetime.date(2026, 11, 27), "t": "2026-11-27 18:05:00+05:30",
+            await conn.execute(insert, {"d": datetime.date(2026, 11, 27), "t": _ts("2026-11-27 18:05:00+05:30"),
                                         "s": "owner_snapshot_2026-11-27"})  # accepted: not the feed writer's row
             for day, at_, source in ((datetime.date(2026, 11, 27), "2026-11-27 18:05:00+05:30", "feed_book"),
                                      (datetime.date(2026, 11, 27), "2026-11-28 00:05:00+05:30", "owner_snapshot")):
                 with pytest.raises(DBAPIError) as err:
                     async with conn.begin_nested():
-                        await conn.execute(insert.bindparams(d=day, t=at_, s=source))
+                        await conn.execute(insert.bindparams(d=day, t=_ts(at_), s=source))
                 assert getattr(err.value.orig, "sqlstate", None) == CHECK_VIOLATION
         finally:
             await trans.rollback()

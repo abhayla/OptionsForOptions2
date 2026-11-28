@@ -142,7 +142,9 @@ async def test_a_login_after_start_brings_not_connected_to_live_and_shutdown_sto
     kite_world["token"] = None
     async with app.router.lifespan_context(app):
         market = live_market._current
-        assert market is not None and market.state == live_market.NOT_CONNECTED and market.context() is None
+        # FD2 D-1 (ADR-330 (63)): no session still leaves a socket-less book for the stored close; nothing connects
+        assert market is not None and market.state == live_market.NOT_CONNECTED
+        assert market.context() is None or market.context().provider.status().connected is False
         kite_world["token"] = ACCESS_TOKEN
         connected(await login(app))
         assert kite_world.get("stored") is True

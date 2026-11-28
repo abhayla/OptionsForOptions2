@@ -2340,6 +2340,18 @@
             "items": {},
             "title": "Lines",
             "type": "array"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Time"
           }
         },
         "required": [
@@ -2626,6 +2638,30 @@
           "text"
         ],
         "title": "BulkKeptOut",
+        "type": "object"
+      },
+      "CancelledStopOut": {
+        "additionalProperties": false,
+        "description": "Lane FD2 item 1 (F3; ADR-330 (48)): one leg stop the order request cancelled: the leg as the book words it, the\ncontract id and the stop's premium level (exact, as text). Read from the transaction that cancelled it.",
+        "properties": {
+          "contract": {
+            "title": "Contract",
+            "type": "integer"
+          },
+          "leg": {
+            "title": "Leg"
+          },
+          "level": {
+            "title": "Level",
+            "type": "string"
+          }
+        },
+        "required": [
+          "leg",
+          "contract",
+          "level"
+        ],
+        "title": "CancelledStopOut",
         "type": "object"
       },
       "CapabilitiesOut": {
@@ -5154,6 +5190,18 @@
             "title": "Action",
             "type": "string"
           },
+          "client_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Request Id"
+          },
           "revision": {
             "description": "the saved revision the review was built from",
             "exclusiveMinimum": 0.0,
@@ -5280,12 +5328,18 @@
               }
             ],
             "title": "Sentence"
+          },
+          "server_time": {
+            "format": "date-time",
+            "title": "Server Time",
+            "type": "string"
           }
         },
         "required": [
           "closed",
           "sentence",
-          "next_open_at"
+          "next_open_at",
+          "server_time"
         ],
         "title": "ExitMarketOut",
         "type": "object"
@@ -5323,6 +5377,18 @@
               }
             ],
             "title": "Max Loss Before"
+          },
+          "server_time": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Server Time"
           },
           "state": {
             "enum": [
@@ -7932,6 +7998,29 @@
             "title": "Id",
             "type": "integer"
           },
+          "now_as_of": {
+            "anyOf": [
+              {
+                "format": "date-time",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Now As Of"
+          },
+          "now_value": {
+            "anyOf": [
+              {
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Now Value"
+          },
           "outcome": {
             "enum": [
               "open",
@@ -8547,7 +8636,7 @@
       },
       "PaperBookOut": {
         "additionalProperties": false,
-        "description": "GET /paper/strategies/{id} and the answer of POST .../orders.",
+        "description": "GET /paper/strategies/{id} and the answer of POST .../orders. ``cancelled_stops`` is filled only by the order\nanswer (the stops that request cancelled); every other read answers an empty list.",
         "properties": {
           "after_charges_reason": {
             "anyOf": [
@@ -8728,6 +8817,14 @@
               }
             ],
             "title": "Breakevens Reason Text"
+          },
+          "cancelled_stops": {
+            "default": [],
+            "items": {
+              "$ref": "#/components/schemas/CancelledStopOut"
+            },
+            "title": "Cancelled Stops",
+            "type": "array"
           },
           "charges": {
             "anyOf": [
@@ -10041,6 +10138,18 @@
               }
             ],
             "title": "Basket Legs"
+          },
+          "client_request_id": {
+            "anyOf": [
+              {
+                "format": "uuid",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Client Request Id"
           },
           "held": {
             "anyOf": [
@@ -12570,7 +12679,8 @@
           "state": {
             "enum": [
               "ok",
-              "refused"
+              "refused",
+              "not_read"
             ],
             "title": "State",
             "type": "string"
@@ -13031,6 +13141,11 @@
             },
             "title": "Blocked Strategy Ids",
             "type": "array"
+          },
+          "broker_connected": {
+            "default": true,
+            "title": "Broker Connected",
+            "type": "boolean"
           },
           "has_outside": {
             "title": "Has Outside",
@@ -13634,7 +13749,8 @@
               "stated",
               "empty",
               "partial",
-              "stale"
+              "stale",
+              "not_connected"
             ],
             "title": "State",
             "type": "string"
@@ -23209,6 +23325,7 @@
     },
     "/paper/strategies/{strategy_id}/orders": {
       "post": {
+        "description": "The order door. With ``client_request_id`` the request is de-duplicated (ADR-017): the first request places; a\nrepeat of the same key, strategy and orders answers the first result and stores nothing; see ``request_key``.",
         "operationId": "place_paper_orders_paper_strategies__strategy_id__orders_post",
         "parameters": [
           {
@@ -23455,6 +23572,46 @@
           }
         },
         "summary": "Read Positions"
+      }
+    },
+    "/real/strategies/{strategy_id}/triggers": {
+      "get": {
+        "description": "FD2 item 4 (ADR-330 (58)): the armed and fired exits of a strategy read for a REAL trade, the same answer as\n``GET /paper/strategies/{id}/triggers`` (one function, ``_triggers_out``), so a real trade's screen reads them the\nway a paper trade's does. Read only. Rows exist only where the trigger store holds them (the paper route refuses\nto set any for a real position, #877); a real strategy with none answers an empty list, never a made-up row.",
+        "operationId": "list_real_triggers_real_strategies__strategy_id__triggers_get",
+        "parameters": [
+          {
+            "in": "path",
+            "name": "strategy_id",
+            "required": true,
+            "schema": {
+              "title": "Strategy Id",
+              "type": "integer"
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/TriggersOut"
+                }
+              }
+            },
+            "description": "Successful Response"
+          },
+          "422": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/HTTPValidationError"
+                }
+              }
+            },
+            "description": "Validation Error"
+          }
+        },
+        "summary": "List Real Triggers"
       }
     },
     "/strategies": {

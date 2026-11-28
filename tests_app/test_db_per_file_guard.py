@@ -23,6 +23,8 @@ def test_clone_decision_every_state():
     assert conftest.should_clone("ofo_test", {"GITHUB_ACTIONS": "true"})  # CI
     assert not conftest.should_clone("ofo_test", {})  # db_run on the shared database
     assert not conftest.should_clone("ofo_dev", {"GITHUB_ACTIONS": "false"})
+    assert conftest.should_clone("ofo_dev", {"OFO_TEST_DB_PER_FILE": "1"})  # FD2/TE: a disposable database says so
+    assert not conftest.should_clone("ofo_test", {"OFO_TEST_DB_PER_FILE": "0"})
 
 
 def test_clone_names_carry_the_pid_and_are_swept_by_db_run_fresh(monkeypatch):

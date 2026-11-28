@@ -58,6 +58,7 @@ def replace_line(rel: str, needle: str, new_line: str) -> str:
 #: (it refuses a selection over MAX_FILES unless --route-tests-anyway). So this pins the set, and each later file that
 #: legitimately joined it is listed with why.
 PR241_SELECTION = {
+    "tests_app/test_fields_r2_fd2.py",
     "tests_app/test_catalogue_list_carries_over.py",
     "tests_app/test_catalogue_picker_api.py", "tests_app/test_chain_live.py", "tests_app/test_chain_permissions.py",
     "tests_app/test_eligibility_from_zerodha.py", "tests_app/test_response_door.py",

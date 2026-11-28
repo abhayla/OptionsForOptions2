@@ -132,6 +132,7 @@ LINES: dict[str, tuple[str, ...]] = {
         'source: Literal["Zerodha"]',
         'SOURCE = "Zerodha"',
         '"reason": reason, "source": SOURCE, "read_at": snap.read_at,',
+        'real = {"value": None, "pnl_text": None, "state": "not_connected", "reason": said, "source": SOURCE,',
         'def _read(session: KiteSession, catalogue: Any) -> _ReadSnapshot:',
         'contracts.append({"tradingsymbol": symbol, "zerodha_units": result.raw_net.get(key, 0),',
         'from ofo_app.kite_reads import KiteReadError, unconfirmed_template',

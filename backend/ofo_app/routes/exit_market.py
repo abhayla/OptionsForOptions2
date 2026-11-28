@@ -18,10 +18,12 @@ class ExitMarketOut(ApiModel):
     closed: bool
     sentence: CatalogueText | None
     next_open_at: datetime.datetime | None
+    server_time: datetime.datetime  # FD2 item 4: the server's own aware clock (the dialog's price age is against it)
 
 
 @router.get("/api/market/exit-state", response_model=ExitMarketOut)
 async def market_exit_state(ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                             now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> ExitMarketOut:
-    closed, sentence, opens = exit_market_answer(ctx, now())
-    return ExitMarketOut(closed=closed, sentence=sentence, next_open_at=opens)
+    at = now()
+    closed, sentence, opens = exit_market_answer(ctx, at)
+    return ExitMarketOut(closed=closed, sentence=sentence, next_open_at=opens, server_time=at)

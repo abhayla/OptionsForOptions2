@@ -24,6 +24,7 @@ from __future__ import annotations
 
 import datetime
 import logging
+import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
@@ -95,6 +96,7 @@ from ofo_app import (
     paper_trigger_store,
     plan_ending,
     playbook_store,
+    request_key,
     tracked_contracts,
 )
 from ofo_app import strategy_store as store
@@ -188,6 +190,9 @@ class PaperOrdersIn(BaseModel):
     #: ADR-330 (28): the user ticked the "prices are not live" line; only then may the save start its rules from the
     #: last index value the app holds. Absent / false: a save without a live index price is refused.
     prices_not_live_confirmed: bool = False
+    #: Lane FD2 item 2 (#869, #871; ADR-017): one UUID per Confirm, sent again with every resend of it. A repeat of the
+    #: same key (same strategy, same orders) answers the first result and stores nothing (``ofo_app.request_key``).
+    client_request_id: uuid.UUID | None = None
 
 
 class PaperNetOut(ApiModel):
@@ -431,8 +436,17 @@ def _held_out(row: Any) -> dict | None:
             "rules_start_at": row.rules_start_at}
 
 
+class CancelledStopOut(ApiModel):
+    """Lane FD2 item 1 (F3; ADR-330 (48)): one leg stop the order request cancelled: the leg as the book words it, the
+    contract id and the stop's premium level (exact, as text). Read from the transaction that cancelled it."""
+    leg: CatalogueText
+    contract: int
+    level: Money
+
+
 class PaperBookOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBlock):
-    """GET /paper/strategies/{id} and the answer of POST .../orders."""
+    """GET /paper/strategies/{id} and the answer of POST .../orders. ``cancelled_stops`` is filled only by the order
+    answer (the stops that request cancelled); every other read answers an empty list."""
     strategy_id: int
     name: CatalogueText  # REQ-134: quoted user text
     underlying: Underlying
@@ -440,6 +454,7 @@ class PaperBookOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBloc
     orders: list[PaperOrderOut]
     status_word: Literal["Draft", "Running", "Completed", "Unknown"]  # ADR-299 (D-28): the same word /strategies says
     held: HeldEntryOut | None = None  # GC-TRACK1 k07
+    cancelled_stops: list[CancelledStopOut] = []  # noqa: RUF012 - pydantic copies the default per instance
 
 
 class PaperStrategyOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBlock):
@@ -578,12 +593,32 @@ def _paper(orders: Sequence[paper_store.StoredOrder]) -> list[PaperOrder]:
     return [o.order.as_paper() for o in orders]
 
 
-async def _cancel_leaving_stops(db: Any, strategy_id: int, book: Sequence[paper_store.StoredOrder]) -> None:
+async def _armed_leg_stops(db: Any, strategy_id: int) -> list[Any]:
+    """The armed leg stops on a contract the book holds open now: what this request may cancel (F3). F4 (review): an
+    ORPHAN (armed on a contract nothing holds: old data) is cancelled here, before the fill, in this transaction; the
+    store's own sweep sees the book AFTER the new orders, where an orphan on a contract this request opens again would
+    revive and watch the new leg at an old level. An orphan is not a stop this request's move removed: not returned."""
+    armed = [r.trigger for r in await paper_trigger_store.list_for(db, strategy_id)
+             if _state(r) == "armed" and r.trigger.kind == "leg_stop"]
+    held = set(_open_ids(await paper_store.load(db, strategy_id)))
+    for orphan in [t for t in armed if t.contract_id not in held]:
+        await paper_trigger_store.cancel(db, strategy_id, orphan.id)
+    return [t for t in armed if t.contract_id in held]
+
+
+async def _cancel_leaving_stops(db: Any, strategy_id: int, book: Sequence[paper_store.StoredOrder],
+                                before: Sequence[Any]) -> list[Any]:
     """#774 (ADR-330 (48)): cancel every armed leg stop whose contract the book no longer holds open (the same function,
-    ``paper_leg_stops.leaving``, gives the confirm list its lines)."""
+    ``paper_leg_stops.leaving``, gives the confirm list its lines). Returns the leg stops that were armed ``before`` and
+    are cancelled now, read back in THIS transaction (the store cancels the stale ones inside the fill, this cancels the
+    rest), so the order reply names exactly what the request cancelled (FD2 item 1, F3). A stop the monitor fired
+    first, or one cancelled by someone else, is not named."""
     armed = [r.trigger for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"]
     for gone in paper_leg_stops.leaving(armed, _open_ids(book)):
         await paper_trigger_store.cancel(db, strategy_id, gone.id)
+    was = {t.id: t for t in before}
+    return [was[r.trigger.id] for r in await paper_trigger_store.list_for(db, strategy_id)
+            if r.trigger.id in was and r.cancelled_at is not None and r.fired_at is None]
 
 
 def _open_ids(orders: Sequence[paper_store.StoredOrder]) -> list[int]:
@@ -1007,7 +1042,7 @@ async def _load_strategy(db: Any, user_ref: str, strategy_id: int):
 
 async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],  # noqa: PLR0913
                 ctx: MarketContext | None, feed: LiveFeed | None, answered_at: datetime.datetime,
-                rates: ChargeRates | None = None) -> PaperBookOut:
+                rates: ChargeRates | None = None, cancelled: Sequence[Mapping[str, Any]] = ()) -> PaperBookOut:
     ids = sorted({o.order.contract_id for o in orders})
     found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)}
     open_ids = _open_ids(orders)
@@ -1028,6 +1063,7 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
+        "cancelled_stops": list(cancelled),
         "status_word": _paper_word(stored.status, figures["positions"]),
         "held": _held_out((await held_entry_store.read_many(db, [stored.id])).get(stored.id))})
 
@@ -1411,17 +1447,76 @@ async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, 
                                      check.basis_in_force(None, None, None))
 
 
+#: ADR-330 (64), the stated exception to (58): the position kinds that offer no paper exit and no paper stop (the one
+#: rule, ``position_kind.kind_of``, names them)
+_NO_PAPER_ACTION_KINDS = frozenset({"real", "unknown"})  # unknown: fail closed (ADR-016 to ADR-019)
+
+
+async def _refuse_real_position(db: Any, strategy_id: int) -> None:
+    """#877 (ADR-330 (64), (58)): a real position (a held entry, or an order and no paper order) has no stop and no exit
+    in the app: an exit or stop request for it reaches this paper route only by a wrong link, and would run a PAPER
+    action the trader could take for a real exit. Refused by name (nothing is stored); every other kind goes on, an
+    unreadable one too (fail closed)."""
+    kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id)
+    if kind in _NO_PAPER_ACTION_KINDS:
+        raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+
+
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
              dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
-async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913, C901 - FastAPI dependencies
+async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                              now: Annotated[AnswerClock, Depends(get_answer_clock)],
                              rates: Annotated[ChargeRates | None, Depends(load_charge_rates)],
                              tracked_reader: Annotated[TrackedReader, Depends(get_tracked_reader)],
-                             settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)]) -> PaperBookOut:
+                             settings: Annotated[Mapping[str, Decimal], Depends(get_calc_settings)],
+                             keys: Annotated[request_key.KeyStore, Depends(request_key.get_key_store)]
+                             ) -> PaperBookOut:
+    """The order door. With ``client_request_id`` the request is de-duplicated (ADR-017): the first request places; a
+    repeat of the same key, strategy and orders answers the first result and stores nothing; see ``request_key``."""
     stored = await _load_strategy(db, user_ref, strategy_id)
+    if any(o.kind == "exit" for o in body.orders):
+        await _refuse_real_position(db, strategy_id)  # #877: before any key is claimed
+    key = body.client_request_id
+    sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id"})
+    if key is not None:
+        first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
+        if first is not None:  # a repeat: the first result, nothing stored
+            return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
+                               cancelled=first.get("result", {}).get("cancelled_stops", []))
+    stage = {"commit_started": False}
+    try:
+        placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
+            user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
+    except BaseException:
+        if key is not None and not stage["commit_started"]:  # refused with nothing stored: the key is free again
+            await request_key.free(keys, user_ref, key)
+        raise  # an unknown commit leaves the key claimed until it expires: a repeat is never placed twice
+    if key is not None:
+        await request_key.finish(keys, user_ref, key,
+                                 request_key.done(strategy_id, sent, {"cancelled_stops": cancelled}))
+    return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at, rates,
+                       cancelled=cancelled)
+
+
+async def _stops_out(db: Any, stored: Any, state: Mapping[int, Any], cancelled: Sequence[Any]) -> list[dict]:
+    """The cancelled leg stops as the reply shows them (leg, contract id, level as text); a contract the basket did not
+    carry is resolved by the one resolver."""
+    missing = sorted({t.contract_id for t in cancelled if t.contract_id not in state})
+    names = dict(state) | {c.contract_id: c for c in await tracked_contracts.resolve(db, missing)} if missing else state
+    return [{"leg": _leg_name(names, stored, t), "contract": t.contract_id, "level": format(t.level, "f")}
+            for t in cancelled]
+
+
+async def _place_orders(db: Any, strategy_id: int, stored: Any, body: PaperOrdersIn,  # noqa: C901, PLR0913
+                        deps: tuple, stage: dict
+                        ) -> tuple[datetime.datetime, list[dict]]:
+    """The order door's body: every refusal, the store and the commit. Returns the time it placed at and the stops it
+    cancelled (read in the transaction that cancelled them); ``stage['commit_started']`` is set just before the commit
+    (from there the outcome is unknown to the caller until it returns)."""
+    user_ref, ctx, feed, now, rates, tracked_reader, settings = deps
     for order in body.orders:
         if order.kind != "exit" and order.price > 0:  # C10: exit prices are the server's; 0 or less: below
             _check_price(order.price)
@@ -1449,6 +1544,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     await release_connection(db)  # I-47: tracked_ids above checked a connection out again; the entry IV read waits
     entry = (await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state,
                                confirmed=body.prices_not_live_confirmed) if first else None)
+    armed_before = await _armed_leg_stops(db, strategy_id)  # F3: the stops this request may cancel
     try:
         book = await paper_limit.place_checked(
             db, user_ref, strategy_id, [
@@ -1458,7 +1554,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
             settings=settings)  # ADR-243: entry only if first fill; the size check is the door's (Lane K)
         # #774: a leg stop whose contract this basket closes (a move: exit A + add A') goes now, in this transaction,
         # exactly as the confirm list said; nothing is re-pointed (its premium level means another thing on A')
-        await _cancel_leaving_stops(db, strategy_id, book)
+        cancelled = await _cancel_leaving_stops(db, strategy_id, book, armed_before)
         new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
             await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,
@@ -1472,6 +1568,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         if body.held is not None and len(book) != len(body.orders):  # the store's own first-fill view, under its lock
             raise StrategyRefused("held_entry_not_a_first_open_basket")  # rolled back below: nothing stored
         await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction
+        cancelled_out = await _stops_out(db, stored, state, cancelled)
+        stage["commit_started"] = True
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
@@ -1483,7 +1581,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     except Exception:
         await db.rollback()
         raise
-    return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at, rates)
+    return placed_at, cancelled_out
 
 
 class ExitRiskOut(ApiModel):
@@ -1496,9 +1594,18 @@ class ExitRiskOut(ApiModel):
     #: ADR-330 (55): a leg stop that leaves a sold option bare answers three lines, each its own fact, built here (the
     #: page prints them as sent); ``warning_text`` is the same lines joined by newlines. None for every other answer.
     warning_lines: list[CatalogueText] | None = None
+    #: FD2 item 4: the server's own aware clock when this answer was made, so the dialog tells the age of a price
+    #: against it, never the browser's clock. Filled by the exit-risk answer.
+    server_time: datetime.datetime | None = None
 
 
 _UNPRICED = Decimal("0.05")  # placeholder order price only; the engine is told priced=False
+
+
+def _stamped[ReplyT: ApiModel](answer: ReplyT, at: datetime.datetime) -> ReplyT:
+    """FD2 item 4: the same reply plus the server's clock (rebuilt by validation, as ``echo_seq``; set fields only)."""
+    kept = {name: value for name, value in answer if name in answer.model_fields_set}
+    return type(answer).model_validate({**kept, "server_time": at})
 
 
 def _exit_risk_answer(state: Literal["yes", "no", "cannot_tell"]) -> ExitRiskOut:
@@ -1599,6 +1706,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
     """Read only, nothing stored. The WHOLE prepared basket (exits and entries) is judged on the legs after all of it.
     Bad input is refused (422), an engine error is cannot_tell, never "no". When an exit price cannot be read the
     answer is judged without any Max Loss figure (never a stand-in price) and shows none."""
+    served = now()  # FD2 item 4: one clock read, stamped on whichever answer is returned
     stored = await _load_strategy(db, user_ref, strategy_id)
     try:  # the prepared orders as JSON, the same shape the order route takes
         basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
@@ -1606,7 +1714,7 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
         refuse_request(("query", "orders"), "invalid_orders")
     booked = await paper_store.load(db, strategy_id)
     if not booked:  # nothing is open: an exit is larger than what is open; a first basket leaves nothing unprotected
-        return _exit_risk_answer("cannot_tell" if any(o.kind == "exit" for o in basket) else "no")
+        return _stamped(_exit_risk_answer("cannot_tell" if any(o.kind == "exit" for o in basket) else "no"), served)
     state = {c.contract_id: c for c in await tracked_contracts.resolve(
         db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
     if any(state[o.contract_id].stored is None for o in basket):
@@ -1630,11 +1738,11 @@ async def paper_exit_risk(strategy_id: int, orders: Annotated[str, Query(max_len
                            prices.get(i, _UNPRICED if o.kind == "exit" else o.price), o.kind, at)
                 for i, o in enumerate(basket)]
     except ValueError:
-        return _exit_risk_answer("cannot_tell")
+        return _stamped(_exit_risk_answer("cannot_tell"), served)
     risk = exit_risk(_paper(booked), legs, terms, priced=len(prices) == exits)
     if risk.state != "yes":
-        return _exit_risk_answer(risk.state)
-    return _exit_warning(risk, names)
+        return _stamped(_exit_risk_answer(risk.state), served)
+    return _stamped(_exit_warning(risk, names), served)
 
 
 @router.get("/paper/strategies/{strategy_id}/leg-stop-risk", response_model=ExitRiskOut)
@@ -1739,6 +1847,7 @@ def _leg_name(state: Mapping[int, Any], stored: Any, trigger: Any) -> str:
 
 class ArmedExitsOut(ApiModel):
     lines: list[CatalogueText]  # one per armed index exit, in the order above, below
+    server_time: datetime.datetime | None = None  # FD2 item 4: the server's own aware clock for this answer
 
 
 @router.get("/paper/strategies/{strategy_id}/armed-exits", response_model=ArmedExitsOut)
@@ -1749,6 +1858,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     """D-03 part B (ADR-317 (7)): read only, nothing stored. For the prepared basket in the paper confirm list: one
     line per armed index exit naming the short strike on its side AS IT WILL BE after the basket (the exit stays at
     its level). No line when nothing is armed or the basket closes every leg (the exits are then cancelled)."""
+    served = now()  # FD2 item 4: one clock read, stamped on whichever answer is returned
     stored = await _load_strategy(db, user_ref, strategy_id)
     try:
         basket = PaperOrdersIn.model_validate_json('{"orders":' + orders + "}").orders
@@ -1758,7 +1868,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     armed = sorted((r.trigger for r in rows if r.trigger.kind == "conditional_exit"), key=lambda t: t.direction)
     leg_stops = [r.trigger for r in rows if r.trigger.kind == "leg_stop"]
     if not armed and not leg_stops:
-        return ArmedExitsOut(lines=[])
+        return _stamped(ArmedExitsOut(lines=[]), served)
     booked = await paper_store.load(db, strategy_id)
     state = {c.contract_id: c for c in await tracked_contracts.resolve(
         db, sorted({o.order.contract_id for o in booked} | {o.contract_id for o in basket}))}
@@ -1769,7 +1879,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
                                            _UNPRICED if o.kind == "exit" else o.price, o.kind, at) for o in basket)]
     positions = [p for p in net_positions(after, {}).positions if p.net_quantity]
     if not positions:
-        return ArmedExitsOut(lines=[])
+        return _stamped(ArmedExitsOut(lines=[]), served)
     gone = paper_leg_stops.leaving(leg_stops, {int(p.instrument_id) for p in positions})  # #774: what the route cancels
     shorts = [_identity(state[int(p.instrument_id)])[1:3] for p in positions if p.net_quantity < 0]
     calls = [k for kind, k in shorts if kind is Instrument.CE]
@@ -1783,7 +1893,7 @@ async def paper_armed_exits(strategy_id: int, orders: Annotated[str, Query(max_l
     # one line per leg stop that goes with its closed contract (ADR-330 (42); never silent)
     lines.extend(render_explanation("paper_leg_stop_removed_on_move", contract=_leg_name(state, stored, t))
                  for t in gone)
-    return ArmedExitsOut(lines=lines)
+    return _stamped(ArmedExitsOut(lines=lines), served)
 
 
 # --- stop triggers and alerts (GC-TP step 7a; REQ-109 AC-8; ADR-207 (5); screens 221-224) -----------------------------
@@ -1924,6 +2034,17 @@ async def list_paper_triggers(strategy_id: int, db: Annotated[Any, Depends(get_d
     return await _triggers_out(db, strategy_id)
 
 
+@router.get("/real/strategies/{strategy_id}/triggers", response_model=TriggersOut)
+async def list_real_triggers(strategy_id: int, db: Annotated[Any, Depends(get_db)],
+                             user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
+    """FD2 item 4 (ADR-330 (58)): the armed and fired exits of a strategy read for a REAL trade, the same answer as
+    ``GET /paper/strategies/{id}/triggers`` (one function, ``_triggers_out``), so a real trade's screen reads them the
+    way a paper trade's does. Read only. Rows exist only where the trigger store holds them (the paper route refuses
+    to set any for a real position, #877); a real strategy with none answers an empty list, never a made-up row."""
+    await _load_strategy(db, user_ref, strategy_id)
+    return await _triggers_out(db, strategy_id)
+
+
 def _new_triggers(body: TriggerIn, underlying: str, open_ids: Sequence[int]) -> list[paper_trigger_store.NewTrigger]:
     new: list[paper_trigger_store.NewTrigger] = []
     if body.kind == "conditional_exit":
@@ -2006,6 +2127,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                              now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
+    await _refuse_real_position(db, strategy_id)  # #877: a stop for a real position is set in Kite, not here
     underlying = stored.saved.definition.underlying
     # ADR-327: the price read (up to 3 s) happens BEFORE the strategy row lock, so a slow feed never holds the lock the
     # monitor's fire waits behind; what the read decided is re-validated under the lock below (D-05: the open legs)
@@ -2065,6 +2187,7 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
     (``check_trigger_levels``) runs first, before the lock (the price read may wait up to 3 s): a level the live price
     has already reached is refused and the old exit stays as it is."""
     stored = await _load_strategy(db, user_ref, strategy_id)
+    await _refuse_real_position(db, strategy_id)  # #877 (review F2): keeping an exit stores a stop again
     current = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}.get(trigger_id)
     if current is not None and current.trigger.kind == "conditional_exit" and _state(current) == "armed":
         again = paper_trigger_store.NewTrigger("conditional_exit", current.trigger.direction, current.trigger.level,
