@@ -2,8 +2,6 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
-import { readFileSync } from 'node:fs'
-import { resolve } from 'node:path'
 
 const calls = []
 let answers = {}
@@ -25,11 +23,7 @@ vi.mock('@/composables/useStrategyLive', () => ({
   },
 }))
 
-import { matchesLegs } from '@/lib/liveMatch'
 import ExecuteStrategyPage from '@/pages/ExecuteStrategyPage.vue'
-import ExecutionReturnedPage from '@/pages/ExecutionReturnedPage.vue'
-import BasketForm from '@/components/execution/BasketForm.vue'
-import { KITE_BASKET_URL, LAST_EXECUTED_KEY, NOT_LIVE_PARTS, basketFields, isLiveOutcome, readLastExecuted, rememberExecuted } from '@/lib/execute'
 
 const DATA = '[{"variety": "regular", "tradingsymbol": "NIFTY26O1923650CE", "exchange": "NFO", "transaction_type": "BUY", ' +
   '"order_type": "LIMIT", "product": "NRML", "price": 3.35, "quantity": 65, "readonly": true, "tag": "OFS1V1L0"}]'
@@ -55,10 +49,6 @@ const RETURN = { strategy_id: 1, read_at: '2026-10-16T15:22:00+05:30', strategy_
   contracts: [{ tradingsymbol: 'NIFTY26O1923650CE', platform_units: 65, zerodha_units: 65, other_strategies_units: 0,
     unexplained_units: 0, mismatch: null, reconciliation_reason: null }],
   mismatches: 0, blocked: false, external_orders: [], realised_pnl: null }
-const REFUSAL = { what_happened: 'The market is closed. Orders can be placed once it opens.',
-  impact: 'No order can be placed while the market is closed.', what_is_blocked: 'Execution of this strategy.',
-  next_action: 'Return during market hours and execute again.' }
-
 // W-151 (REQ-119 AC-5): the saved revision the review was loaded at (GET /strategies/1), sent with every Execute
 const REVISION = 3
 // the server's execute_plan_changed parts (backend/ofo/errors/templates.py), shown as given
@@ -68,7 +58,6 @@ const PLAN_CHANGED = { what_happened: 'Your plan changed after you reviewed it.'
   next_action: 'Review the current plan, then prepare the orders again.' }
 
 const ok = (data) => () => Promise.resolve({ data })
-const text = (w, id) => w.get(`[data-testid="${id}"]`).text()
 
 async function openExecute(id = '1', waitMs = 50) {
   const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/strategy/:id/execute', component: ExecuteStrategyPage }] })
