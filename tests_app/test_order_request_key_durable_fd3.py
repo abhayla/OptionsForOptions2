@@ -291,3 +291,56 @@ async def test_ra_n5_the_deadline_counts_from_the_requests_first_line_not_from_a
     again = await _post(app, stored, _body(orders, key))
     assert again.status_code == HTTPStatus.CREATED, again.text[:300]
     assert await _count(db, stored) == len(orders)
+
+
+async def test_ra_n6_a_failed_catalogue_read_keeps_the_request_claim_and_the_strategy_row_lock(
+        app_engine, admin_engine, strategy):
+    """Lane RA N6: ``stored_kind``'s failure path rolled the WHOLE session back: the request-key claim was lost (the
+    user read "could not check") and, without a key, the strategy's row lock went silently (the I-158 guarantee). The
+    read now fails inside its own savepoint: the claim and the lock stay, the read still refuses with its true cause."""
+    import datetime  # noqa: PLC0415
+
+    from ofo_app.adjustment_readers import CatalogueUnreadable, stored_kind  # noqa: PLC0415
+
+    async def broken(db):
+        await db.execute(text("SELECT 1 / 0"))  # a database error: it aborts the transaction unless it is saved
+    key = uuid.uuid4()
+    async with app_engine.connect() as conn:
+        await conn.begin()
+        await request_key.claim_in_transaction(conn, USER, key, strategy, BODY, "paper")
+        from ofo_app import strategy_store  # noqa: PLC0415
+        await strategy_store.lock_strategy(conn, USER, strategy)  # the I-158 row lock (what paper_store.place takes)
+        with pytest.raises(CatalogueUnreadable):  # a failed read still refuses, with its own cause
+            await stored_kind(conn, "NIFTY", datetime.date(2026, 12, 29), load=broken)
+        await request_key.finish_in_transaction(conn, USER, key, {"cancelled_stops": []})  # the claim is still ours
+        async with admin_engine.connect() as other:  # the row lock is still held by the first transaction
+            with pytest.raises(DBAPIError):
+                await other.execute(text("SELECT id FROM public.strategies WHERE id = :i FOR UPDATE NOWAIT"),
+                                    {"i": strategy})
+        await conn.rollback()
+
+
+async def test_ra_n6_a_session_that_holds_nothing_takes_no_savepoint_and_a_failed_read_still_refuses(app_engine):
+    """Lane RA N6: a read-only request pays no extra statement (the latency ceilings count them) and a failed catalogue
+    read still raises ``CatalogueUnreadable`` and leaves the session usable (the old whole-session rollback)."""
+    import datetime  # noqa: PLC0415
+
+    from ofo_app.adjustment_readers import CatalogueUnreadable, stored_kind  # noqa: PLC0415
+
+    seen: list[str] = []
+
+    async def broken(db):
+        seen.append("read")
+        await db.execute(text("SELECT 1 / 0"))
+    async with app_engine.connect() as conn:
+        await conn.begin()
+        statements: list[str] = []
+        from sqlalchemy import event  # noqa: PLC0415
+        event.listen(conn.sync_connection, "before_cursor_execute",
+                     lambda _c, _cur, stmt, *_a: statements.append(stmt.strip().split()[0].upper()))
+        with pytest.raises(CatalogueUnreadable):
+            await stored_kind(conn, "NIFTY", datetime.date(2026, 12, 29), load=broken)
+        assert seen == ["read"] and "SAVEPOINT" not in statements, statements
+        await conn.begin()
+        assert (await conn.execute(text("SELECT 1"))).scalar_one() == 1  # usable after the failed read
+        await conn.rollback()

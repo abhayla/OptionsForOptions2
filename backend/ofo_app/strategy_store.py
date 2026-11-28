@@ -34,6 +34,7 @@ from ofo.engine.legs import Instrument
 from ofo.instruments.models import FUTURE_TYPE
 from ofo.limits import INTEGER_MAX
 from ofo.strategy import stored_form as sf
+from ofo_app import txn_holds
 from ofo_app.catalogue_store import load_contract
 
 NOT_FOUND = "not_found"
@@ -439,6 +440,7 @@ async def _locked(conn: Any, user_ref: str, strategy_id: int) -> Any:
                                                    "user_ref": user_ref})).one_or_none()
     if row is None:
         raise StrategyStoreError(NOT_FOUND, f"strategy {strategy_id}")
+    txn_holds.mark(conn)  # RA N6: a failing optional read on this session must not roll the lock away
     return row
 
 

@@ -55,6 +55,7 @@ from ofo_app import (
     scenario_mode,
     tracked_book,
     tracked_contracts,
+    txn_holds,
 )
 from ofo_app.catalogue_store import load_catalogue
 from ofo_app.db import get_sessionmaker
@@ -871,19 +872,33 @@ class CatalogueUnreadable(Exception):
     """The stored catalogue could not be read (a database error): the expiry kind is then NOT KNOWN, with a reason."""
 
 
+async def _listed_entries(db: Any, underlying: str, load: Callable[..., Any] | None) -> list[Any]:
+    """The listed catalogue entries of ``underlying``; with a session the read is one savepoint (RA N6)."""
+    async def read() -> list[Any]:
+        return [e for e in (await (load or load_catalogue)(db)).all_entries()
+                if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
+    if db is None or not hasattr(db, "begin_nested") or not txn_holds.held(db):
+        try:
+            return await read()  # nothing to protect (no claim, no lock): no savepoint, no extra statement
+        except Exception:
+            if db is not None:
+                await db.rollback()  # the failed statement aborted the transaction: the next read needs it clean
+            raise
+    async with db.begin_nested():  # a claim or a lock is held: only the read is rolled back
+        return await read()
+
+
 async def stored_kind(db: Any, underlying: str, expiry: datetime.date, *, scn: Any = None,
                       load: Callable[..., Any] | None = None) -> str:
     """The expiry kind of ``expiry`` from the STORED catalogue (the day's instrument list the app keeps), by the one
-    rule ``expiry_kind_of``; "" = not known. A database error rolls the session back (it aborts the transaction, the
-    next read needs it clean) and raises ``CatalogueUnreadable``."""
+    rule ``expiry_kind_of``; "" = not known. A database error raises ``CatalogueUnreadable``. RA N6: the read runs in
+    its own savepoint, so a failure rolls back only the read: the request's key claim and the strategy's row lock (both
+    in the session's transaction) stay, and the session is usable again (a whole-session rollback lost both)."""
     scn = _scenario() if scn is None else scn
     try:
-        entries = [e for e in (await (load or load_catalogue)(db)).all_entries()
-                   if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
+        entries = await _listed_entries(db, underlying, load)
     except Exception as exc:  # any failed read means "kind not known", with its own reason
         log.warning("expiry kind: catalogue not read", exc_info=True)
-        if db is not None:
-            await db.rollback()
         raise CatalogueUnreadable from exc
     futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
     return expiry_kind_of(expiry, [e for e in entries if e.contract.is_option()], futures, scn)
