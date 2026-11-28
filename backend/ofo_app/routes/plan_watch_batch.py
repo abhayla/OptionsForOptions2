@@ -20,7 +20,7 @@ from fastapi import APIRouter, Depends, Query
 from ofo.charges import ChargeRates
 
 from ofo_app.api_models import ApiModel, CatalogueText
-from ofo_app.db import get_db
+from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, refuse_request, row_answer
 from ofo_app.routes.adjustment import (
     ApproachMargin,
@@ -98,6 +98,7 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     deadline = time.monotonic() + BATCH_BUDGET_S
     ids = _ids_of(strategy_ids)
     reads = await prefetch(db, ids)  # I-48: the reads every row shares, once (a failed one: each row reads its own)
+    await release_connection(db)  # D-36 (c): shared reads done, rows wait on prices
     tracked_reader = _with_kind_memo(tracked_reader, reads.expiry_kinds)
     for sid in ids:
         left = deadline - time.monotonic()
