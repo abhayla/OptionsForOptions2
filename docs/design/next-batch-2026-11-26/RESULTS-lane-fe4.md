@@ -1,4 +1,4 @@
-STATUS 14:45 | items 1-3 pushed, review round 1 applied (pushing now) | next push done | blocker: none
+STATUS 15:20 | coordinator addition 1: BLOCKED at the merge (conflict in a file outside my list); addition 2 held case: covered, see below | next push none | blocker: merge conflict, coordinator to decide
 
 # Lane FE4 results (28 Nov 2026)
 
@@ -48,6 +48,12 @@ None (all sentences exist).
 ## Not done
 - F7, F8. Cause of 876. Route half of item 1 (not my file).
 - The untested 876 variants above (entry timing, worker running at the save, stage edge / expiry kind).
+
+## Coordinator additions of 14:52
+1. **Merge of `origin/fix/r3-backend-5-1128`: conflict, aborted, nothing merged.** Conflicting file: `tests_app/test_exit_market_adr330_60.py` (Lane FE3's hand-over 1 and FD5 both changed it; not in my May-edit list). So the three tests in `test_real_position_stops_fe2_1128.py` (near lines 74, 93, 117) are NOT changed: they pass on my head and can only be seen failing after the merge. Needed from the coordinator: resolve that one file in the merge, or give it to a lane, or tell me to resolve it (then I rebuild those three states by inserting the rows directly, never through the order route).
+2. **Held real position ("Held at my broker", ADR-292 (4)):** already pinned on this head, not newly written: `test_real_position_stops_fe2_1128.py::test_an_old_armed_stop_on_a_real_position_is_never_fired` and my `test_na_closed_fe4_1128.py` record the position with `held_entry_store.record` (its paper orders stay), arm an index exit, cross the level: 0 fires, no stop order, the stop left armed (not cancelled), reported "real" once. Green (`18 passed`). To be re-run after the merge. No new Opus review: nothing changed.
+3. **`test_pool_not_held_across_market_wait` on my head:** `1 failed, 4 passed`, twice (deterministic). The failing test `test_plan_watch_connections_held_while_the_rest_reader_stalls` fails its own precondition ("the REST reader was not reached", `reads == 0`), not a timing limit. So it is not a measured hold. Cause not proved: the plan-watch route never calls the REST reader here; likely the wall clock (the container clock is a Saturday, market closed) but I could not pin the clock (no faketime). Re-run it on a weekday before calling it day-dependent.
+4. **N2 route half:** the route is Lane FD5's file: in `routes/monitoring_status.py` `compose`, replace `code = e.reason if e.reason in _WHY else "unknown"` by `code = ms.sentence_code(e)` (keep the `EXPLANATIONS` guard); `_WHY` can go; pin with an entry (`stale`, why `index_not_live`).
 
 ## Opus review (read-only, whole diff; Why Opus: stop and watch paths). Verdict SHIP for changes 1 and 2; change 3 passes but was not the PC's shape. Round 1 used.
 | # | Finding | Disposition |
