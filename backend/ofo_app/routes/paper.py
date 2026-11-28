@@ -32,7 +32,7 @@ from decimal import ROUND_HALF_EVEN, Decimal
 from types import SimpleNamespace
 from typing import Annotated, Any, Literal, get_args
 
-from fastapi import APIRouter, Depends, Query
+from fastapi import APIRouter, Depends, Query, Request
 from ofo.adjustment.approaches import EntryFacts
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
@@ -440,9 +440,16 @@ def _held_out(row: Any) -> dict | None:
 
 
 #: R9: the page's own request timeout is 10 s (frontend services/api.js); a request that reaches its commit after this
-#: many seconds refuses instead of committing late (the user has seen a failure and may press again)
+#: many seconds refuses instead of committing late (the user has seen a failure and may press again). RA N5: the
+#: seconds count from the request's arrival (``_stamp_request``, the first dependency, before the pool wait), not from
+#: after the key lookup, so the page's 10 s holds whatever the early work took.
 COMMIT_DEADLINE_S = 8.0
 _monotonic = time.monotonic  # the clock the deadline reads (a test replaces it)
+
+
+async def _stamp_request(request: Request) -> None:
+    """RA N5: the first dependency of an order request: its arrival on the server clock (``_monotonic``)."""
+    request.state.arrived_at = _monotonic()
 
 
 class CancelledStopOut(ApiModel):
@@ -1473,8 +1480,8 @@ async def _refuse_real_position(db: Any, strategy_id: int) -> None:
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
-             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
-async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
+             dependencies=[Depends(_stamp_request), Depends(guard_paper_order)])  # IC e2e 5
+async def place_paper_orders(strategy_id: int, body: PaperOrdersIn, request: Request,  # noqa: PLR0913 - dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
@@ -1503,7 +1510,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                                cancelled=await _replayed_stops(
                                    db, stored, first.get("result", {}).get("cancelled_stops", [])))
     stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent,
-                             "deadline": _monotonic() + COMMIT_DEADLINE_S}
+                             "deadline": getattr(request.state, "arrived_at", _monotonic()) + COMMIT_DEADLINE_S}
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
             user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
@@ -1608,7 +1615,7 @@ async def _place_orders(  # noqa: C901, PLR0912, PLR0913, PLR0915
         await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction
         cancelled_out = await _stops_out(db, stored, state, cancelled)
         if _monotonic() > stage["deadline"]:  # R9: the page has given up by now; a late commit would surprise the user
-            raise StrategyRefused("store_busy", Failure.CONFLICT)
+            raise StrategyRefused("order_request_too_slow", Failure.CONFLICT)  # RA N5: its own cause, not a busy store
         if stage.get("key") is not None:
             await request_key.finish_in_transaction(db, user_ref, stage["key"], {"cancelled_stops": cancelled_out})
         stage["commit_started"] = True

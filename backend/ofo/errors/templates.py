@@ -1098,6 +1098,12 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A basket was already prepared for this press.",
           "No new basket was prepared, so the same orders cannot be sent to Zerodha twice from one press.",
           "Preparing this basket again.", "Open this strategy's plan to see the basket that was prepared."),
+    # Lane RA N5 (review of round 2): the server's own commit deadline (the page gives up at 10 s); it is NOT the busy
+    # store. New wording, pending the owner's read.
+    _gate("order_request_too_slow", _SV, 586,
+          "This took too long, so no order was stored.",
+          "Nothing was stored and the strategy was not changed; pressing again places the orders once.",
+          "Placing these paper orders.", "Press Place again."),
     # Lane FD2 #877 (ADR-330 (64)): a real position is exited and protected in Kite, not on the paper routes.
     _gate("real_position_exit_refused", _SV, 584,
           "Real position: exit and protect it in Kite.",

@@ -239,7 +239,8 @@ async def test_a_claim_lost_to_a_rollback_refuses_and_stores_no_orders(app_engin
 
 async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(db, notified, keys, monkeypatch):
     """Opus review R9: the page gives up at 10 s and may press again; a request that only reaches its commit after the
-    server deadline (8 s) refuses ``store_busy`` with nothing stored, and its key is free again."""
+    server deadline (8 s) refuses with nothing stored, and its key is free again. RA N5: the refusal is its own cause
+    ("took too long"), no longer "busy with another action"."""
     from ofo_app.routes import paper as route  # noqa: PLC0415
     app, stored, *_ = await _setup(db)
     _use(app, keys)
@@ -248,8 +249,45 @@ async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(
     monkeypatch.setattr(route, "_monotonic", lambda: next(clock))
     key = uuid.uuid4()
     late = await _post(app, stored, _body(orders, key))
-    assert late.status_code == HTTPStatus.CONFLICT and "busy with another action" in late.text, late.text[:300]
+    assert late.status_code == HTTPStatus.CONFLICT and "took too long" in late.text, late.text[:300]
+    assert "busy with another action" not in late.text
     assert await _count(db, stored) == 0
     monkeypatch.setattr(route, "_monotonic", lambda: 0.0)  # the same key on time: placed (the late one freed it)
     again = await _post(app, stored, _body(orders, key))
     assert again.status_code == HTTPStatus.CREATED, again.text[:300]
+
+
+async def test_ra_n5_the_deadline_counts_from_the_requests_first_line_not_from_after_the_early_work(
+        db, notified, keys, monkeypatch):
+    """Lane RA N5: the page gives up at 10 s. Early work (the key lookup and claim: 3 s here) plus the orders' own work
+    (6 s) is 9 s after arrival: past the 8 s server deadline, so it refuses with nothing stored (before the fix the
+    deadline started AFTER the early work and this commit went through at about 11 s). The clock moves only when the
+    early work and the orders' work run."""
+    from ofo_app import paper_store  # noqa: PLC0415
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    now = [0.0]
+    monkeypatch.setattr(route, "_monotonic", lambda: now[0])
+    real_begin, real_place = request_key.begin, paper_store.place
+
+    async def slow_begin(*args, **kwargs):
+        now[0] += 3.0  # the Redis begin and the lookup before it
+        return await real_begin(*args, **kwargs)
+
+    async def slow_place(*args, **kwargs):
+        now[0] += 6.0  # the orders' own work
+        return await real_place(*args, **kwargs)
+    monkeypatch.setattr(request_key, "begin", slow_begin)
+    monkeypatch.setattr(paper_store, "place", slow_place)
+    key = uuid.uuid4()
+    late = await _post(app, stored, _body(orders, key))
+    assert late.status_code == HTTPStatus.CONFLICT and "took too long" in late.text, late.text[:300]
+    assert await _count(db, stored) == 0
+    now[0] = 0.0  # the same press again, quicker (2 s + 4 s): the key was freed, the orders are placed once
+    monkeypatch.setattr(request_key, "begin", real_begin)
+    monkeypatch.setattr(paper_store, "place", real_place)
+    again = await _post(app, stored, _body(orders, key))
+    assert again.status_code == HTTPStatus.CREATED, again.text[:300]
+    assert await _count(db, stored) == len(orders)
