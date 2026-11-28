@@ -108,4 +108,20 @@ Live: repeat with the feed on; flush the Redis key (`redis-cli flushdb`) between
 | items 1-6, 8 build, tests | Sonnet (this lane) | about 45 |
 | Opus review of items 1, 2, 4 | Opus | pending |
 
+## Opus review (items 1, 2, 4): REVISE, then fixed
+
+- F1 MAJOR (fixed): on the production tracked-reader shape, `adjustment_readers.stored_kind` rolls the request session back
+  on a catalogue read failure, which dropped the claim and the lock; the orders then committed with no key row, and the same
+  key placed twice after a Redis flush (reproduced by the reviewer, 3 -> 4 orders). Fix (structural): `finish_in_transaction`
+  requires exactly one row updated, else rolls back and answers 583 (no orders stored). Test:
+  `test_a_claim_lost_to_a_rollback_refuses_and_stores_no_orders`. Class fix for the owner lane (Lane FR file):
+  `stored_kind` must wrap its catalogue load in `async with db.begin_nested():` instead of `db.rollback()`, so it never
+  rolls back a caller's session. The test harness overrides the tracked reader with its own session, which hid this; a route
+  test on the production reader shape is not added (not done).
+- F3 (fixed): the real door now takes the strategy lock before the claim (same order as the paper door).
+- F2 MINOR (not done): after the release, `record_plan` does not re-check adopted holdings or the strategy revision (W-151
+  runs before the lock). Fix: re-read `adopted_for` and the revision under the lock and refuse if changed. Listed, not built.
+- F4 MINOR: a failed kind read answers a plain 500 (still fails closed, nothing stored); a catalogue sentence is not built.
+- F5 MINOR (unverified): a strategy with only execution plans may answer 404 before the 409 on the tracking exit.
+
 SAFE TO CLOSE: not yet.

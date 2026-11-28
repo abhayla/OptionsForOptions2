@@ -448,6 +448,7 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
     if req.key is not None and req.sent is not None:  # FD3 item 2: the durable claim, in THIS transaction
+        await store.lock_strategy(req.db, req.user_ref, req.strategy_id)  # the paper door's order: lock, then claim
         await request_key.claim_in_transaction(req.db, req.user_ref, req.key, req.strategy_id, req.sent, "real")
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,

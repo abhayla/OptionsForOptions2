@@ -232,7 +232,11 @@ async def claim_in_transaction(db: Any, user_ref: str, key: uuid.UUID, strategy_
 async def finish_in_transaction(db: Any, user_ref: str, key: uuid.UUID, result: Mapping[str, Any]) -> None:
     """Mark the claim ``done`` with the result, in the same transaction, right before the commit."""
     try:
-        await db.execute(_DB_DONE, {"u": user_ref, "k": key, "r": json.dumps(result, default=str)})
+        done = await db.execute(_DB_DONE, {"u": user_ref, "k": key, "r": json.dumps(result, default=str)})
+        done_rows = done.rowcount
     except (SQLAlchemyError, OSError, TimeoutError):
         await db.rollback()
         raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY) from None
+    if done_rows != 1:  # the claim is gone (a rollback since): never commit orders without it
+        await db.rollback()
+        raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY)

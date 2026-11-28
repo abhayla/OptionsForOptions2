@@ -222,3 +222,16 @@ async def test_a_stop_the_monitor_fired_first_is_not_named_as_cancelled(db, noti
     reply = await _post(app, stored, _body([_new(ids[0], "BUY", 65, "30", "exit")], uuid.uuid4()))
     assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
     assert reply.json()["cancelled_stops"] == []
+
+
+async def test_a_claim_lost_to_a_rollback_refuses_and_stores_no_orders(app_engine, strategy):
+    """Opus review F1: something (``stored_kind``'s catalogue failure path) rolls the request's session back between the
+    claim and the finish; the finish must not commit orders without their key (it updates no row: 583, nothing stored)."""
+    key = uuid.uuid4()
+    async with app_engine.connect() as conn:
+        await conn.begin()
+        await request_key.claim_in_transaction(conn, USER, key, strategy, BODY, "paper")
+        await conn.rollback()  # the claim is gone
+        await conn.begin()
+        with pytest.raises(StrategyRefused, match="request_key_store_unavailable"):
+            await request_key.finish_in_transaction(conn, USER, key, {"cancelled_stops": []})
