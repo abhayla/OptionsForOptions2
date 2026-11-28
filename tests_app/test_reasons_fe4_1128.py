@@ -77,3 +77,11 @@ def test_an_unknown_reason_or_why_gives_the_plain_fallback_never_a_blank_or_anot
 def test_every_code_sentence_sentence_key_exists_in_the_catalogue():
     for code in set(_REASONS) | set(_WHYS) | {"unknown"}:
         assert f"monitoring_why_{code}" in EXPLANATIONS, code
+
+
+def test_every_why_sentence_in_the_catalogue_is_known_to_sentence_code():
+    """Review F4: a new ``monitoring_why_*`` sentence nobody listed would fall back to the generic reason."""
+    known = ms.SENTENCE_WHYS | ms.SENTENCE_REASONS | {"unknown"}
+    for key in EXPLANATIONS:
+        if key.startswith("monitoring_why_"):
+            assert key.removeprefix("monitoring_why_") in known, key

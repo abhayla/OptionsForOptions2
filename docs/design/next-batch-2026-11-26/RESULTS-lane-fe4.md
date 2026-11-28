@@ -1,4 +1,4 @@
-STATUS 14:10 | items 1-3 built, gate running, Opus review pending | next push after review | blocker: none
+STATUS 14:45 | items 1-3 pushed, review round 1 applied (pushing now) | next push done | blocker: none
 
 # Lane FE4 results (28 Nov 2026)
 
@@ -42,14 +42,24 @@ None (all sentences exist).
 
 ## To file as deferred issues (not filed by me)
 - F7, F8 (above).
+- Review F7 (worker and monitor market-open clocks near 09:15 / 15:30).
 - Issue 876 cause unknown: needs the PC's worker log and stored plan body of strategy 207.
 
 ## Not done
 - F7, F8. Cause of 876. Route half of item 1 (not my file).
-- Opus review: see the section below.
+- The untested 876 variants above (entry timing, worker running at the save, stage edge / expiry kind).
 
-## Opus review
-(pending at this STATUS)
+## Opus review (read-only, whole diff; Why Opus: stop and watch paths). Verdict SHIP for changes 1 and 2; change 3 passes but was not the PC's shape. Round 1 used.
+| # | Finding | Disposition |
+|---|---|---|
+| F1 major | the T1-06 test typed 5 in every stage, so a wrong stage would still read 5; the PC's row was weekly [50,5,40] | Fixed: test `test_t106_b_...` (the PC's row, no pin): green. The reviewer's mutation (stage_of always 0) fails it |
+| F2 major | the PC's real guard `loss_stop_rupees 80` + row alerts through the RUPEE row, no T-06 row | Recorded; test `test_t106_c_...` (a plan alert comes with the PC's guards). Useful for 876: with the PC's plan shape and no pin the harness alerts, so the shape alone does not explain the PC's silence. Whether "rupee row and no T-06 row" is by design: not checked |
+| F3 minor | docstring said 14 on, assert 13 | Fixed |
+| F4 minor | `SENTENCE_WHYS` hand list can drift from the catalogue | Fixed: test that every `monitoring_why_*` key is known to `sentence_code` |
+| F5 minor | nothing calls `sentence_code` yet (route lane) | Known: For the owner lane 1. The route's own `_WHY` lacks `expiry_kind_unknown` until it uses the function |
+| F6 minor | docstring said closed = empty report; `_report_not_applicable` ran twice | Fixed: one call, docstring true |
+| F7 minor, pre-existing | worker (own clock) and monitor (feed clock) disagree on market open for seconds near 09:15 / 15:30; in a real closed market the worker already says paused `market_closed`, so change 2 matters only in that window or if the worker says watched | Not changed; the N3 tests fake the worker as watched. Listed under "To file" |
+Not covered by the reviewer (also not by me): entry timing (the PC's trade entered 1 s before the plan, inside the 5-minute entry period; PATH-94 enters 20 minutes before frame 0), a worker already running when the plan is saved with the trade (case h covers a plan save while running on a flat row), days-left at the weekly middle-stage edge (4 days to expiry) or the expiry kind read as monthly, the PC's 14th trigger, the Alerts screen itself (the test reads rows), the 2 to 3 checks a minute count.
 
 ## Evidence
 | Claim | Evidence |
@@ -58,15 +68,18 @@ None (all sentences exist).
 | Item 2 red then green | before: `2 failed, 2 passed`; after with 3 older files: `18 passed` |
 | Item 3 | `test_t106_fe4_1128.py`: `1 passed` on my head and on 206a9f0 |
 | Regression | `pytest -c pytest-app.ini` over test_worker_j3, test_monitoring_state, test_monitoring_status_route, test_paper_monitor, all `*fe2_1128`, `*fe3_1128`, `*fe4_1128`, test_stop_fired_message: `210 passed` |
+| Round 2 | `pytest -c pytest-app.ini` over the three fe4 files and r6_r7, review, kinds_unread (fe3): `48 passed` |
+| Chain cases | `test_plan_stop_worker_chain.py -k a_/h_/k_/l_`: `4 passed` |
+| Gate (first push, head 0a2b4ace6) | `prepush.py --jobs 2`: `TOTAL PASS 1467.5s` |
 | Gate pieces | ruff on changed files clean; `ruff_ratchet.py` OK (no rule rose); `pytest tests -m repo_scan`: 1642 passed, 2 skipped, 47 xfailed; select + broker-name tests: 141 passed |
 
 ## Tasks, models, minutes
 | task | model | minutes |
 |---|---|---|
 | build, tests, DB set-up | Sonnet | 40 |
-| review items 1 to 3 | Opus | (running) |
+| review items 1 to 3 | Opus | 14 |
 
 ## PC steps (paper only)
 Market closed: pull the branch; `tests_app/test_reasons_fe4_1128.py`, `test_na_closed_fe4_1128.py` one file at a time through `scripts/orchestrator/db_run.py`. Live: with a real position's old armed paper stop and the market open or closed, the trade reads "Not being watched: a real position has no paper stop" once the owner lane wires `sentence_code` into the route.
 
-SAFE TO CLOSE: not yet (review pending).
+SAFE TO CLOSE (head: the commit this file is pushed in; what is left: F7/F8 of FE3, the cause of 876, the route half of item 1 for the owner lane).

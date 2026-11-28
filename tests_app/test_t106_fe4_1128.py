@@ -5,7 +5,7 @@ rows; the worker checked it 2 to 3 times a minute; 0 "check skipped" lines.
 
 This is that shape, the worker a SEPARATE OS process on a real PostgreSQL database (``_worker_chain``): the approved
 plan (the system rule list, "Loss reaches 5 % of max loss") is saved ONE minute (one frame) before the loss begins; the
-trigger list is 27 with 14 on, as stored; no style pin; the loss is about twice the rule's level (PATH-94: about 10 %
+trigger list is 27 with 13 on (the PC stored 14); no style pin; the loss is twice the rule's level (PATH-94: about 10 %
 from 11:41) and is held 15 minutes. Spec basis: REQ-115, ADR-016 to ADR-019 (a missed alert is never silent), ADR-330
 (44), (47).
 """
@@ -46,3 +46,34 @@ async def test_t106_an_approved_plan_13_of_27_triggers_no_pin_a_loss_twice_the_r
     log = c.log()
     assert "has no alert preset" not in log and "no_preset" not in log, log[-1500:]
     assert await c.orders_count() == c.orders_at_start
+
+
+async def test_t106_b_the_pcs_per_stage_row_50_5_40_alerts_at_the_middle_stage_with_no_pin(chain_for, monkeypatch):  # noqa: F811
+    """Review F1: the first test types 5 in every stage, so a wrong stage or row would still read 5. The PC's stored
+    row was weekly [50, 5, 40]: 5 only in the middle stage. A wrong stage compares against 50 and stays silent."""
+    c = await chain_for("PATH-94")
+    await c.seed(monkeypatch, plan=False, pin=None)
+    await c.type_plan(guards={}, t06_stages=["50", "5", "40"], keep=None)
+    c.start_worker()
+    await c.go_to(0)
+    await asyncio.sleep(RELOAD_SECONDS)
+    await c.go_to(1)
+    rows = [r for r in await c.alert_at_once("plan_loss_stop", next_frame=2) if r["rule_id"] == "T-06"]
+    print("ROWS", rows)
+    assert len(rows) == 1 and rows[0]["threshold"] == Decimal("5"), rows
+
+
+async def test_t106_c_the_pcs_rupee_guard_of_80_alerts_with_no_pin(chain_for, monkeypatch):  # noqa: F811
+    """Review F2: with the PC's real guard (loss_stop_rupees 80) and row, a plan alert comes (the rupee row); the
+    harness shows an alert on the PC's plan shape, so the PC's silence is not explained by the shape alone."""
+    c = await chain_for("PATH-94")
+    await c.seed(monkeypatch, plan=False, pin=None)
+    await c.type_plan(guards={"loss_stop_rupees": "80"}, t06_stages=["50", "5", "40"], keep=None)
+    c.start_worker()
+    await c.go_to(0)
+    await asyncio.sleep(RELOAD_SECONDS)
+    await c.go_to(1)
+    await c.go_to(2)
+    rows = await c.plan_alerts()
+    print("PLAN ALERTS", rows)
+    assert rows, "no plan alert at all with the PC's guards"
