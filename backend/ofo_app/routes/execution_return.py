@@ -48,7 +48,9 @@ from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, pos
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
+from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import MarketContext, get_market_context
+from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
@@ -110,6 +112,7 @@ class _Request:
     now: datetime.datetime
     today: datetime.date  # the database's India date: the session a plan must belong to, to close from the book
     market: Any = None  # the market context (ADR-276): the first fill's entry facts; None = not connected
+    feed: Any = None  # FD5 3.3: the route's live feed, so an index nobody holds yet is held until its first quote
 
 
 def _refuse(template: str) -> StrategyRefused:
@@ -137,12 +140,13 @@ async def return_from_kite(  # noqa: PLR0913 - FastAPI dependencies
     clocks: Annotated[_Clocks, Depends(get_return_clocks)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
     market: Annotated[Optional[MarketContext], Depends(get_market_context)],  # noqa: UP045
+    feed: Annotated[Optional[LiveFeed], Depends(get_live_feed)] = None,  # noqa: UP045
 ) -> ReturnOut:
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
             raise _refuse("gate_broker_not_connected")
-        req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db), market)
+        req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db), market, feed)
         underlying = stored.saved.definition.underlying
         # FD3 item 4: every Zerodha and market wait comes BEFORE the lock, with no connection held; the lock is taken
         # after them and what was read is re-checked under it (``_return``)
@@ -197,7 +201,7 @@ async def _read_outside(req: _Request, underlying: str) -> _Outside:
                 and not adopted and _first_fill_of(history, plan)):
             from ofo_app.adjustment_readers import entry_facts_now  # noqa: PLC0415 - the readers import the route layer
             sold = [_listed(catalogue, o.instrument_id).contract for o in plan.orders if o.transaction_type == "SELL"]
-            facts = await entry_facts_now(req.market, underlying, sold)
+            facts = await entry_facts_now(req.market, underlying, sold, feed=req.feed)
     return _Outside(catalogue, tags, zerodha, book, facts, tuple(adopted), revision)
 
 

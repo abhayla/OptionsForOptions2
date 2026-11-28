@@ -671,3 +671,44 @@ async def test_r3_a_strategy_saved_during_the_read_refuses_the_return_and_stores
     assert resp.status_code == HTTPStatus.CONFLICT, resp.text
     assert resp.json()["what_happened"] == render("execute_plan_changed").what_happened
     assert (facts, status) == (None, "open")
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_fr33_the_return_door_hands_its_live_feed_to_the_first_fill_entry_facts(app_engine, admin_engine,
+                                                                                      monkeypatch):
+    """FD5 3.3: ``entry_facts_now`` got no feed from the Return door, so an index nobody held yet was never held on the
+    shared fan-out; the door's own feed dependency is now passed through."""
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+    from ofo_app.routes import outcome, planned_entry  # noqa: PLC0415
+    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    seen = {}
+    real = adjustment_readers.entry_facts_now
+
+    async def spy(ctx, underlying, sold, confirmed=False, feed=None):
+        seen["feed"] = feed
+        return await real(ctx, underlying, sold, confirmed=confirmed, feed=feed)
+    monkeypatch.setattr(adjustment_readers, "entry_facts_now", spy)
+    monkeypatch.setattr(adjustment_readers, "atm_iv_now", lambda *_a: _none())
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    sentinel = object()
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "SELL", "5.45"))
+            reads = _Reads("122104", orders=_sold(_data("orders-122104")), trades=_sold(_data("trades-122104")))
+            app = _app_for(conn, user, reads)
+            app.dependency_overrides[outcome.get_market_context] = lambda: _market(ENTRY_SPOT)
+            app.dependency_overrides[planned_entry.get_live_feed] = lambda: sentinel
+            assert (await _post(app, sid)).status_code == HTTPStatus.OK
+            assert seen["feed"] is sentinel
+        finally:
+            await trans.rollback()
+
+
+async def _none():
+    return None
