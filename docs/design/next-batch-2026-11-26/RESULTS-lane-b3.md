@@ -1,4 +1,4 @@
-STATUS 20:10 | batch 1 PUSHED (d35ae8f54, TOTAL PASS); batch 2 built and committed: items 3, 4, 5, 6, 7 + Opus review M2/M4 fixes, full check next | next push 01:30 | blocker: send_message to @parent refused (elevated_session_untrusted_device); this line is the report
+STATUS 20:55 | BATCH 2 PUSHED (TOTAL PASS 1093 s on head 9573c2f9b, after merging origin/integration/weekend-r3-1129 clean): items 3 (I-202, without the stored-close time), 4 (Return sentence; entries sentences already fine), 5 (all 11 issues done, table), 6 (21 statements = ceiling, PC re-time left), 7 (nothing more mine) | queue done | blocker: send_message to @parent refused (elevated_session_untrusted_device); this line is the report
 
 # Lane B3 results (28 Nov 2026)
 
