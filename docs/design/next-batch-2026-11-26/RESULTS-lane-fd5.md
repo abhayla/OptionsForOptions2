@@ -52,4 +52,16 @@ below, fixed.
   refused"). I kept add/open on a HELD condor and refused its exit (the later rule). Recommendation: keep it; if the
   owner wants no recording at all, a held condor can never be corrected after a broker change.
 
+## Opus review of N1 (f21b59f4): PASS, no open path (store, place_checked, route models, race under the strategy lock read)
+Fixed here: the stray `dump.rdb` removed (F6); held `open` now has a test (F5). Left, listed:
+- To file as deferred issues: (F1, MAJOR, existed before) the monitor still fires a paper `stop` on a held (real)
+  position when a stop was armed before #877 (paper_monitor.py reload has no kind filter; paper_store.place lets `stop`
+  through); it could close the strategy while the position is open at the broker. Needs a read-only count of armed
+  triggers on strategies with a held row, and the owner's call (cancel them or filter in `reload`; R6: nothing is
+  removed without him). Not mine (paper_monitor.py is Lane FE3's file).
+- (F2, MINOR, order path on only) a paper order placed first and a basket sent after reads as paper (`kind_of`).
+- (F3, MINOR) any execution plan row, even an unsent form, blocks paper orders on the strategy, with the Kite sentence.
+- (F4, MINOR) the refusal code `real_position_exit_refused` is shared by open, add and exit refusals (logs).
+- (F7) the cited ADR-330 (64)/(58) text is on origin/fix/ic-live-test-1123, not this branch; the held rule has no decision row.
+
 SAFE TO CLOSE: not yet (queue items 2 to 4 and the coordinator's round 1 items follow).
