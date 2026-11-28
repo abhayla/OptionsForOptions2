@@ -42,6 +42,8 @@ below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables 
 
 - Ran `alembic upgrade head` on the container's own throwaway test database to get a schema; no file, no product code touched.
 
+- Friction row for the coordinator (I1; this lane may not edit docs/process/friction-log.md): "Cloud test database `ofo_test` has no schema at session start: every DB test fails with `relation public.catalogue_contracts does not exist` until `db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head` is run; a 60 min foreground run of all tests_app was killed at 62 percent by the default background limit. Fix to recommend: cloud_services.sh migrates ofo_test, and the lane brief gives the 7200000 ms limit for a full tests_app run." Status: new.
+
 ## Not done
 
 - Coordinator messages (send_message to the parent) are refused: "elevated_session_untrusted_device"; the remedy is an owner card (confirm_repository_trust) that also limits this session to trusted devices for good, so it was not raised unasked. Status goes through this file and the push line.
