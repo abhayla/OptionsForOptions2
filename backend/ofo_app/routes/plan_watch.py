@@ -43,7 +43,8 @@ from ofo.strategy.definition import display_contract
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import adjustment_check as check
-from ofo_app import paper_trigger_store, price_budget, tracked_contracts
+from ofo_app import paper_book, paper_trigger_store, price_budget, tracked_contracts
+from ofo_app.adjustment_readers import Prefetched
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
@@ -89,19 +90,24 @@ class BatchReads:
     contracts: Mapping[int, tracked_contracts.TrackedContract] = dataclasses.field(default_factory=dict)
     kinds: Mapping[int, str] = dataclasses.field(default_factory=dict)
     expiry_kinds: dict[tuple[str, datetime.date], str] = dataclasses.field(default_factory=dict)
+    #: the rows' paper orders and the answers of every contract they and the triggers name (``read_tracked``'s input)
+    tracked: Prefetched = dataclasses.field(default_factory=Prefetched)
 
 
-async def prefetch(db: Any, strategy_ids: list[int]) -> BatchReads:
-    """The batch's shared reads: each row's triggers, then ONE contract resolve and ONE kind read for all of them.
+async def prefetch(db: Any, strategy_ids: list[int], user_ref: str) -> BatchReads:
+    """The batch's shared reads: ONE read of every row's paper orders (the caller's own only: the owner filter is in the
+    query), each row's triggers, then ONE contract resolve (the orders' and the triggers' contracts) and ONE kind read.
     A failed read leaves the rows to read for themselves (their own refusal); the session is rolled back first."""
     from ofo_app import strategy_store  # noqa: PLC0415 - late: strategy_store reaches the order modules
     reads = BatchReads()
     try:
+        orders = await paper_book.load_owned_many(db, user_ref, strategy_ids)
         triggers = {}
         for sid in strategy_ids:
             triggers[sid] = [r for r in reversed(await paper_trigger_store.list_for(db, sid)) if r.cancelled_at is None]
         ids = sorted({r.trigger.contract_id for rows in triggers.values() for r in rows
-                      if r.trigger.contract_id is not None})
+                      if r.trigger.contract_id is not None}
+                     | {o.order.contract_id for rows in orders.values() for o in rows})
         found = {c.contract_id: c for c in await tracked_contracts.resolve(db, ids)} if ids else {}
         with_rows = [sid for sid, rows in triggers.items() if rows]
         kinds = await strategy_store.kinds_of(db, with_rows) if with_rows else {}
@@ -115,6 +121,7 @@ async def prefetch(db: Any, strategy_ids: list[int]) -> BatchReads:
                 log.warning("plan watch batch: rollback after the shared reads failed too")
         return reads
     reads.triggers, reads.contracts, reads.kinds = triggers, found, kinds
+    reads.tracked = Prefetched(orders, found)
     return reads
 
 

@@ -133,28 +133,54 @@ def index_name(underlying: str) -> str | None:
 
 # ---- strategy ---------------------------------------------------------------------------------------------------
 
+@dataclasses.dataclass(frozen=True)
+class Prefetched:
+    """What the plan-watch batch read ONCE for all its rows (Lane B3, I-48; read cost only, never a different answer):
+    ``orders`` (strategy id -> its paper orders, ``paper_book.load_owned_many``) and ``contracts`` (contract id -> its
+    ``tracked_contracts`` answer, one ``resolve`` for every contract those orders name). A strategy or contract that is
+    absent is read by the row itself exactly as without a prefetch (a real-book strategy has no paper orders, so it is
+    absent from ``orders`` and takes the real-book path)."""
+
+    orders: Mapping[int, tuple] = dataclasses.field(default_factory=dict)
+    contracts: Mapping[int, Any] = dataclasses.field(default_factory=dict)
+
+
 async def read_tracked(strategy_id: int, rates: ChargeRates | None, db: Any = None,
-                       kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> Tracked | None:
+                       kinds: Mapping[tuple[str, datetime.date], str] | None = None,
+                       prefetched: Prefetched | None = None) -> Tracked | None:
     """``db``: the request's own session (a request uses ONE connection, #682); None for the worker, which has no
     request and reads on a session of its own. ``kinds`` (#864): the worker's record of the expiry kind it read for
     (underlying, nearest expiry); a recorded kind spares the catalogue read, an absent or empty one reads it."""
     if db is not None:
-        return await _tracked_on(db, strategy_id, rates, kinds)
+        return await _tracked_on(db, strategy_id, rates, kinds, prefetched)
     async with get_sessionmaker()() as own:
         found = await _tracked_on(own, strategy_id, rates, kinds)
         await own.commit()  # the worker's own session: keeps a stop base stored once (ADR-330), nothing else is written
         return found
 
 
+async def _contracts_of(db: Any, orders: Any, prefetched: Prefetched | None) -> dict[int, Any]:
+    """The traded contracts' answers: the batch's shared ones where it has them, the rest from one ``resolve``."""
+    ids = sorted({o.order.contract_id for o in orders})
+    shared = prefetched.contracts if prefetched is not None else {}
+    found = {cid: shared[cid] for cid in ids if cid in shared}
+    missing = [cid for cid in ids if cid not in found]
+    if missing:
+        found |= {c.contract_id: c for c in await tracked_contracts.resolve(db, missing)}
+    return found
+
+
 async def _tracked_on(db: Any, strategy_id: int, rates: ChargeRates | None,
-                      kinds: Mapping[tuple[str, datetime.date], str] | None = None) -> Tracked | None:
-    paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
+                      kinds: Mapping[tuple[str, datetime.date], str] | None = None,
+                      prefetched: Prefetched | None = None) -> Tracked | None:
+    paper = prefetched.orders.get(strategy_id) if prefetched is not None else None  # the batch's read of THIS strategy
+    if paper is None:
+        paper = await paper_book.load_owned(db, current_user_ref(), strategy_id)  # owner check in the query
     real = not paper  # ADR-276: no paper order -> the real Zerodha book (fills + adopted holdings), same netter
     orders: Any = paper or await _real_rows(db, strategy_id)
     if not orders:
         return None  # not this user's, no such strategy, or nothing traded
-    found = {c.contract_id: c for c in await tracked_contracts.resolve(db, sorted({o.order.contract_id
-                                                                                   for o in orders}))}
+    found = await _contracts_of(db, orders, prefetched if paper else None)
     book = net_positions([o.order.as_paper() for o in orders], {})
     underlying, lot, legs = _legs_of(book, found)
     if not legs or underlying is None or lot is None:

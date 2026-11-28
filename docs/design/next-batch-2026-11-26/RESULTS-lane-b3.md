@@ -1,4 +1,4 @@
-STATUS 20:55 | BATCH 2 PUSHED (TOTAL PASS 1093 s on head 9573c2f9b, after merging origin/integration/weekend-r3-1129 clean): items 3 (I-202, without the stored-close time), 4 (Return sentence; entries sentences already fine), 5 (all 11 issues done, table), 6 (21 statements = ceiling, PC re-time left), 7 (nothing more mine) | queue done | blocker: send_message to @parent refused (elevated_session_untrusted_device); this line is the report
+STATUS 21:05 | PUSH 3 (item 1 cut 2, coordinator's permission for adjustment_readers.py): 9 rows 219 -> 162 -> 136 statements, orders and traded contracts read once; check next | queue otherwise done | blocker: send_message to @parent refused (elevated_session_untrusted_device); this line is the report
 
 # Lane B3 results (28 Nov 2026)
 
@@ -24,7 +24,17 @@ Fail closed: a prefetch that fails (database or anything else) changes nothing f
 before. A key the prefetch did not read is read by the row. Every row's answer equals its single route's answer (the
 test compares all 9) and its armed index exit shows its own level (23400 + 10 k): a row never shows another row's figures.
 
-NOT done (honest): the target "orders, contracts and settings read once for all rows" is only partly met. Settings
+CUT 2 (21:05, the coordinator allowed `adjustment_readers.py` for the plan-watch reads only): `read_tracked` takes an optional
+`prefetched=Prefetched(orders, contracts)`; the batch reads every row's paper orders with ONE `load_owned_many` (owner
+filter in the query) and resolves the orders' and triggers' contracts with ONE `resolve`. A strategy or contract the
+batch did not read is read by the row, exactly as before (a real-book strategy has no paper orders and takes the real
+path); `read_tracked` without `prefetched` is unchanged. 9 rows: 162 -> 136 statements (ceiling 136 in
+test_plan_watch_batch_b3_1128.py; red first at 140 with 162 measured). Equality test: `read_tracked` with and without
+the batch reads returns the same Tracked (the clock stamp `taken_at` aside), with all rows read, with only one row read,
+and a missing id stays None. Orders are as of the request start, like the triggers (M1). Total: 219 -> 136, 24 -> 15 a
+row; what is left per row sits in `run_check` (plan, facts, records, pause, isolation), not in this lane's files.
+
+EARLIER NOTE (before cut 2): the target "orders, contracts and settings read once for all rows" was only partly met. Settings
 were already one read per request (app_settings and the user's preferences, 2 statements, not per row). The orders and
 the traded contracts of a row are read inside `read_tracked` (`adjustment_readers.py::_tracked_on`), and the plan, facts
 and records inside `routes/adjustment_check.py::run_check`; both are not in my May edit list. About 18 statements a row
@@ -107,7 +117,7 @@ stop line; another user's strategy is refused exactly as the single route refuse
 start) and M3 (prefetch outside the 15 s `wait_for`) stay open, display only, listed here for the next pass.
 
 ## For the owner lane
-- Whoever owns `backend/ofo_app/adjustment_readers.py` and `routes/adjustment_check.py`: give `read_tracked` an optional
+- (DONE in cut 2 for `read_tracked`; the plan, facts and records reads in `run_check` remain) Whoever owns `routes/adjustment_check.py`: give `read_tracked` an optional
   `prefetched` argument (orders by strategy from `paper_book.load_owned_many`, contracts from one
   `tracked_contracts.resolve` of all rows' order contract ids), and let `run_check` take the plan and facts reads for
   many ids. Expected: about 9 statements a row saved on the orders and contracts alone. Then lower `BATCH9_CEILING` in

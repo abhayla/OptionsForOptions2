@@ -78,10 +78,10 @@ async def _batch_and_singles(ids: list[int], single_for: list[int] | None = None
 
 #: Statements a batch of nine running rows may run. MEASURED on this test's rows: 219 before the batch reads (24 a
 #: row), 162 after (the duplicate screen-isolation read gone, trigger contracts and position kinds read once for all
-#: rows, the expiry kind read once). What is left is per row: orders and traded contracts (``read_tracked``), the plan,
-#: the facts and the records; batching those needs ``adjustment_readers.py`` (see RESULTS, "For the owner lane").
+#: rows, the expiry kind read once), 136 after the orders and traded contracts are read once too (``Prefetched`` in
+#: ``read_tracked``). What is left is per row: the plan, the facts and the records (``run_check``, not this lane's).
 #: Lowered with each fix, never raised.
-BATCH9_CEILING = 162
+BATCH9_CEILING = 136
 
 
 async def test_nine_rows_statement_ceiling_and_each_row_its_own(app_db_url, monkeypatch):  # noqa: F811
@@ -189,3 +189,34 @@ async def test_a_release_that_fails_does_not_turn_the_batch_into_a_500(app_db_ur
     monkeypatch.setattr(plan_watch_batch, "release_connection", broken)
     out = await _batch_only(ids, single=False)
     assert [i["state"] for i in out["batch"]["items"]] == ["ok", "ok", "ok"]
+
+
+def _same(tracked):
+    """The Tracked without its two ``taken_at`` stamps (the clock at each call; everything else is the book)."""
+    import dataclasses  # noqa: PLC0415
+    if tracked is None:
+        return None
+    fixed = {k: (None if getattr(tracked, k) is None else dataclasses.replace(getattr(tracked, k), taken_at=None))
+             for k in ("stop_base", "entry_stop_base")}
+    return dataclasses.replace(tracked, **fixed)
+
+
+async def test_read_tracked_gives_the_same_book_with_and_without_the_batch_reads(app_db_url, monkeypatch):  # noqa: F811
+    """I-48, the reader half: ``prefetched`` is read cost only. For every row the Tracked it returns equals the one the
+    unaided reader returns, and a row the batch did not read (absent from ``orders``) is read by the row itself."""
+    from ofo_app import paper_book, tracked_contracts  # noqa: PLC0415
+    from ofo_app.adjustment_readers import Prefetched, read_tracked  # noqa: PLC0415
+    ids = await seed_rows(app_db_url, monkeypatch, 3)
+    async with app_db_url.connect() as conn:
+        orders = await paper_book.load_owned_many(conn, "owner", ids)
+        found = {c.contract_id: c for c in await tracked_contracts.resolve(
+            conn, sorted({o.order.contract_id for rows in orders.values() for o in rows}))}
+        shared = Prefetched(orders, found)
+        for sid in ids:
+            assert _same(await read_tracked(sid, None, db=conn, prefetched=shared)) == _same(
+                await read_tracked(sid, None, db=conn))
+        partial = Prefetched({ids[0]: orders[ids[0]]}, {})  # rows 1 and 2 not read by the batch: read by themselves
+        for sid in ids:
+            assert _same(await read_tracked(sid, None, db=conn, prefetched=partial)) == _same(
+                await read_tracked(sid, None, db=conn))
+        assert await read_tracked(987654, None, db=conn, prefetched=shared) is None  # not found stays not found

@@ -36,7 +36,7 @@ from ofo_app.routes.adjustment import (
 from ofo_app.routes.adjustment_preferences import UserPreferences, UserValuesIn
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
-from ofo_app.routes.plan_watch import PlanWatchOut, prefetch, watch_of
+from ofo_app.routes.plan_watch import BatchReads, PlanWatchOut, prefetch, watch_of
 
 log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
@@ -75,13 +75,14 @@ def _ids_of(raw: str) -> list[int]:
     return ids
 
 
-def _with_kind_memo(tracked_reader: TrackedReader, memo: dict) -> TrackedReader:
-    """The default reader (``read_tracked`` on the request's session) with the batch's expiry-kind memo as its
-    ``kinds``: the first row reads the stored catalogue, the rows after it with the same underlying and nearest expiry
-    reuse that answer (the worker does the same, #864). Any other reader (a test's own) is left as it is."""
+def _with_shared_reads(tracked_reader: TrackedReader, reads: BatchReads) -> TrackedReader:
+    """The default reader (``read_tracked`` on the request's session) with the batch's shared reads: the expiry-kind
+    memo as its ``kinds`` (the first row reads the stored catalogue; rows with the same underlying and nearest expiry
+    reuse that answer, as the worker does, #864) and ``prefetched`` (the rows' orders and traded contracts, read
+    once). Any other reader (a test's own) is left as it is."""
     from ofo_app.adjustment_readers import read_tracked  # noqa: PLC0415 - it imports routes.adjustment
     if isinstance(tracked_reader, functools.partial) and tracked_reader.func is read_tracked:
-        return functools.partial(tracked_reader, kinds=memo)
+        return functools.partial(tracked_reader, kinds=reads.expiry_kinds, prefetched=reads.tracked)
     return tracked_reader
 
 
@@ -99,12 +100,12 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     items: list[dict] = []
     deadline = time.monotonic() + BATCH_BUDGET_S
     ids = _ids_of(strategy_ids)
-    reads = await prefetch(db, ids)  # I-48: the reads every row shares, once (a failed one: each row reads its own)
+    reads = await prefetch(db, ids, user_ref)  # I-48: the shared reads, once (a failure: each row reads its own)
     try:
         await release_connection(db)  # D-36 (c): shared reads done, rows wait on prices
     except Exception:  # noqa: BLE001 - a broken connection: each row then refuses on its own, the batch still answers
         log.warning("plan watch batch: the connection could not be released after the shared reads")
-    tracked_reader = _with_kind_memo(tracked_reader, reads.expiry_kinds)
+    tracked_reader = _with_shared_reads(tracked_reader, reads)
     for sid in ids:
         left = deadline - time.monotonic()
         if left <= 0:  # the budget is spent: this row is not read (never guessed, never waited for)
