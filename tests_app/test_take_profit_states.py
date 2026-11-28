@@ -32,7 +32,7 @@ def _run(sid: str, *, whole: D | None, paid: D, a: str):
 @pytest.mark.parametrize("a", ["A-24", "A-25"])
 def test_case_141_loss_before_charges_is_refused(a):
     built, priced = _run("ADJ-10", whole=D("-32.50"), paid=D("403.45"), a=a)  # -32.50 before, -435.95 after charges
-    assert built.refusal is not None and "not in profit" in built.refusal_message.what_happened
+    assert built.refusal is not None and "would not be in profit" in built.refusal_message.what_happened
     assert priced is None and not built.trades
 
 

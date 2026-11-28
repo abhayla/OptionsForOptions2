@@ -176,7 +176,7 @@ def test_the_two_preferences_default_to_the_adr_values():
     assert (CFG.partial_close_percent, CFG.untested_decay_percent) == (50, 80)
 
 
-NOT_IN_PROFIT = "The whole trade is not in profit with every open leg closed at its planned price, so this approach is not built."
+NOT_IN_PROFIT = "This approach is not built because the whole trade would not be in profit with every open leg closed at its planned price."
 
 
 def test_adr238_6_take_profit_refused_at_a_loss_and_built_in_profit():

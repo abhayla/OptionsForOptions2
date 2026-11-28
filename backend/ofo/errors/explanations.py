@@ -817,7 +817,7 @@ class TargetValue(SlotType):
     def format(value: datetime.datetime | Decimal) -> str:
         if isinstance(value, datetime.datetime):
             ist = value.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
-            return f"{ist.day} {ist.strftime('%b')}, {HourMinute.format(value)} IST"
+            return f"{ist.day} {_MONTH_NAMES[ist.month]}, {HourMinute.format(value)} IST"
         return IndexLevel.format(value)
 
 
@@ -941,6 +941,10 @@ class ClockSeconds(SlotType):
         return Clock.format(value)
 
 
+_DAY_NAMES = dict(enumerate(("Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday")))
+_MONTH_NAMES = dict(zip(range(1, 13), ("Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"), strict=True))
+
+
 class DayLabel(SlotType):
     """A calendar day as "Monday 30 Nov" (ADR-330 (60): the market-closed Exit line): exactly `datetime.date`."""
 
@@ -950,7 +954,8 @@ class DayLabel(SlotType):
 
     @staticmethod
     def format(value: datetime.date) -> str:
-        return value.strftime("%A %d %b").replace(" 0", " ", 1)
+        # #875: English names from a table, never strftime (its day and month names follow the host locale)
+        return f"{_DAY_NAMES[value.weekday()]} {value.day} {_MONTH_NAMES[value.month]}"
 
 
 class ClockHms(SlotType):
@@ -987,7 +992,7 @@ class ClockHmsOrDated(SlotType):
     def format(value: object) -> str:
         if isinstance(value, EarlierDay):
             ist = value.at.astimezone(datetime.timezone(datetime.timedelta(hours=5, minutes=30)))
-            return f"{ist.day} {ist.strftime('%b')}, {ist.strftime('%H:%M:%S')}"
+            return f"{ist.day} {_MONTH_NAMES[ist.month]}, {ist.strftime('%H:%M:%S')}"
         return ClockHms.format(value)  # type: ignore[arg-type]
 
 
@@ -1089,7 +1094,7 @@ class DayMonth(SlotType):
 
     @staticmethod
     def format(value: datetime.date) -> str:
-        return f"{value.day:02d} {value.strftime('%b')}"
+        return f"{value.day:02d} {_MONTH_NAMES[value.month]}"
 
 
 def _cell_enums() -> tuple[type, ...]:
@@ -1884,10 +1889,10 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("stop_held_credit", "values_seen",
                         "Stop was reached earlier: loss then {loss}; stop line {stop}",
                         {"loss": Rupees, "stop": Rupees}),
-    ExplanationTemplate("stop_fired_at", "values_seen", "{line}; reached at {time} IST",
+    ExplanationTemplate("stop_fired_at", "values_seen", "{line}; seen by the check at {time} IST",
                         {"line": Explained, "time": HourMinute}),
     # issue 19: a stop read on a later day than the one it was reached on names that day (the server decides "today")
-    ExplanationTemplate("stop_fired_on", "values_seen", "{line}; reached on {date} at {time} IST",
+    ExplanationTemplate("stop_fired_on", "values_seen", "{line}; seen by the check on {date} at {time} IST",
                         {"line": Explained, "date": Date, "time": HourMinute}),
     ExplanationTemplate("adjust_spot_from_feed", "values_seen", "Spot from the live feed"),
     ExplanationTemplate("adjust_spot_from_rest_quote", "values_seen", "Spot from a one-time price request"),
@@ -2101,6 +2106,17 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "After these orders, maximum loss: {before} before, {after} after.",
                         {"before": Explained, "after": Explained}),
     # ADR-330 (6): the Stops panel line before a leg stop is saved (figures are the loss sizes, no sign)
+    # UX-A03 (28 Nov 2026), pending owner read: a leg stop that HAS fired, in the past tense;
+    # wrap with stop_fired_at / stop_fired_on for "seen by the check at <time> IST"
+    ExplanationTemplate("paper_leg_stop_fired", "values_seen",
+                        "Stop fired: {leg} reached {level}; max loss at that point Rs {figure}",
+                        {"leg": Explained, "level": IndexLevel, "figure": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_fired_unlimited", "values_seen",
+                        "Stop fired: {leg} reached {level}; there was no fixed maximum loss at that point",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_fired_unknown", "values_seen",
+                        "Stop fired: {leg} reached {level}; the maximum loss at that point was not worked out",
+                        {"leg": Explained, "level": IndexLevel}),
     ExplanationTemplate("paper_leg_stop_widens_loss", "values_seen",
                         "If this stop fires, max loss becomes Rs {after} (now Rs {before}).",
                         {"before": IndexLevel, "after": IndexLevel}),
@@ -2615,6 +2631,14 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("monitoring_why_workers_down", "rule", "Not being watched: no worker has reported in the last 2 minutes."),
     ExplanationTemplate("monitoring_why_state_unreadable", "rule", "Not being watched: the worker's report cannot be read."),
     ExplanationTemplate("monitoring_why_not_listed", "rule", "Not being watched: the worker does not list this trade."),
+    # FE hand-over (28 Nov 2026), pending owner read: one plain sentence for each new reason of the "not being watched" state
+    ExplanationTemplate("monitoring_why_index_not_live", "rule", "Not being watched: the index price is not live, so the index exit cannot run."),
+    ExplanationTemplate("monitoring_why_leg_not_live", "rule", "Not being watched: a leg's price is not live, so its stop cannot run."),
+    ExplanationTemplate("monitoring_why_exit_not_priced", "rule", "Not being watched: an exit has no price to compare with, so it cannot run."),
+    ExplanationTemplate("monitoring_why_index_exits_not_run", "rule", "Not being watched: the index exits are not running right now."),
+    # Lane FD2 hand-over (28 Nov 2026), pending owner read: the pause when no exit rule can be checked because the expiry kind is unknown
+    ExplanationTemplate("monitoring_why_expiry_kind_unknown", "rule",
+                        "Every exit rule is not checked because whether this trade expires weekly or monthly is not known."),
     ExplanationTemplate("monitoring_why_stale", "rule", "The last price is too old, so no rule can fire."),
     ExplanationTemplate("monitoring_why_disconnected", "rule", "The price feed is not connected, so no rule can fire."),
     ExplanationTemplate("monitoring_why_leg_missing", "rule", "A leg of this trade has no price, so no rule can fire."),

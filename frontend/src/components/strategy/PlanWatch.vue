@@ -9,8 +9,10 @@
   <section ref="rootEl" class="rounded-lg border border-line bg-surface p-3 text-sm" data-testid="plan-watch" :data-currency="marked ? (notCurrent ? 'not_current' : 'updating') : 'current'" :data-compact="compact ? 'true' : 'false'" :data-strategy="strategyId">
     <h3 class="font-semibold" data-testid="plan-watch-title">Plan watch</h3>
     <!-- "Updating the numbers..." only ever sits over good rows (the mark under the table); with no good answer on screen a read in progress is "Loading" -->
-    <p v-if="view === null || (view.state !== 'ok' && updating)" class="text-xs text-ink-muted" data-testid="plan-watch-loading">{{ LOADING_TEXT }}</p>
-    <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ view.text }}</p>
+    <p v-if="closed" class="text-xs text-ink-muted" data-testid="plan-watch-closed">{{ CLOSED_TEXT }}</p>
+    <template v-else-if="outcomeLoading && (view === null || (view.state !== 'ok' && updating))"></template><!-- Lane FB: nothing says "loading" while the builder's own outcome is still loading -->
+    <p v-else-if="view === null || (view.state !== 'ok' && updating)" class="text-xs text-ink-muted" data-testid="plan-watch-loading">{{ LOADING_TEXT }}</p>
+    <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ stale && (view.state === 'failed' || view.state === 'unavailable') ? PRICES_NOT_LIVE_TEXT : view.text }}</p>
     <template v-else>
       <p v-if="view.planState === 'no_plan'" class="text-ink-muted" data-testid="plan-watch-no-plan">{{ view.noPlanText }}</p>
       <p v-if="view.pausedText" class="text-ink-muted" data-testid="plan-watch-paused">{{ view.pausedText }}</p>
@@ -69,10 +71,15 @@ const props = defineProps({
   compact: { type: Boolean, default: false },
   // Lane Y item 2 (Lane H's batch route): when the host passes `view` (null while its one batch read is out) this box reads nothing itself
   view: { type: Object, default: undefined },
+  outcomeLoading: { type: Boolean, default: false }, // the host's own outcome is still loading: no "Loading the rule check..." line yet
+  closed: { type: Boolean, default: false }, // UX-A06: a settled or closed trade: a calm fact, nothing is read
 })
 const NO_FIGURE = PAPER_NO_FIGURE
 // new wording, pending owner read (27 Nov 2026): a FIRST read is queued or in flight (no catalogue or label had it)
 const LOADING_TEXT = 'Loading the rule check...'
+// new wording, pending owner read (28 Nov 2026): UX-A06 a closed trade; UX-A09 the feed is paused (not an error)
+const CLOSED_TEXT = 'This trade is closed; nothing is watched.'
+const PRICES_NOT_LIVE_TEXT = 'The plan watch is paused while the feed has no live prices. It resumes with them.'
 const EMPTY_TEXT = 'Nothing to watch yet.'
 const UPDATING_TEXT = 'Updating the numbers...' // the one existing "updating" wording (LegList); REQ-119 AC-4
 const STATE_TEXT = { watching: 'Watching', fired: 'Fired', not_applicable: 'Not applicable', not_computable: 'Not checked', paused: 'Paused' }
@@ -114,7 +121,7 @@ function clearTimer() { if (timer !== null) { clearTimeout(timer); timer = null 
 function drop() { clearTimer(); if (queued) { cancelPlanWatchRead(queueKey); queued = false; updating.value = false } }
 
 function ask(now) {
-  if (gone || hosted() || !active()) return // a host-fed box never reads
+  if (gone || hosted() || props.closed || !active()) return // a host-fed box never reads; a closed trade reads nothing
   if (reading) { again = true; againNow = againNow || now; return }
   if (queued) return // coalesced: one queued read per box
   const wait = now || lastMark() === null ? 0 : lastMark() + gapMs() - Date.now()

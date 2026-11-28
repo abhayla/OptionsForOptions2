@@ -62,8 +62,8 @@ describe('the trade page rules line (issue 12)', () => {
   })
 
   it('fired once: a stop that already carries its own time (stop_text) shows that sentence and no second time', async () => {
-    const w = await panel([flag({ rule_id: 'R-stop', trigger_id: 'T-06', stop_text: 'Stop reached: loss now ₹1,234.00; reached at 12:58 IST' })])
-    expect(t(w, 'playbook-flag-stop').text()).toContain('reached at 12:58 IST')
+    const w = await panel([flag({ rule_id: 'R-stop', trigger_id: 'T-06', stop_text: 'Stop reached: loss now ₹1,234.00; seen by the check at 12:58 IST' })])
+    expect(t(w, 'playbook-flag-stop').text()).toContain('seen by the check at 12:58 IST')
     expect(t(w, 'playbook-flag-time').exists()).toBe(false)
   })
 

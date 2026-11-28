@@ -63,7 +63,12 @@ function walk(dir, out = []) {
 }
 const blank = (m) => m.replace(/[^\n]/g, ' ')
 export const strip = (text) => text.replace(/\/\*[\s\S]*?\*\//g, blank).replace(/<!--[\s\S]*?-->/g, blank).replace(/^\s*\/\/.*$/gm, blank)
-const files = () => Object.fromEntries(walk(SRC).map((p) => [relative(process.cwd(), p).split(sep).join('/'), strip(readFileSync(p, 'utf8'))]))
+// I-122: the tree is read and stripped ONCE per test file (it was once per call, ~8 full scans); every test works on a copy of the map.
+let scanned = null
+const files = () => {
+  scanned ??= Object.fromEntries(walk(SRC).map((p) => [relative(process.cwd(), p).split(sep).join('/'), strip(readFileSync(p, 'utf8'))]))
+  return { ...scanned }
+}
 
 /** Problems of a {path: text} map; empty = guard green. */
 export function problems(map) {
@@ -91,8 +96,9 @@ export function problems(map) {
 
 describe('N-07 guard: one reader of a paper leg price / P&L', () => {
   it('the scan finds the expected files (D1: zero hits proves only the pattern failed)', () => {
-    expect(Object.keys(files()).length).toBeGreaterThan(100)
-    expect(Object.keys(files()).filter((f) => TOKENS.test(files()[f])).length).toBeGreaterThanOrEqual(READERS.length)
+    const map = files()
+    expect(Object.keys(map).length).toBeGreaterThan(100)
+    expect(Object.keys(map).filter((f) => TOKENS.test(map[f])).length).toBeGreaterThanOrEqual(READERS.length)
   })
   it('the real source has no third reader and the P&L Table is wired to the book read', () => {
     expect(problems(files())).toEqual([])

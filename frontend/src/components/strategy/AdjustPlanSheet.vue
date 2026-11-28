@@ -33,6 +33,8 @@
           <label class="block text-sm font-medium">{{ labels.stop }}
             <input v-model="form.stop" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop" @input="typed('stop')" />
             <span v-if="form.stopWords" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-words">{{ form.stopWords }}</span>
+            <!-- F7: the server's reason when no stop can be shown (expiry kind not known); nothing when it sent none -->
+            <span v-if="sheet.stopKindReason" class="mt-1 block text-xs font-normal text-ink-muted" data-testid="plan-stop-kind-reason">{{ sheet.stopKindReason }}</span>
           </label>
           <label class="block text-sm font-medium">{{ labels.stop_rupees }}
             <input v-model="form.stopRupees" class="mt-1 h-10 w-full rounded border border-line px-2" inputmode="decimal" data-testid="plan-stop-rupees" @input="typed('stop_rupees')" />
@@ -135,6 +137,7 @@ async function reset() {
     if (out.kind === 'not_confirmed') { notConfirmed.value = true; return }
     const read = out.value
     sheet.value = read
+    picked.value = false // the sheet now shows the saved plan again; an untouched Save is no new choice
     form.value = { ...read.prefill }
     resetDone.value = { changed: read.putBack, off: read.putBackOff }
     resetAsking.value = false
@@ -144,6 +147,7 @@ async function reset() {
   }
 }
 const refilledFrom = ref('') // the playbook name the fields were just refilled from; empty on open, reopen and failed reads
+const picked = ref(false) // #753: the user chose a playbook in the selector (a new acceptance); false on open and on every plain read
 
 async function load(pickId = null, pickName = '') {
   const id = props.strategyId
@@ -172,6 +176,7 @@ async function load(pickId = null, pickName = '') {
         const held = planHold()?.takePlan(id) ?? null
         if (held && held.base === baseKey) form.value = { ...read.prefill, ...held.form }
       } else planHold()?.clearPlan()
+      picked.value = pickId !== null
       if (pickId !== null) refilledFrom.value = pickName
     }
   } catch (e) {
@@ -204,7 +209,7 @@ async function typed(field) {
   const stamp = saveStamp(props.strategyId)
   if (own.trim() === '') { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
   try {
-    const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId))[level]
+    const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId, picked.value))[level]
     if (run !== levelsRun[level] || form.value !== f || savedSince(props.strategyId, stamp)) return
     if (!got) return
     f[other] = rupees ? got.percent : got.rupees
@@ -242,7 +247,7 @@ async function send(body) {
   }
 }
 const useAsIs = () => send(asIsBody(form.value.playbookId))
-const save = () => send(saveBody(form.value))
+const save = () => send(saveBody(form.value, picked.value))
 function customise() {
   const url = customiseUrl(props.strategyId)
   if (sheet.value?.kind === 'sheet') planHold()?.holdPlan(props.strategyId, { base: baseKey, form: form.value }) // S-11

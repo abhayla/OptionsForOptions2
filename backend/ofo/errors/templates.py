@@ -1466,6 +1466,9 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("t14_pending", 143, "The loss-from-a-1%-move rule is not checked yet in this version."),
     _trig("switched_off", 144, "This trigger is switched off in this playbook.", None, _TRIG_NEXT_OFF),
     _trig("greyed", 145, "This trigger does not apply to this strategy type.", None, _TRIG_NEXT_NOT_FOR_THIS),
+    # 28 Nov 2026, pending owner read: the percent stop on a trade whose expiry kind is not known
+    _trig("expiry_kind_unknown", 712, "Not checked: this trade's expiry type (weekly or monthly) is not known, so the "
+          "percent stop has no value."),
     _trig("data_unavailable", 146, "The data this trigger needs is not available."),
     _trig("unknown", 147, "Unknown trigger: it is not checked.", None, _TRIG_NEXT_NOT_FOR_THIS),
     _trig("not_evaluated", 148, "This trigger is not checked in this version.", None, _TRIG_NEXT_NOT_FOR_THIS),
@@ -1661,8 +1664,8 @@ _PLAYBOOK_TEMPLATES: tuple[MessageTemplate, ...] = (
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {"expiry": Date}),
     # ADR-238 (6): take profit only when the whole trade is in profit
     _gate("adjust_take_profit_not_in_profit", _UI, 189,
-          "The whole trade is not in profit with every open leg closed at its planned price, so this approach is "
-          "not built.",
+          "This approach is not built because the whole trade would not be in profit with every open leg closed at "
+          "its planned price.",
           _ADJ_REFUSED, _ADJ_BLOCKED, _ADJ_PICK_OTHER, {}),
     _gate("adjust_take_profit_booked_unknown", _UI, 190,
           "The profit or loss booked so far is not known, so whether the whole trade is in profit cannot be worked "

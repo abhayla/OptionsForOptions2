@@ -86,7 +86,7 @@ def test_profit_before_and_after_charges_is_offered_with_both_figures(a):
 def test_loss_before_charges_is_refused_as_before(a):
     built, priced = _run(a, D("-32.50"), D("403.45"))
     assert priced is None and built.refusal is not None and not built.refusal.startswith(REASON)
-    assert "not in profit" in built.refusal
+    assert "would not be in profit" in built.refusal
 
 
 @pytest.mark.parametrize("a", ["A-24", "A-25"])

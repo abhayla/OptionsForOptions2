@@ -616,8 +616,8 @@ def hand_approaches(u: str, lot: int, kind: str, today: datetime.date, spot: Dec
     def hand_take_profit():  # ADR-238 (6): the whole trade at the planned exit prices must be above zero
         whole = booked + sum(Fraction(sign(x["side"]) * x["lots"] * lot * (price(x) - x["entry"])) for x in legs)
         if whole <= 0:
-            raise HandRefused("The whole trade is not in profit with every open leg closed at its planned price, so "
-                              "this approach is not built.")
+            raise HandRefused("This approach is not built because the whole trade would not be in profit with every open leg "
+                              "closed at its planned price.")
 
     def close_every():
         pairs = [close(x, x["lots"]) for x in legs]
