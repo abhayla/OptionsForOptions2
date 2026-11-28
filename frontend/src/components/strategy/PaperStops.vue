@@ -10,7 +10,7 @@ import { levelShown, paperPriceOk, paperPriceReason } from '@/lib/tracking'
 import { expiryText, istClock } from '@/lib/displayFormat'
 import { PAPER_STOP_RISK_LOADING_TEXT } from '@/lib/sharedStateText'
 import { CLOSED_REFERENCE_TEXT, NOT_LIVE_LABEL, lastCloseUnavailableText, useIndexAnswer } from '@/composables/useIndexLive'
-import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
+import { NOT_APPLICABLE_REAL_TEXT, isNotApplicable, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   strategyId: { type: Number, required: true },
@@ -285,6 +285,9 @@ async function keep(t) {
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row" :data-trigger-id="t.id">
+          <!-- ADR-330 (64): an old armed paper stop on a real position is not live: no badge, no Cancel, no Keep -->
+          <span v-if="isNotApplicable(t)" class="text-ink-muted" data-testid="trigger-not-applicable">{{ NOT_APPLICABLE_REAL_TEXT }}</span>
+          <template v-else>
           <span>{{ t.kind === 'leg_stop' ? (legNames[t.contract_id] ?? serverLegText(t.contract_text) ?? 'Leg stop') : 'Conditional exit' }}</span>
           <span class="font-medium" data-testid="trigger-direction">{{ t.direction === 'above' ? 'Above' : t.direction === 'below' ? 'Below' : '' }}</span>
           <span data-testid="trigger-level">{{ t.level_text }}</span>
@@ -294,6 +297,7 @@ async function keep(t) {
             <span class="rounded bg-surface-muted px-1 text-xs font-medium" data-testid="trigger-adjusted">set before the last adjustment</span>
             <button type="button" class="rounded border border-line px-2 py-0.5" :disabled="busy" :data-testid="`trigger-keep-${t.id}`" @click="keep(t)">Keep this level</button>
             <p class="w-full text-xs text-ink-muted" data-testid="trigger-adjustment-note">{{ t.adjustment_note }}</p>
+          </template>
           </template>
         </li>
       </ul>

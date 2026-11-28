@@ -9,6 +9,12 @@ export const realTriggersPath = (strategyId) => `/real/strategies/${strategyId}/
 // The triggers array of a reply's data, or null when the reply has none (a reply without the array is a failure).
 export const triggerListOf = (data) => (Array.isArray(data?.triggers) ? data.triggers : null)
 
+// ADR-330 (64): a real position never gets a paper stop; an old armed paper stop on one comes back with state "not_applicable".
+// It is not live: no armed badge, no count, no Cancel or Keep, and its row reads exactly this sentence (pending owner read).
+// Any other state, an unknown or an absent one included, keeps its old behaviour.
+export const NOT_APPLICABLE_REAL_TEXT = 'Not applicable: real position.'
+export const isNotApplicable = (x) => x?.state === 'not_applicable'
+
 // The Conditional exits still on the screen: armed and fired ones; cancelled ones and per-leg stops are dropped.
 export const armedIndexExits = (list) => list.filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')
 
@@ -31,5 +37,5 @@ export const STOP_OFFER_LABEL = (leg) => `Set a stop on ${leg}`
 // Nothing is guessed: a stop the re-read still shows armed, or an id it does not know, is not "removed" unless the list says it is not armed.
 export function legStopsGone(before, after) {
   const now = new Map(after.map((x) => [x.id, x]))
-  return before.filter((x) => x.kind === 'leg_stop' && x.state === 'armed' && now.has(x.id) && now.get(x.id).state !== 'armed').map((x) => x.id)
+  return before.filter((x) => x.kind === 'leg_stop' && x.state === 'armed' && now.has(x.id) && now.get(x.id).state !== 'armed' && !isNotApplicable(now.get(x.id))).map((x) => x.id)
 }
