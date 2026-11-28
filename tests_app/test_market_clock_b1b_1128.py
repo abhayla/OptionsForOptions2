@@ -37,8 +37,8 @@ def _snapshot(market_open: bool | None, at: datetime.datetime = OPEN_AT) -> str:
     return monitoring_state.encode([], at, market_open=market_open)
 
 
-async def _crossing(db, monkeypatch, raw) -> int:
-    market = Market()
+async def _crossing(db, monkeypatch, raw, at: datetime.datetime = OPEN_AT) -> int:
+    market = Market(at)
     stored, _ids, keys = await _strategy(db)
     await _exit_below(db, stored.id)
     monkeypatch.setattr(paper_monitor, "_bus_client", lambda: _Bus(raw))
@@ -73,7 +73,7 @@ async def test_an_old_closed_answer_is_not_used(db, monkeypatch):
 async def test_the_reader_of_the_answer_judges_from_the_snapshots_instant():
     bus = _Bus(_snapshot(True))
     just_after = OPEN_AT + datetime.timedelta(seconds=30)
-    assert await monitoring_state.read_market_open(bus, just_after) is True
+    assert await monitoring_state.read_market_open(bus, just_after) == (True, OPEN_AT)
     assert await monitoring_state.read_market_open(bus, OPEN_AT - datetime.timedelta(seconds=60)) is None  # ahead
     assert await monitoring_state.read_market_open(None, OPEN_AT) is None
     assert await monitoring_state.read_market_open(_Bus(_snapshot(None)), OPEN_AT) is None
@@ -83,8 +83,22 @@ async def test_the_publisher_writes_the_market_answer_and_a_flip_is_written_at_o
     bus = _Bus()
     publisher = monitoring_state.Publisher(bus)
     assert await publisher.publish({}, {}, {}, OPEN_AT, None, True)
-    assert await monitoring_state.read_market_open(bus, OPEN_AT) is True
+    assert await monitoring_state.read_market_open(bus, OPEN_AT) == (True, OPEN_AT)
     soon = OPEN_AT + datetime.timedelta(seconds=1)
     assert not await publisher.publish({}, {}, {}, soon, None, True)  # unchanged: not rewritten before it is due
     assert await publisher.publish({}, {}, {}, soon, None, False)  # the bell: written at once
-    assert await monitoring_state.read_market_open(bus, soon) is False
+    assert await monitoring_state.read_market_open(bus, soon) == (False, soon)
+
+
+async def test_review_f1_the_bell_a_worker_closed_of_09_14_58_never_delays_a_stop_at_09_15_01(db, monkeypatch):
+    """Opus review F1 (the counter): the worker's snapshot is a few seconds old at the open; the monitor's fresh clock
+    rules. A gap-open through a stop must fire at the first tick, not at a later tick's price."""
+    worker_at = datetime.datetime(2026, 10, 29, 3, 44, 58, tzinfo=datetime.UTC)  # 09:14:58 IST
+    monitor_at = datetime.datetime(2026, 10, 29, 3, 45, 1, tzinfo=datetime.UTC)  # 09:15:01 IST
+    assert await _crossing(db, monkeypatch, _snapshot(False, worker_at), monitor_at) == 2
+
+
+async def test_review_f1_the_close_a_worker_open_of_15_29_59_never_lets_the_monitor_fire_at_15_30_01(db, monkeypatch):
+    worker_at = datetime.datetime(2026, 10, 29, 9, 59, 59, tzinfo=datetime.UTC)  # 15:29:59 IST
+    monitor_at = datetime.datetime(2026, 10, 29, 10, 0, 1, tzinfo=datetime.UTC)  # 15:30:01 IST
+    assert await _crossing(db, monkeypatch, _snapshot(True, worker_at), monitor_at) == 0

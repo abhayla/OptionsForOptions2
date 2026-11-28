@@ -478,10 +478,10 @@ async def read_readings(client: Any, now: datetime.datetime) -> Readings | None:
 MARKET_CLOCK_MAX_AGE_S: Final = 120  # the worker's market answer is used by the monitor only while this young
 
 
-async def read_market_open(client: Any, now: datetime.datetime) -> bool | None:
-    """Lane B1b item 6 (FE4 F7, RA2's design): the worker's market-open answer from its snapshot, AT the snapshot's own
-    instant, when the snapshot is under ``MARKET_CLOCK_MAX_AGE_S`` old; None (the reader uses its own clock) when the
-    snapshot is missing, unreadable, not carrying the field, old or ahead of ``now``. Never raises."""
+async def read_market_open(client: Any, now: datetime.datetime) -> tuple[bool, datetime.datetime] | None:
+    """Lane B1b item 6 (FE4 F7, RA2's design): the worker's market-open answer and the snapshot's own instant, when
+    the snapshot is under ``MARKET_CLOCK_MAX_AGE_S`` old; None (the reader uses its own clock) when the snapshot is
+    missing, unreadable, not carrying the field, old or ahead of ``now``. Never raises."""
     if client is None:
         return None
     try:
@@ -498,7 +498,7 @@ async def read_market_open(client: Any, now: datetime.datetime) -> bool | None:
     answer = body.get("market_open") if isinstance(body, dict) else None
     if at is None or not isinstance(answer, bool) or not _current(at, now):
         return None
-    return answer if 0 <= (now - at).total_seconds() <= MARKET_CLOCK_MAX_AGE_S else None
+    return (answer, at) if 0 <= (now - at).total_seconds() <= MARKET_CLOCK_MAX_AGE_S else None
 
 
 WRITE_TRIES: Final = 3  # a report write is verified and repeated this often at most (two writers can cross)

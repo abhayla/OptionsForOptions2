@@ -185,7 +185,7 @@ class PaperMonitor:
         self._retry_at: dict[int, float] = {}  # trigger id -> monotonic time of its next polled attempt
         self._judged: dict[int, tuple[Decimal, datetime.datetime]] = {}  # trigger id -> the reading it last crossed on
         self._blocked: set[int] = set()  # trigger ids crossed on a reading that did not run (reported not run)
-        self._worker_open: bool | None = None  # Lane B1b item 6: the worker's market answer of its last snapshot
+        self._worker_open: tuple[bool, datetime.datetime] | None = None  # item 6: the worker's answer and its instant
         self._carried: list[NormalizedQuote] = []  # ticks queued on a handle a reload replaced: judged, never lost
         self._exits_publisher: tuple[Any, monitoring_state.ExitsPublisher] | None = None
         self._dirty = True
@@ -426,17 +426,23 @@ class PaperMonitor:
         self._worker_open = await monitoring_state.read_market_open(client, now) if client is not None else None
 
     def _market_open(self, ctx: Any, now: datetime.datetime) -> bool:
-        """The ONE market-open answer of this process (#740 ``may_act.market_open``) AND the worker's answer of its last
-        snapshot while that is under two minutes old: the two processes can no longer disagree about the bell; at a
-        disagreement the strict side wins (a closed answer from either one is closed)."""
-        return may_act.market_open(ctx, now) and self._worker_open is not False
+        """The ONE market-open answer of this process (#740 ``may_act.market_open``), at the monitor's fresh instant:
+        the close and the open are never delayed by the worker (Opus review F1: a worker "closed" of 09:14:58 must not
+        block a stop at 09:15:01). The worker's answer counts only as a real disagreement about ITS OWN instant: it
+        said closed while this process's rule says OPEN at that same instant (two calendars: strict side wins)."""
+        if not may_act.market_open(ctx, now):
+            return False
+        worker = self._worker_open
+        if worker is None or worker[0]:
+            return True
+        return not may_act.market_open(ctx, worker[1])
 
     async def on_quote(self, quote: NormalizedQuote) -> int:
         watching = self._watch.get(quote.instrument_id)
         if not watching or self._feed is None or self.book_unread_too_long():
             return 0
         now = self._feed.ctx.clock()
-        if not self._market_open(self._feed.ctx, now):  # the ONE market rule (the feed's own answer)
+        if not self._market_open(self._feed.ctx, now):  # the ONE market rule (own clock; see ``_market_open``)
             return 0
         try:
             price = paper.price_of(quote, quote.instrument_id)
