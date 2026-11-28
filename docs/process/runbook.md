@@ -171,6 +171,7 @@ Set-up lessons from the PC:
   `scripts/orchestrator/db_run.py`, which never prints them:
   `python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head`
   `python scripts/orchestrator/db_run.py . python -m pytest -q -rs -p no:cacheprovider -c pytest-app.ini tests_app/<file>.py`
+- `OFO_TEST_DB_PER_FILE=1` gives each `tests_app` file its own database clone (Lane Z2, `RESULTS-lane-z2.md` on `integration/weekend-r2-1128`; Lane TE: without it a manual full run fails from the 11th test, then a leaked advisory lock stalls it). Use it, or `GITHUB_ACTIONS=true`, for any manual run of more than one file on a shared database; with a fresh template database, one run at a time. Single-file runs through `db_run.py` do not need it.
 - Which `tests_app` files a backend change can break: `python scripts/orchestrator/select_app_tests.py <worktree>`
   (exit 3 = diff not parsed; fails closed). It also selects a changed `tests_app` test file itself; every test that
   imports (names) a changed or deleted `tests_app` module, test files included, followed transitively; a changed or deleted
