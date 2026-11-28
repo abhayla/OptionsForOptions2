@@ -1,4 +1,4 @@
-STATUS 22:55 | batch 1 pushed (dc1aeebd8); batch 2 review fixes built, gate running | not done: market-open clock, D-TG2-2, O-P-03 | blocker: none
+STATUS 23:20 | FINAL: batch 1 dc1aeebd8 and batch 2 1f8e0018c pushed, both TOTAL PASS | not done (Lane B1b has them): market-open clock, D-TG2-2, O-P-03 | SAFE TO CLOSE | blocker: none
 
 # Lane RA2: the standing backend leftovers lane (base fix/r3-leftovers-1128 a5259db50)
 
@@ -64,6 +64,11 @@ Oct, close Fri 9 Oct 15:29:58.
 | Frame 6 crossed T-01 with only not_checked outcomes (TG) | cannot say | The outcomes listed (gap_after_open, missing_margin, no_stage_value, switched_off) are other rules' reasons; T-01 is not a loss rule, so the new log line does not name it. If T-01 was on and crossed, the log line is the thing to widen next; I did not run PATH-01 here. |
 | D-TG2-2 T-09 title has no amount | not built | the label "A short leg's premium falls to Rs or below (close for pennies)" is data in `system_playbooks.json` (10 copies, stored in plans, pinned): the amount must come from the rule's threshold when the title is built; needs a playbook version or a title builder change and an owner read of the wording. |
 | Stored close, option (b) | done | see above; open: leg `price_state` reads live for a stored close. |
+
+## Coordinator's late checks (message of 22:25 IST, read after the push)
+- F1 (the stored-stop answer vs. a silent ROLLBACK): in `_answer_after_commit` the answer is built AFTER `db.commit()` in all three routes (add, cancel, keep: commit, then `notify`, then the answer), so a swallowed read error there cannot turn the commit into a rollback; the `db.rollback()` it calls runs on a transaction with nothing pending. The pre-commit read in `_validated_triggers` / `_adjustment_marks` is unchanged. No test injects an error INSIDE `_adjustment_marks` before the commit: not covered; Lane B1b may add it.
+- F2 (a foreign ValueError text in the log): `regime_inputs._attempt` logs a ValueError's text only when it starts with one of this module's own openings (`_OWN_TEXTS`); pinned by `test_a_value_error_that_is_not_this_modules_own_message_logs_its_class_only`.
+- Stored close: the coordinator's final decision is to keep LIVE from display_price and the leg `price_state` "live" (a naming question for the owner, not blocking); spot_at 0063 stays.
 
 ## Opus review of batch 2 (read-only, 39 tool calls): REVISE, fixed in this push
 - F1 MAJOR: the F-3 fallback answered 201 with an EMPTY list, which the page shows as "No stops set." beside a stored stop. Now it answers a truthful refusal (409): "Your stop was saved, but the list of stops could not be read just now." / "Nothing was lost and nothing needs to be set again." / "Showing the saved stops." / "Reload this page to see the list." (new id `paper_trigger_saved_list_unread`, STRATEGY_VALIDATION_590, pending owner read). Decided: a sentence, not a new response field (no frontend change needed; the page already prints a refusal's text).
