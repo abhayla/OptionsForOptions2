@@ -1,0 +1,42 @@
+STATUS 17:38 | item 1 built (core red then green), gate on the head running | next push when the gate ends TOTAL PASS | blocker: none (coordinator link now works: the owner approved the trust card)
+
+# Lane RA2: the standing backend leftovers lane (base fix/r3-leftovers-1128 a5259db50)
+
+Highest claimable status: Fixed, not tested (no PC run). Local database: PostgreSQL 16, `ofo_test`, role `ofo_app`
+non-superuser, one test file at a time, proxy variables unset. Ruff: the pinned `ruff==0.15.12`.
+
+## What was done
+| Item | State | Evidence |
+|---|---|---|
+| 1 D-TG-1 | built | tests_app/test_stored_close_paper_pnl_ra2_1128.py: 3 passed. Core red on the base (`assert ('NOT_CONNECTED', None) == ('LIVE', None)`), green after. Neighbours on this head: test_plan_stop_worker_chain 12 passed, test_worker_j3 6, test_paper_routes 48, test_paper_list_figures 14, test_paper_closed_rows 7, test_paper_totals 22, test_closed_reads_r2_fd2 5. |
+
+## Item 1 (cause, fix, real case)
+Real case (Lane TG, 28 Nov, no session): Live card leg LTP 147.50 (15:29:58) while every running paper row read "P&L - /
+Paper P&L paused - prices not live" and Home "4 strategies left out". Cause: `routes/paper.py` `_book` and the list read the
+feed only when `connected`; with no session `_figures` got `connected=False` and returned NOT_CONNECTED with null figures,
+although the book held the seeded stored close. Fix: with no session and a market the snapshot calls closed, one plain
+book read (`_stored_close_snapshot`, no wait, no feed hold); if it prices at least one open contract (`_served`) the book
+reads LIVE from the engine's own display price (`paper.display_price`, ADR-212) and `as_of` is the oldest price time
+(ADR-330 (60)). Open market, no stored close, or nothing priced: NOT_CONNECTED as before (two tests). Stops, exits and
+fills read `leg_price` and never see this price. Test dates: the fixture's contracts expire 13 Oct, so the test pins Sat 10
+Oct, close Fri 9 Oct 15:29:58.
+
+## For the owner lane
+- Frontend: a book whose state is LIVE with a non-null `as_of` and no session is a stored close: it should print "as of <time>"
+  beside the P&L (the field exists; the page shows `as_of` today only for PAUSED). Also the Home "left out" count now
+  drops for such trades (server side, `totals.left_out_count`).
+
+## Decided for the owner
+- Item 1: no clash of rules. "Paused when prices are not live" stays for a market that is open; ADR-212 / ADR-330 (60)
+  say a closed market shows the last close with its own time. So the stored close wins on a closed market, with its time.
+- Test registration: tests/orchestrator/test_select_app_tests.py PR241_SELECTION is an exact pinned set; a new file added to
+  it breaks `test_pr241_diff_selects_both_red_files_within_the_cap`, so no new file is registered there.
+
+## Question for the owner
+(F3, F2 and W-28 from Lane RA stay open; real cases are in RESULTS-lane-ra.md "Question for the owner".)
+
+## New wording for the owner to read
+None yet.
+
+## Not done
+Items 2 to 11 not started at this push.

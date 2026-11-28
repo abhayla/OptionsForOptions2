@@ -600,6 +600,24 @@ async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, 
     return snapshot
 
 
+def _stored_close_snapshot(ctx: MarketContext | None, underlying: str, ids: list[str]):
+    """Lane RA2 item 1 (D-TG-1; ADR-330 (60), ADR-212): with NO broker session the book may still hold the stored last
+    close (``last_close_store`` seeds it while the market is closed). One plain read of the book, no wait and no feed
+    hold: used only when the snapshot says the market is closed (an open market never serves a stored figure), else
+    None. Display only: stops, exits and fills read ``leg_price`` and never see this."""
+    if ctx is None or not ids:
+        return None
+    snapshot = read_snapshot(ctx.provider, underlying, ids, ctx.clock(), ctx.rate, feed_scope(ctx),
+                             quality=ctx.forward_quality)
+    return snapshot if snapshot.market_closed else None
+
+
+def _served(connected: bool, snapshot: Any, prices: dict[int, paper.Price]) -> bool:
+    """The books read as served when a session is connected, or when no session is but the stored close prices at
+    least one open contract (the figures then carry the close's own time); else NOT_CONNECTED, as before."""
+    return connected or (snapshot is not None and any(paper.is_live(p) for p in prices.values()))
+
+
 def _paper(orders: Sequence[paper_store.StoredOrder]) -> list[PaperOrder]:
     return [o.order.as_paper() for o in orders]
 
@@ -744,9 +762,11 @@ def _book_day(snapshot: Any, answered_at: datetime.datetime) -> datetime.date:
     return _today(snapshot) or answered_at.astimezone(paper.IST).date()
 
 
-def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-             prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
-    """The strategy's figures from the one engine at the live prices of its open contracts."""
+def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
+             prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None,
+             stored_close: bool = False) -> dict:
+    """The strategy's figures from the one engine at the live prices of its open contracts. ``stored_close``: no
+    session, the prices are the stored last close (RA2 item 1): state LIVE, ``as_of`` = the oldest price time."""
     view = strategy_money_view(_paper(orders), prices).lifecycle()  # D-10: the book's totals, split at every flat point
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
     why = _closing_reasons(orders)
@@ -764,6 +784,8 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
         as_of = paper.paused_as_of(prices.values())  # the engine's own rule (ofo.tracking.paper), not a second way
     else:
         state, pause = "LIVE", None
+        if stored_close:  # ADR-330 (60): a stored close is labelled with its own as-of time (the oldest leg's)
+            as_of = min((p.at for p in prices.values() if paper.is_live(p) and p.at is not None), default=None)
     # ADR-311: a paused book names the contracts with no price (every total stays paused); expired = retired contract
     # leg_index = the leg's place among ALL the book's legs (closed ones count), as on the tracking page
     cids = [int(p.instrument_id) for p in view.positions]
@@ -1064,8 +1086,12 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     if connected and keys:
         await release_connection(db)  # D-36 (c): the feed hold below waits up to FORWARD_WAIT_S
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
+    elif keys:
+        snapshot = _stored_close_snapshot(ctx, underlying, keys)  # RA2 item 1: no session, the stored close
     prices = _prices(open_ids, found, snapshot)
-    base = _figures(orders, found, prices, connected, _book_day(snapshot, answered_at))
+    served = _served(connected, snapshot, prices)
+    base = _figures(orders, found, prices, served, _book_day(snapshot, answered_at),
+                    stored_close=served and not connected)
     charges = _charges(orders, found, underlying, rates)
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | charges | _after(orders, found, prices, charges, underlying, rates))
@@ -1133,12 +1159,18 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         await release_connection(db)  # D-36 (c): the feed holds below wait; the session re-checks out afterwards
         for underlying, wanted in keys.items():
             snapshots[underlying] = await _snapshot(ctx, feed, underlying, wanted)  # type: ignore[arg-type]
+    elif keys:
+        for underlying, wanted in keys.items():
+            if (stored := _stored_close_snapshot(ctx, underlying, wanted)) is not None:  # RA2 item 1
+                snapshots[underlying] = stored
     held_rows = await held_entry_store.read_many(db, [b.strategy_id for b in books])
     out, decays = [], []
     for b in sorted(books, key=_newest_first, reverse=True):
         snapshot = snapshots.get(b.underlying)
         prices = _prices(_open_ids(b.orders), found, snapshot)
-        figures = _figures(b.orders, found, prices, connected, _book_day(snapshot, answered))
+        served = _served(connected, snapshot, prices)
+        figures = _figures(b.orders, found, prices, served, _book_day(snapshot, answered),
+                           stored_close=served and not connected)
         summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         open_legs = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
