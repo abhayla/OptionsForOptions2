@@ -14,6 +14,7 @@ import {
   stubLive, row, ok, gate, paperBookOf, savedOf, paperGroup, paperList, computed, oleg, CATALOGUE_PARTS, NEUTRAL, type Stub, type Row, type Reply,
 } from './support/live-card-stub'
 
+const LIST_FAILED = 'Could not load this list. Nothing was changed.' // D-TD-2 / I-86 (FC2): no server message = ONE sentence and a Retry; pending owner read
 const BASE = process.env.REPLAY_URL || 'http://127.0.0.1:4205'
 const LIVE = `${BASE}/strategies/live-strategies`
 const OPPS = `${BASE}/positions/adjustment-opportunities`
@@ -113,10 +114,11 @@ test.describe('Live Strategies page (REQ-049 AC-4..AC-6, REQ-044 AC-2, ADR-299)'
     // Spec basis: REQ-065 (four-part error); REQ-049 AC-4 (no old numbers as live)
     await world(page, [R172], { strategies: { status: 500, json: CATALOGUE_PARTS } })
     await openLive(page, 'error')
-    await expect(page.getByTestId('error-what')).toHaveText(CATALOGUE_PARTS.what_happened)
-    await expect(page.getByTestId('error-impact')).toHaveText(CATALOGUE_PARTS.impact)
-    await expect(page.getByTestId('error-blocked')).toHaveText(CATALOGUE_PARTS.what_is_blocked)
-    await expect(page.getByTestId('error-next')).toHaveText(CATALOGUE_PARTS.next_action)
+    await expect(page.getByTestId('live-list-what')).toHaveText(CATALOGUE_PARTS.what_happened)
+    await expect(page.getByTestId('live-list-impact')).toHaveText(CATALOGUE_PARTS.impact)
+    await expect(page.getByTestId('live-list-blocked')).toHaveText(CATALOGUE_PARTS.what_is_blocked)
+    await expect(page.getByTestId('live-list-next')).toHaveText(CATALOGUE_PARTS.next_action)
+    await expect(page.getByTestId('live-list-retry')).toBeVisible() // D-TD-2: the server's message keeps its four parts and gets a Retry below
     await expect(cards(page)).toHaveCount(0)
     await expect(page.getByTestId('live-empty')).toHaveCount(0)
   })
@@ -290,6 +292,7 @@ test.describe('Live Strategies card: fields and figures (REQ-049 AC-4, REQ-151, 
     const closed = (legs: unknown[]) => computed(legs, { market_closed: true, last_price_at: '2026-11-26T15:30:00+05:30' })
     S.auto[172] = () => closed([oleg(502, 'SELL', '140.85', 'stale')])
     S.auto[170] = () => closed([oleg(504, 'SELL', '90.10', 'stale', '100.00')])
+    S.indices = { state: 'LIVE', answered_at: '2026-11-26T10:00:00+05:30', last_price_at: '2026-11-26T15:30:00+05:30', market_closed: true, indices: [] } // the page's one notice reads the index answer (ADR-330 (56))
     await openLive(page)
     await expect(page.getByTestId('market-closed-banner')).toHaveCount(1)
     await expect(page.getByTestId('market-closed-text')).toHaveText('Market closed. Prices are from 26 Nov 2026, 15:30:00 IST.')
@@ -493,7 +496,9 @@ test.describe('Live Strategies card: states (REQ-049 AC-4..AC-6, REQ-077 AC-9, D
     await openLive(page)
     await expect(card(page, 172)).toHaveAttribute('data-state', 'unpriced')
     await expect(card(page, 172).getByTestId('live-status-label')).toHaveText(expired)
-    await expect(card(page, 172).getByTestId('live-paused-badge')).toBeVisible()
+    // Lane Y item 1 (080afd10a): the worker's own monitoring answer owns the paused badge (the stub gives none: unread = paused, shown by the shared MonitoringBadge); the card's local badge steps aside
+    await expect(card(page, 172).getByTestId('monitoring-paused')).toHaveText('⏸ Monitoring paused')
+    await expect(card(page, 172).getByTestId('live-paused-badge')).toHaveCount(0)
   })
 
   test('ST-11 a real (Zerodha) trade has no practice book: its card follows the saved legs and says "Legs as saved"', async ({ page }) => {
@@ -719,7 +724,7 @@ test.describe('Live Strategies card: links (S-14, ADR-330 (10), ADR-230 (2), REQ
     // Spec basis: ADR-002 (no standalone order entry); LiveStrategyCard header ("No order or execute control exists here")
     await world(page, [R172, D170])
     await openLive(page)
-    await expect(page.getByTestId('live-strategies').getByRole('button')).toHaveCount(0)
+    await expect(page.getByTestId('live-strategies').getByRole('button').filter({ hasNotText: /^Plan/ })).toHaveCount(0) // ADR-330 (54): the Plan button is the one button; it places no order
   })
 
   test('LINK-8 the opportunity mark shows the server\'s words and opens that strategy\'s row in Adjustment opportunities (LIVE-04)', async ({ page }) => {
@@ -834,7 +839,7 @@ test.describe('Adjustment opportunities inbox (REQ-162 AC-1..AC-3, REQ-112, ADR-
     await page.getByTestId('opp-dismiss-reason').selectOption('not_relevant')
     S.opps = ok(inbox([grp(1, 1, [rec(1, C1, 'dismissed', 'You dismissed this', 'Not relevant'), rec(2, C2, 'dismissed', 'You dismissed this', 'Not relevant'), rec(3, 'A short leg premium falls', 'dismissed', 'You dismissed this')], false)], { counts: counts(0, 3) }))
     await page.getByTestId('opp-dismiss').click()
-    await expect(page.getByTestId('opp-outcome')).toHaveText(['You dismissed this Not relevant', 'You dismissed this Not relevant', 'You dismissed this'])
+    await expect(page.getByTestId('opp-outcome')).toHaveText(['You dismissed this Not relevant', 'You dismissed this Not relevant', 'You dismissed this No reason given'])
     expect(S.posts.filter((p) => p.path.endsWith('/dismiss'))).toEqual([
       { path: '/api/adjustment-opportunities/1/dismiss', body: { reason: 'not_relevant' } },
       { path: '/api/adjustment-opportunities/2/dismiss', body: { reason: 'not_relevant' } },
@@ -1310,7 +1315,7 @@ test.describe('Adjustments: the playbook editor (REQ-158 AC-1..AC-6, REQ-159, RE
     // Spec basis: REQ-065; REQ-160 (a refusal is the server's sentence)
     await adjWorld(page, {}, { status: 500, json: CATALOGUE_PARTS })
     await page.goto(ADJ)
-    await expect(page.getByTestId('pb-refusal')).toHaveText(CATALOGUE_PARTS.what_happened)
+    await expect(page.getByTestId('pb-refusal')).toContainText(CATALOGUE_PARTS.what_happened) // the Retry button sits beside the server's sentence (D-TD-2)
     await expect(page.getByTestId('pb-steps')).toHaveCount(0)
   })
 
@@ -1318,7 +1323,8 @@ test.describe('Adjustments: the playbook editor (REQ-158 AC-1..AC-6, REQ-159, RE
     // Spec basis: REQ-065 (neutral failure wording, services/api.js NEUTRAL_ERROR)
     await adjWorld(page, {}, { abort: true })
     await page.goto(ADJ)
-    await expect(page.getByTestId('pb-refusal')).toHaveText('Something went wrong. Please try again.')
+    await expect(page.getByTestId('pb-load-error')).toHaveText(LIST_FAILED) // D-TD-2: no server message = ONE sentence and a Retry
+    await expect(page.getByTestId('pb-load-retry')).toBeVisible()
     await expect(page.getByTestId('pb-steps')).toHaveCount(0)
   })
 
