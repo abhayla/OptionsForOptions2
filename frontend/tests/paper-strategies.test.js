@@ -155,7 +155,7 @@ describe('PaperStrategies: answer states', () => {
     expect(t(w, 'paper-total').text()).toBe('+71.50')
     expect(w.text()).toContain('113.60')
   })
-  it('D-05 r3 (REQ-109 AC-5): Exit is disabled with the reason while the last refresh failed, and no order opens from the old price', async () => {
+  it('D-05 r3 (REQ-109 AC-5): Exit opens the not-live dialog with Confirm off while the last refresh failed, and no order is posted from the old price', async () => {
     let fail = false
     answers['GET /tracking'] = () => (fail ? Promise.reject({ status: 503, parts: null }) : Promise.resolve({ data: REAL_REPLY }))
     const w = await show()
@@ -163,11 +163,14 @@ describe('PaperStrategies: answer states', () => {
     expect(t(w, 'exit-selected-48').attributes('disabled')).toBeUndefined()
     fail = true
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)
-    expect(t(w, 'exit-selected-48').attributes('disabled')).toBeDefined()
-    expect(t(w, 'paper-exit-reason').text()).toBe('Prices are not live; try again when they update')
+    expect(t(w, 'exit-selected-48').attributes('disabled')).toBeUndefined()
     await t(w, 'exit-selected-48').trigger('click')
     await flushPromises()
-    expect(w.findComponent(PaperConfirmDialog).props('open')).toBe(false)
+    const dlg = w.findComponent(PaperConfirmDialog)
+    expect(dlg.props('open')).toBe(true)
+    expect(dlg.props('blocked')).toBe(true)
+    expect(dlg.props('error')).toContain('Prices are not live; try again when they update')
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
     expect(calls.filter((c) => c[0] === 'POST')).toHaveLength(0)
     fail = false
     await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS)

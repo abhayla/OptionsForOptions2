@@ -12,7 +12,9 @@ describe('R4 F5 a lock that cannot be read ends by a good read past the window',
     localStorage.setItem('ofo.exitUnknown', JSON.stringify({ 1: { at: null, names: [], seen: Date.now() + 86400000 } }))
     const l = L.adoptedExitLock(1, Date.now())
     expect(l.seen - Date.now()).toBeLessThanOrEqual(0)
-    expect(L.decideLock(l, { key: BEFORE, units: { 753: 65, 776: 260, 784: -65 } }, Date.now() + WINDOW + 1000).verdict).toBe('changed')
+    vi.spyOn(performance, 'now').mockReturnValue(performance.now() + WINDOW + 1000) // Z2 T3: the window is a real monotonic wait, never a skewed sent time
+    expect(L.decideLock(l, { key: BEFORE, units: { 753: 65, 776: 260, 784: -65 } }, Date.now()).verdict).toBe('changed')
+    vi.restoreAllMocks()
   })
   it('an exit lock with no units and an unchanged good read past the window is not stored; a moved book is changed past the window; inside the window it is kept', () => {
     const lock = { kind: 'exit', malformed: false, at: 1000, before: BEFORE, expected: null, units: null, out: false }

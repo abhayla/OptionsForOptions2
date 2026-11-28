@@ -23,7 +23,7 @@ const paperFig = computed(() => {
   const p = props.paper
   if (!p) return { text: NO_FIGURE, reason: null, basis: null }
   // stale first: a failed FIRST read has no list (not loaded) but PaperStrategies still says it is paused; same text, from the summary
-  if (p.stale) return { text: NO_FIGURE, reason: PAPER_PAUSED, basis: null }
+  if (p.stale) return { text: NO_FIGURE, reason: p.pausedLine ?? PAPER_PAUSED, basis: null }
   if (!p.loaded) return { text: NO_FIGURE, reason: null, basis: null }
   const a = p.totalAfter
   if (!a || a.text === null || a.text === undefined) return { text: NO_FIGURE, reason: a?.reason ?? null, basis: null }

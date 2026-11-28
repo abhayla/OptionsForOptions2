@@ -13,6 +13,10 @@
 // after): it is 'stored' only when the ADDED legs moved toward the expected book; a move on any other leg is unrelated and counts as unchanged. A reader decides
 // the lock that is STORED now (not the copy it holds) and drops only that lock (`sameLock`): another tab's newer lock keeps blocking. One request-key slot per
 // strategy AND action (exit, add): a decided outcome of one never drops the other's key.
+// Z2 review T3 (fail closed): the 130 s rule never trusts the browser clock alone. This page instance keeps a MONOTONIC stamp (performance.now) per lock, taken when
+// the lock was written here or first seen here (a first sight counts the wall age once, clamped, then only the monotonic source). A read decides by the monotonic time
+// that passed since the stamp, so a wall clock set forward (or an `at` written by a clock that was behind) never releases a lock early, and a clock moved back
+// never holds it for ever (the next good read after a real 130 s decides). Where there is no monotonic source the wall rule stays.
 // A browser that refuses storage still has the in-page copy (this module's memory), and every read and write is in try/catch.
 import { UNKNOWN_EXIT_READ_AFTER_MS } from '@/lib/sharedStateText'
 
@@ -23,6 +27,26 @@ const memory = { [LOCK_KEY]: {}, [ADD_KEY]: {}, [KEYS_KEY]: {} }
 const UNREADABLE = Symbol('unreadable') // content is there but is not an object of entries: a lock for every strategy, decided by nobody
 const garbageSeen = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null } // R5 N3: when this page first saw a store that cannot be read (it counts the window from there; never written over the content)
 const dirty = { [LOCK_KEY]: false, [ADD_KEY]: false, [KEYS_KEY]: false } // true once a write was refused: then what this page wrote is merged over what storage holds (never instead of it)
+
+const monoNow = () => { try { const n = globalThis.performance?.now?.(); return Number.isFinite(n) ? n : null } catch { return null } }
+const stamps = new Map() // `${store}|${id}|${at}` -> monotonic stamp of this page instance (never stored: it means nothing in another page)
+const stampKey = (name, id, at) => `${name}|${id}|${at ?? ''}`
+/** A stamp that makes the lock look `wallAgeMs` old now (the wall age is trusted ONCE, clamped to 0..window + 1 s, at first sight or write; never again). */
+const stampFor = (wallAgeMs) => {
+  const m = monoNow()
+  if (m === null) return null
+  const cap = UNKNOWN_EXIT_READ_AFTER_MS + 1000
+  const age = !Number.isFinite(wallAgeMs) || wallAgeMs < 0 ? 0 : wallAgeMs > cap ? cap : wallAgeMs
+  return m - age
+}
+/** Monotonic ms the lock has aged when the read was sent: null when no stamp or no source (then the wall rule counts). A read whose wall `sentAt` is ahead of now counts as sent now; one behind
+ *  now counts as sent that long ago (only ever younger, never older). */
+function monoAgeAtSend(stamp, sentAt) {
+  const m = monoNow()
+  if (m === null || !Number.isFinite(stamp)) return null
+  const behind = Date.now() - sentAt
+  return m - stamp - (behind > 0 ? behind : 0)
+}
 
 /** What storage holds: an object of entries, UNREADABLE (content that is not one), or undefined (storage itself cannot be read: only the in-page copy exists). */
 function readStored(name) {
@@ -118,9 +142,13 @@ const KEEP = Object.freeze({ verdict: 'keep' })
  *  its first sight (`seen`), and then only as 'changed'. Never a timer; the lock ends only by one of the last three. */
 export function decideLock(lock, book, sentAt) {
   if (!lock || !book || typeof book.key !== 'string' || !Number.isFinite(sentAt)) return KEEP
-  if (lock.malformed) return Number.isFinite(lock.seen) && sentAt - lock.seen > UNKNOWN_EXIT_READ_AFTER_MS ? { verdict: 'changed' } : KEEP
+  if (lock.malformed) {
+    const ma = monoAgeAtSend(lock.seenMono, sentAt)
+    return Number.isFinite(lock.seen) && (ma !== null ? ma > UNKNOWN_EXIT_READ_AFTER_MS : sentAt - lock.seen > UNKNOWN_EXIT_READ_AFTER_MS) ? { verdict: 'changed' } : KEEP
+  }
   if (typeof lock.before !== 'string') return KEEP
-  const past = Number.isFinite(lock.at) && sentAt - lock.at > UNKNOWN_EXIT_READ_AFTER_MS // the read was sent after the first request's longest commit window
+  const monoAge = monoAgeAtSend(lock.mono, sentAt)
+  const past = Number.isFinite(lock.at) && (monoAge !== null ? monoAge > UNKNOWN_EXIT_READ_AFTER_MS : sentAt - lock.at > UNKNOWN_EXIT_READ_AFTER_MS) // the read was sent after the first request's longest commit window
   if (lock.out === true && !past) return KEEP // its post may still be out: only the post's own answer, or a read sent past the window, ends it
   let legs // the legs the post moved: { id, from, to } in signed units
   if (lock.kind === 'add') {
@@ -184,25 +212,47 @@ const asLock = (raw, kind) => {
     seen: typeof raw.seen === 'number' && Number.isFinite(raw.seen) ? raw.seen : null, move: raw.move === true, adds: validAdds(raw.adds), // `move`: the exit's orders also opened a leg (a move): its reply may have named cancelled stops (Group A R4)
   }
 }
+const garbageMono = { [LOCK_KEY]: null, [ADD_KEY]: null, [KEYS_KEY]: null }
 function makeLocks(name, kind) {
+  const atKey = (id, at) => stampKey(name, id, at)
+  const seenKey = (id, seen) => stampKey(name, `${id}#seen`, seen)
+  /** The lock with this page instance's monotonic stamps: found, or taken now from the wall age of this first sight (once). */
+  const withStamps = (id, l) => {
+    const now = Date.now()
+    const out = { ...l }
+    if (l.at !== null) {
+      const k = atKey(id, l.at)
+      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.at))
+      out.mono = stamps.get(k)
+    }
+    if (l.seen !== null) {
+      const k = seenKey(id, l.seen)
+      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.seen))
+      out.seenMono = stamps.get(k)
+    }
+    return out
+  }
   const forId = (id) => {
     const all = readAll(name)
     if (all === UNREADABLE) { // content that cannot be read is a lock for every strategy; R5 N3: its first sight is kept in memory, so a good read sent past the window can decide it
       const now = Date.now()
-      if (garbageSeen[name] === null || garbageSeen[name] > now) garbageSeen[name] = now
-      return { ...asLock(null, kind), seen: garbageSeen[name] }
+      if (garbageSeen[name] === null) { garbageSeen[name] = now; garbageMono[name] = monoNow() } else if (garbageSeen[name] > now) garbageSeen[name] = now // a clock moved back: counted from now, the monotonic stamp stays
+      return { ...asLock(null, kind), seen: garbageSeen[name], seenMono: garbageMono[name] }
     }
     garbageSeen[name] = null
     if (!Object.prototype.hasOwnProperty.call(all, String(id))) return null
-    const l = asLock(all[String(id)], kind)
+    const l = withStamps(id, asLock(all[String(id)], kind))
     const now = Date.now()
-    if (l.seen !== null && l.seen > now) { // a first-sight time in the future (a clock moved back) counts from now too, written back once
-      const fixed = { ...l, seen: now }
+    if (l.seen !== null && l.seen > now) { // a first-sight time in the future (a clock moved back) counts from now too, written back once (the monotonic stamp is carried: a real 130 s still decides)
+      const fixed = { ...l, seen: now, ...(l.at !== null && l.at > now ? { at: now } : {}) }
+      stamps.set(seenKey(id, now), l.seenMono)
+      if (fixed.at !== l.at) stamps.set(atKey(id, now), l.mono)
       writeLock(id, fixed)
-      return fixed.at !== null && fixed.at > now ? { ...fixed, at: now } : fixed
+      return fixed
     }
     if (l.at !== null && l.at > now) { // Group A R2 (f): an `at` in the future (a clock moved back) counts from now, written back once so it does not move on
       const fixed = { ...l, at: now }
+      stamps.set(atKey(id, now), l.mono)
       writeLock(id, fixed)
       return fixed
     }
@@ -212,6 +262,8 @@ function makeLocks(name, kind) {
     const all = entriesOf(name)
     all[String(id)] = { at: rec.at ?? null, before: rec.before ?? null, expected: rec.expected ?? null, names: rec.names ?? [], units: rec.units ?? null, key: rec.key ?? null, sig: rec.sig ?? null, waiting: rec.waiting ?? null, out: rec.out === true, seen: rec.seen ?? null, move: rec.move === true, adds: rec.adds ?? null }
     writeAll(name, all)
+    if (Number.isFinite(rec.at) && !stamps.has(atKey(id, rec.at))) stamps.set(atKey(id, rec.at), stampFor(Date.now() - rec.at)) // a lock written here: the wall age counts once, then only the monotonic time
+    if (Number.isFinite(rec.seen) && !stamps.has(seenKey(id, rec.seen))) stamps.set(seenKey(id, rec.seen), stampFor(Date.now() - rec.seen))
   }
   return {
     save: writeLock,
@@ -224,13 +276,15 @@ function makeLocks(name, kind) {
       if (l.malformed) {
         if (l.seen !== null) return l
         const fixed = { ...l, seen: nowMs }
+        stamps.set(seenKey(id, nowMs), monoNow())
         writeLock(id, fixed)
-        return fixed
+        return withStamps(id, fixed)
       }
       if (l.at !== null) return l
       const fixed = { ...l, at: nowMs }
+      stamps.set(atKey(id, nowMs), monoNow())
       writeLock(id, fixed)
-      return fixed
+      return withStamps(id, fixed)
     },
     /** Drops the lock of `id`; with `only` (the lock a reader decided) it drops that lock alone: a newer lock of another tab (other key or `at`) stays. Returns false when a different lock stayed. */
     drop(id, only = null) {
@@ -313,6 +367,7 @@ export const newRequestKey = () => {
 /** Tests: forget every lock and key (memory and storage). */
 export function resetExitLocks() {
   for (const k of Object.keys(dirty)) { dirty[k] = false; garbageSeen[k] = null }
+  stamps.clear()
   writeAll(LOCK_KEY, {})
   writeAll(ADD_KEY, {})
   writeAll(KEYS_KEY, {})

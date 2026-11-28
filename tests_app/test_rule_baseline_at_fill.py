@@ -177,7 +177,7 @@ def test_worker_and_screen_give_the_same_answer_after_an_adjustment(monkeypatch)
     w = types.SimpleNamespace(strategy_id=7, tracked=types.SimpleNamespace(position=position), entry_facts=None,
                               body=body, basket_facts={1: facts})
     stub = types.SimpleNamespace(_gate_load={}, _memory={}, _written={}, _pending={},
-                                 _write_wake=asyncio.Event(), _count_outcomes=lambda ev: None)
+                                 _write_wake=asyncio.Event(), _count_outcomes=lambda ev, sid: None)
     worker = asyncio.run(bg.Worker._evaluate_and_write(stub, w, state, types.SimpleNamespace(gap_until="09:30")))
     assert [(r.rule_id, type(r).__name__) for r in worker.results] == \
         [(r.rule_id, type(r).__name__) for r in screen.results]

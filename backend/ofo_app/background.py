@@ -790,6 +790,8 @@ class Listed(list):
 
 
 #: ADR-237 (3) promises an intraday record within 10 s of its close: a queued event older than this is logged once
+#: RA (issue 876): the loss rules and guards whose silent outcome the worker names in its log (rule id or trigger id)
+_LOSS_RULES: Final = frozenset({sl.TRIGGER_MAX_LOSS, sl.RUPEE_LOSS_RULE, sl.CREDIT_RULE})
 GATE_EVENT_AGE_WARN_S: Final = 10
 #: while one strategy's event writes keep failing, a count line (no traceback) every this many failures
 GATE_FAIL_COUNT_EVERY: Final = 10
@@ -1072,6 +1074,7 @@ class Worker:
         self._written: dict[int, tuple] = {}  # strategy -> ``_write_key`` of its last write
         self._grids: dict[tuple, tuple] = {}  # (id(provider), underlying, expiry) -> (provider, strike grid)
         self._outcomes: dict[str, int] = {}  # evaluation outcome (withheld / not checked reason) -> count this minute
+        self._loss_seen: dict[tuple[int, str], str] = {}  # RA 876: (strategy, loss rule) -> its last silent outcome
         #: the ONE database gate of the role: rebuild, writer and settings poll hold it, so the role opens at
         #: most one connection at a time (ADR-048 limit 5 = API 2 + background 1 + feed 1); the cycle path never
         #: names it (#636 r6, ``tests_app/test_background_db_gate.py``); served writer, poll, rebuild (``db_gate``)
@@ -1750,7 +1753,7 @@ class Worker:
         base = check.entry_baseline(scn, state, w.tracked.position, w.entry_facts, marker,
                                     w.basket_facts.get(marker))
         ev = pe.evaluate(w.body, state, known, base, gap_until=prefs.gap_until)
-        self._count_outcomes(ev)
+        self._count_outcomes(ev, sid)
         if memory is not None and _write_key(ev) == self._written.get(sid):
             return ev  # nothing a write would change (rule memory, flagged ids, clear ids): no DB call
         self._written.pop(sid, None)  # fail closed: until this write succeeds the next check writes again
@@ -2100,14 +2103,30 @@ class Worker:
                 if self._pending.get(sid) is item:
                     del self._pending[sid]
 
-    def _count_outcomes(self, ev: pe.Evaluation) -> None:
-        """Item g: why rules gave no flag this minute (withheld / not checked with the reason code), and flags."""
+    def _count_outcomes(self, ev: pe.Evaluation, strategy_id: int) -> None:
+        """Item g: why rules gave no flag this minute (withheld / not checked with the reason code), and flags.
+
+        RA (issue 876): the counter above is summed over strategies, so a loss rule that was true and sent nothing left
+        no trace naming it. A loss rule or guard (``_LOSS_RULES``) that is evaluated and does NOT alert now writes one
+        INFO line with the strategy, the rule and the outcome code (never a price), when its outcome is new or
+        changed; a Flag writes none (its alert row is the record)."""
         names = [f"not_checked {r.code}" if isinstance(r, pe.NotChecked) else
                  "flag" if isinstance(r, pe.Flag) else "already_true" for r in ev.results]
         if ev.withheld is not None:
             names.append(f"withheld {ev.withheld}")
         for name in names:
             self._outcomes[name] = self._outcomes.get(name, 0) + 1
+        for r, name in zip(ev.results, names, strict=False):
+            rule = next((x for x in (r.rule_id, r.trigger_id) if x in _LOSS_RULES), None)
+            if rule is None:
+                continue
+            key = (strategy_id, rule)
+            if name == "flag":
+                self._loss_seen.pop(key, None)  # it alerted: a later silence is a new event
+            elif self._loss_seen.get(key) != name:
+                self._loss_seen[key] = name
+                log.info("background: loss rule evaluated, no alert: strategy=%s rule=%s outcome=%s", strategy_id, rule,
+                         name)
 
     def _log_opportunities(self, w: Watched, recorded: Any) -> None:
         """One INFO line the first time this process sees an open opportunity record of a rule (``record_check``

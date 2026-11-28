@@ -55,7 +55,7 @@ async function cancel() {
   dom('paper-cancel').click()
   await flushPromises()
 }
-beforeEach(() => { globalThis.sessionStorage?.clear(); globalThis.localStorage?.clear(); resetExitLocks(); calls.length = 0; document.body.innerHTML = ''; postMode = 'unknown'; bookMode = 'plan'; vi.useFakeTimers({ toFake: ['Date', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] }) })
+beforeEach(() => { globalThis.sessionStorage?.clear(); globalThis.localStorage?.clear(); resetExitLocks(); calls.length = 0; document.body.innerHTML = ''; postMode = 'unknown'; bookMode = 'plan'; vi.useFakeTimers({ toFake: ['Date', 'performance', 'setTimeout', 'clearTimeout', 'setInterval', 'clearInterval'] }) })
 afterEach(() => { vi.useRealTimers() })
 
 describe('item 1: unknown add, Cancel, reopen', () => {

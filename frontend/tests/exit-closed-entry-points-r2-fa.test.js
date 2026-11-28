@@ -22,10 +22,11 @@ import { withPriceTexts } from './_priceTexts'
 import { toPaperList } from './_paperList'
 
 const SENTENCE = 'The market is closed. Exits can be placed from 09:15 on Monday 30 Nov.'
+let legState = 'closed' // r3 FJ: with the market closed no leg is live; the open-market test sets 'live'
 const leg = (i) => withPriceTexts({
   leg_index: i, instrument_id: `NSE_FO:${i + 1}`, action: i % 2 ? 'SELL' : 'BUY', instrument: i < 2 ? 'PE' : 'CE',
   strike: `${22300 + i * 100}.00`, expiry: '2026-12-01', quantity: 65, entry_price: '114.25', entry_at: '2026-10-28T05:03:09Z',
-  current_price: '113.60', price_state: 'live', price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null,
+  current_price: '113.60', price_state: legState, price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null,
 })
 const strat = () => withPriceTexts({ strategy_id: 7, name: '"Trade 1"', underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE',
   pause_reason: null, as_of: null, total: '71.50', booked: '0.00', unbooked: '71.50', legs: [leg(0), leg(1), leg(2), leg(3)] })
@@ -39,6 +40,7 @@ const mounted = []
 const CATCH_ALL = [{ path: '/:rest(.*)', component: { template: '<div/>' } }]
 
 beforeEach(() => {
+  legState = 'closed'
   calls = []
   resetActiveAlerts()
   resetOpenRecords()
@@ -92,6 +94,7 @@ describe('closed market: the Exit dialog from both entry points', () => {
     expect(orderPosts()).toHaveLength(0)
   })
   it('the same Positions Exit with the market OPEN: Confirm is enabled (the test above is not vacuous)', async () => {
+    legState = 'live'
     answers['GET /market/exit-state'] = () => Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } })
     const w = await positions()
     expect(w.find('[data-testid="paper-market-closed"]').exists()).toBe(false)

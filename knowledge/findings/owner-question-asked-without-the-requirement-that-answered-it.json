@@ -15,14 +15,20 @@
   "note": "Proposed, not built: the spec_basis_gate hook could run spec_similar on the question text and refuse when a high-scoring requirement is not cited. Filed here as a note; the hook is not edited by this entry."
  },
  "spec_ref": [
-  "spec/requirements/REQ-154.md",
-  "spec/decisions/ADR-330.md"
+  "spec/decisions/ADR-092.md",
+  "spec/decisions/ADR-330.md",
+  "spec/requirements/REQ-154.md"
  ],
  "occurrences": [
   {
    "date": "2026-11-26",
    "where": "ADR-330 (18) question on pasted link / reload and unsaved builder legs; clash found by LV-14 and issue #751; settled by ADR-330 (34)",
    "evidence": "Spec basis cited ADR-319 (1) and REQ-079 AC-5, not REQ-154 AC-1"
+  },
+  {
+   "date": "2026-11-27",
+   "where": "coordinator question on whether a paper exit above the freeze quantity is refused (recorded as ADR-330 (51)); the owner then restated that paper and real orders are the same (ADR-330 (58))",
+   "evidence": "Spec basis cited ADR-092 and ADR-081, and offered 'never block an exit on paper' as an option; it did not cite ADR-330 (10) and (43) (one list, no paper-only path) nor the owner's 26 Nov instruction that a paper order differs from a real one only by its tag"
   }
  ]
 }
