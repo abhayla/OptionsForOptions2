@@ -1,10 +1,10 @@
 // Lane F1b item 2: F-H (the save bar's add ignored exit locks) and the target key drop (a key of ANOTHER strategy was dropped when the target changed while a post was out).
 // Real cases (FJ2 "Opus review of group A" F-H, "round 2" last line): F-H an exit of unknown outcome on strategy 172 left Add to Paper open, so an add went out beside it;
 // target: paperTarget changed while a refused post was out, and dropOrderKey(paperTarget) dropped the other strategy's key.
+import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
 import SaveDraftBar from '@/components/strategy/SaveDraftBar.vue'
-import { ADD_UNKNOWN_TEXT, UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
 import { resetExitLocks, saveExitLock, orderKeyFor } from '@/lib/unknownLocks'
 
 const calls = []
@@ -46,12 +46,6 @@ async function mountBar(props = {}) {
   const w = mount(SaveDraftBar, { props: { legs: LEGS, shownName: 'IC', current: CUR, ...props }, global: { plugins: [router] }, attachTo: document.body })
   await flushPromises()
   return w
-}
-async function openAndConfirm(w) {
-  await t(w, 'add-to-paper').trigger('click')
-  await flushPromises()
-  dom('paper-confirm-button').click()
-  await flushPromises()
 }
 async function cancel() {
   dom('paper-cancel').click()
