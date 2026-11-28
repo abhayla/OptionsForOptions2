@@ -224,3 +224,48 @@ def test_every_order_route_carries_the_outcome_guard_and_the_start_up_check_sees
         finally:
             route.dependant.dependencies = kept
     assert scenario_mode.misguarded_order_routes(app.routes) == []
+
+
+async def test_a_real_door_attempt_never_closes_by_time(db, notified, keys, monkeypatch):
+    """Coordinator, 28 Nov 22:20 (ADR-016 to ADR-019: submitted is not executed, Zerodha is the authority): the 120 s
+    close applies to PAPER attempts only (the app's own database is the authority there). An unknown REAL attempt with
+    nothing stored stays open however old it is: any request on the strategy, paper or real, is refused."""
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    real = await order_outcome.open_attempt(_ConnMaker(db), stored.user_ref, stored.id, "real")
+    monkeypatch.setattr(order_outcome, "SETTLE_SECONDS", -1)  # "older than the window" by any measure
+    for _ in range(2):
+        late = await _post(app, stored, _body(orders, uuid.uuid4()))
+        assert late.status_code == HTTPStatus.CONFLICT and UNKNOWN in late.text, late.text[:300]
+    assert await _count(db, stored) == 0
+    assert await _states(db, stored) == ["open"]
+    await order_outcome.close_attempt(_ConnMaker(db), real, None)  # the user records the outcome: released
+    assert (await _post(app, stored, _body(orders, uuid.uuid4()))).status_code == HTTPStatus.CREATED
+
+
+async def test_the_user_records_the_outcome_of_a_real_attempt_and_the_strategy_is_released(db, notified, keys):
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    await order_outcome.open_attempt(_ConnMaker(db), stored.user_ref, stored.id, "real")
+    assert await order_outcome.record_outcome(_ConnMaker(db), stored.user_ref, stored.id, stored=False) == 1
+    assert await order_outcome.record_outcome(_ConnMaker(db), stored.user_ref, stored.id, stored=False) == 0
+    assert (await _post(app, stored, _body(orders, uuid.uuid4()))).status_code == HTTPStatus.CREATED
+    assert (await _states(db, stored))[0] == "not_stored"
+
+
+async def test_a_second_strategy_stores_while_the_first_has_an_open_attempt(db, notified, keys):
+    """The block is per strategy: strategy B places while strategy A's outcome is unknown."""
+    app_a, stored_a, *_ = await _setup(db)
+    app_b, stored_b, *_ = await _setup(db)
+    _use(app_a, keys)
+    _use(app_b, keys)
+    await order_outcome.open_attempt(_ConnMaker(db), stored_a.user_ref, stored_a.id, "paper")
+    _, orders_b = _prices(stored_b)
+    reply = await _post(app_b, stored_b, _body(orders_b, uuid.uuid4()))
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert await _count(db, stored_b) == TWO_ORDERS
+    _, orders_a = _prices(stored_a)
+    blocked = await _post(app_a, stored_a, _body(orders_a, uuid.uuid4()))
+    assert blocked.status_code == HTTPStatus.CONFLICT and UNKNOWN in blocked.text

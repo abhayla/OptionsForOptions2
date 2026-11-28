@@ -16,7 +16,10 @@ an order whose outcome was never known. This module is the server's guarantee, w
   leaves it OPEN: the outcome is unknown.
 * A request that finds an open attempt looks at what the database holds: orders, plans or a finished key row written
   since the attempt began -> it was ``stored``; nothing, and the attempt is older than ``SETTLE_SECONDS`` (longer than
-  any request or commit can run) -> ``not_stored``; otherwise the new request is REFUSED (``order_outcome_unknown``),
+  any request or commit can run) -> ``not_stored`` (a PAPER attempt only: the app's own database is the authority
+  there; a REAL attempt (the Execute door, where Zerodha is the authority: submitted is not executed, ADR-016 to
+  ADR-019) NEVER closes by time: it closes by stored evidence or when the user records the outcome, see
+  ``close_attempt``/``record_outcome``); otherwise the new request is REFUSED (``order_outcome_unknown``),
   nothing is stored, and the page reads the strategy's orders. Release is therefore automatic once the outcome is
   known; no request is ever retried by the server (ADR-017).
 * A table that cannot be read or written refuses the request (``request_key_store_unavailable``): fail closed.
@@ -59,7 +62,7 @@ _OPEN = text(
     "INSERT INTO public.order_attempts (user_ref, strategy_id, door, state) VALUES (:u, :s, :d, 'open') "
     "ON CONFLICT (strategy_id) WHERE state = 'open' DO NOTHING RETURNING id")
 _READ_OPEN = text(
-    "SELECT a.id, a.started_at, a.started_at < clock_timestamp() - make_interval(secs => :settle) AS settled, "
+    "SELECT a.id, a.door, a.started_at, a.started_at < clock_timestamp() - make_interval(secs => :settle) AS settled, "
     "(EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = a.strategy_id "
     "          AND o.created_at >= a.started_at AND o.kind NOT IN ('stop', 'settle')) "
     " OR EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = a.strategy_id "
@@ -107,7 +110,7 @@ async def open_attempt(db: Any, user_ref: str, strategy_id: int, door: str) -> i
                 continue
             if earlier.stored:
                 await db.execute(_CLOSE, {"st": "stored", "id": earlier.id})
-            elif earlier.settled:
+            elif earlier.settled and earlier.door == "paper":  # never a REAL attempt: see the module docstring
                 await db.execute(_CLOSE, {"st": "not_stored", "id": earlier.id})
             else:
                 await _end_transaction(db, commit=False)
@@ -180,3 +183,17 @@ async def guard_real_outcome(strategy_id: int, db: Annotated[Any, Depends(get_db
     """The dependency of the real Execute door (the Return door records an outcome and is not guarded)."""
     async with attempt("real", strategy_id, db, user_ref):
         yield
+
+
+async def record_outcome(db: Any, user_ref: str, strategy_id: int, *, stored: bool) -> int:
+    """The user (or a door that reads the broker's order book) records the outcome of the strategy's open attempt:
+    ``stored`` or ``not_stored``. Returns how many open attempts it closed (0 or 1). The way out for a REAL attempt,
+    which never closes by time. The Return door (``routes/execution_return.py``) and a future "I did not send it"
+    answer call it; neither is wired in this lane (see RESULTS, "For the owner lane")."""
+    row = (await db.execute(text("SELECT id FROM public.order_attempts WHERE strategy_id = :s AND user_ref = :u "
+                                 "AND state = 'open'"), {"s": strategy_id, "u": user_ref})).first()
+    if row is None:
+        return 0
+    await db.execute(_CLOSE, {"st": "stored" if stored else "not_stored", "id": row[0]})
+    await db.commit()
+    return 1
