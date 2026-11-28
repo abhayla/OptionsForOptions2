@@ -1,4 +1,4 @@
-STATUS 23:50 IST CLOSED (owner's order of 23:35 read): all pushed, head b2ed3c8dc and the close-out commit after it. DONE: I-184, I-126, I-204, I-168 (on B3's branch), I-170, I-176, CI-1, CI-2, FLAKE-1. NOT DONE: walker rows W-07, W-35 and the TG2 hand-over list (no build commit after wave 1 was named; budget of 300 min ended), test_exit_door no_deadlock (cannot reproduce on a1d704225; needs Lane R1's head). SAFE TO CLOSE. send_message to the coordinator is refused (device trust): this line is the reply.
+STATUS 00:10 IST CLOSED again (owner's order of 23:35 read; coordinator confirmed it is theirs): EXIT-DOOR DONE on the wave 1 head 8425feead: cause is NOT the table paper_alerts (it exists) but Lane B2's new table order_attempts (0064): the test's cleanup did not delete its rows before the strategies delete; fixed in the test, test_exit_door.py 37 passed (was 2 failed). Earlier: I-184, I-126, I-204, I-168 (B3 branch), I-170, I-176, CI-1, CI-2, FLAKE-1 all pushed. NOT DONE: walker rows W-07, W-35 and the TG2 hand-over list (budget ended; a walk needs hours of set-up). SAFE TO CLOSE. send_message to the coordinator is refused (device trust): this line is the reply.
 
 # RESULTS: Lane T (test-only gaps and tooling)
 
@@ -85,6 +85,15 @@ None. No product code was at fault in any run.
 
 - Friction row for the coordinator (I1; this lane may not edit docs/process/friction-log.md): "Cloud test database `ofo_test` has no schema at session start: every DB test fails with `relation public.catalogue_contracts does not exist` until `db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head` is run; a 60 min foreground run of all tests_app was killed at 62 percent by the default background limit. Fix to recommend: cloud_services.sh migrates ofo_test, and the lane brief gives the 7200000 ms limit for a full tests_app run." Status: new.
 
+## EXIT-DOOR: test_exit_door.py no_deadlock cases (coordinator's item, Lane R1's report)
+
+- **Reproduced** on the wave 1 head 8425feead (database migrated to 0064): `tests_app/test_exit_door.py` 2 failed, 35 passed: `test_monitor_and_tracking_exit_at_once_one_wins_no_deadlock[before_claim]` and `[before_place]`. On the earlier build a1d704225 (migrations to 0062) both passed.
+- **Cause (differs from the report):** `paper_alerts` was not removed or renamed (no migration after 0029 touches it; it exists). The first error is `ForeignKeyViolationError: update or delete on table "strategies" violates foreign key constraint "order_attempts_strategy_id_fkey" ... Key (id)=(36) is still referenced from table "order_attempts"`. Lane B2's migration 0064 adds `public.order_attempts` (one row per door call, `strategy_id` keyed to strategies); the test's `_remove_paper_rows` deleted `paper_alerts`, `adjustment_suggestions`, `paper_triggers` and `paper_orders` but not `order_attempts`, so removing the test's strategy failed.
+- **What the tests guard:** a lock order: the monitor's exit and the tracking exit at the same moment, one wins, no deadlock (the assertions are unchanged and still run).
+- **Fix (test side):** `order_attempts` is added to the tables `_remove_paper_rows` empties before the strategies are deleted. After: `tests_app/test_exit_door.py` 37 passed. Ruff clean, ratchet OK.
+- **Why CI's server job did not report them:** nothing hides them. The job runs the whole `tests_app` with `-m "not full_chain"` and these tests carry no marker; they only fail on a head that has migration 0064, which is wave 1. The CI run on 8425feead is the first that can show it (the coordinator says it is running).
+- **Not run:** the full `tests_app` on the wave 1 head. Other tests that create rows through the exit doors could leave `order_attempts` rows in the same way; I have not looked (not mine to start under the 23:35 order).
+
 ## Found, not assigned
 
 - `.github/workflows/app-tests.yml`, job `frontend`: the Playwright step has no own timeout, so a slow step cancels the whole job and leaves no log (CI-2 above; suggested `timeout-minutes: 15` on that step). Evidence: run 46155059897 (cancelled at 25:19, step ran 16:32).
@@ -95,7 +104,6 @@ None. No product code was at fault in any run.
 ## Not done
 
 - Walker rows W-07, W-35 and the TG2 hand-over list (D-TG-2 re-check, T1-20, T1-21, T2-06, T2-09, T3-15, T4-04, the W-30 monthly half, the W-15 builder box; T2-21 is Monday): no build commit after wave 1 was named to me, the origin build head is still a1d704225, and the 300-minute budget ended at 23:45 IST. No successor is started.
-- `tests_app/test_exit_door.py::test_monitor_and_tracking_exit_at_once_one_wins_no_deadlock[before_claim]` and `[before_place]` (Lane R1's report: they ALTER `paper_alerts`, which no longer exists): both pass on origin build a1d704225, where `paper_alerts` exists; no migration on any origin branch after 0062 touches it (0063 basket facts, 0064 order attempts only). CI runs them: the server job runs all of `tests_app` with `-m "not full_chain"` and these tests carry no marker. Not reproducible, so not changed; Lane R1's head commit is needed.
 - I-168 and I-204 re-run on the build after Lane B3's merge (green on B3's branch ecf8e8f99, on the build a1d704225 for I-204).
 - Coordinator messages (send_message to the parent) are refused all through the session ("elevated_session_untrusted_device"); the remedy is an owner card that limits this session to trusted devices for good, so it was not raised unasked. Status went through this file and the push lines.
 
