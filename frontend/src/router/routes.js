@@ -65,7 +65,7 @@ const settingsRoutes = [
   {
     path: '/settings',
     name: 'settings',
-    // O-A-08: /settings lands on the page the menu's "Settings" link opens (app-settings), not the first account item
+    // O-A-08: /settings lands on the page the Settings menu link opens (app-settings), not the first account item
     redirect: ACCOUNT_MENU_ITEMS.some(([slug]) => slug === 'app-settings') ? '/settings/app-settings' : firstBuiltPath('settings'),
     meta: {
       title: ACCOUNT_LABEL,

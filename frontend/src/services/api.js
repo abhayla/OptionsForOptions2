@@ -78,7 +78,7 @@ export const SLOW_READ_MIN_LIMIT_MS = 30000
 export const SLOW_READ_BUDGETS_MS = [
   [/^\/alerts\/(active|answered)(\?|$)/, 12000],
   [/^\/paper\/alerts\/records(\?|$)/, 12000],
-  [/^\/plan-watch\?/, 15000], // the batch route's budget (round 2 build)
+  [/^\/plan-watch\?/, 15000], // the batch route budget (round 2 build)
   [/^\/catalogue\/[^/?]+\/expiries(\?|$)/, 12000],
 ]
 export function readLimitFor(url) {
