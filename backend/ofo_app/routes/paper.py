@@ -1498,12 +1498,13 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
             user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
-    except request_key.Repeated as repeat:  # another request with this key committed first: its result, nothing stored
+    except request_key.Repeated as same_key:  # another request with this key committed first: nothing stored
         await db.rollback()
-        stops = repeat.result.get("cancelled_stops", [])
+        stops = same_key.result.get("cancelled_stops", [])
         await request_key.finish(keys, user_ref, key, request_key.done(strategy_id, sent, {"cancelled_stops": stops}))
+        replayed = await _replayed_stops(db, stored, stops)
         return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
-                           cancelled=await _replayed_stops(db, stored, repeat.result.get("cancelled_stops", [])))
+                           cancelled=replayed)
     except BaseException:
         if key is not None and not stage["commit_started"]:  # refused with nothing stored: the key is free again
             await request_key.free(keys, user_ref, key)
