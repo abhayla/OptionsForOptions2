@@ -421,7 +421,7 @@ describe('G3: the Lane B emitter guard', () => {
 //     another directory is not seen;
 //   - the order patterns are `addToPaper`, `.post(` and `/orders`: `api.put(`, `api['post'](`, `.post (` (space) and `api.request(`
 //     are not seen;
-//   - the word 'Real (Zerodha order)' is matched as one literal: a split string ('Real (Zerodha ' + 'order)'), a non-breaking space or
+//   - the word 'Real (stored, not sent)' is matched as one literal: a split string ('Real (Zerodha ' + 'order)'), a non-breaking space or
 //     another spelling is not seen; the real exit-button check is by name (ExitButton, usePaperExit, PaperConfirmDialog, an exit test id).
 const POSITIONS_DIR = join(process.cwd(), 'src/components/positions')
 const ONE_LIST_FILES = ['src/pages/PositionsPage.vue', ...readdirSync(POSITIONS_DIR).filter((n) => /\.(vue|js|ts)$/.test(n)).map((n) => `src/components/positions/${n}`)]
@@ -442,15 +442,15 @@ describe('G3 rule 5: the one Positions list starts no order', () => {
   })
 })
 
-// Rule 5, second half (ADR-330 (10), Chunk C): the exit-title word 'Real (Zerodha order)' is spelled in ONE place, lib/paperDrafts.js
+// Rule 5, second half (ADR-330 (10), Chunk C): the exit-title word 'Real (stored, not sent)' is spelled in ONE place, lib/paperDrafts.js
 // (positionKindWord). A second copy in any other src file is a second door. Comments are not counted. No real exit button exists
 // on the Positions page (ADR-281): it imports no ExitButton, usePaperExit or PaperConfirmDialog.
 const KIND_WORD_HOME = 'src/lib/paperDrafts.js'
-const KIND_WORD = /Real \(Zerodha order\)/
+const KIND_WORD = /Real \(stored, not sent\)/
 const kindWordProblems = (sources) => Object.entries(sources)
   .filter(([file, src]) => file !== KIND_WORD_HOME && KIND_WORD.test(stripComments(src))).map(([file]) => `${file}: holds the real exit word`)
 const REAL_EXIT_BANNED = [/\bExitButton\b/, /\busePaperExit\b/, /\bPaperConfirmDialog\b/, /data-testid="[^"]*exit[^"]*"/i]
-describe('G3 rule 5 (exit title): one spelling of Real (Zerodha order); no real exit on Positions', () => {
+describe('G3 rule 5 (exit title): one spelling of Real (stored, not sent); no real exit on Positions', () => {
   it('the literal appears only in lib/paperDrafts.js, and is there (not vacuous)', () => {
     const files = realFiles()
     expect(kindWordProblems(files)).toEqual([])
@@ -458,10 +458,10 @@ describe('G3 rule 5 (exit title): one spelling of Real (Zerodha order); no real 
   })
   it('mutation: the literal in another src file is one problem; in a comment or in the home none', () => {
     const files = realFiles()
-    const scratch = { ...files, 'src/pages/Scratch.vue': "const t = 'Exit Real (Zerodha order) positions'\n" }
+    const scratch = { ...files, 'src/pages/Scratch.vue': "const t = 'Exit Real (stored, not sent) positions'\n" }
     expect(kindWordProblems(scratch)).toEqual(['src/pages/Scratch.vue: holds the real exit word'])
-    expect(kindWordProblems({ ...files, 'src/pages/Scratch.vue': '// Real (Zerodha order)\n' })).toEqual([])
-    expect(kindWordProblems({ [KIND_WORD_HOME]: "const w = 'Real (Zerodha order)'" })).toEqual([])
+    expect(kindWordProblems({ ...files, 'src/pages/Scratch.vue': '// Real (stored, not sent)\n' })).toEqual([])
+    expect(kindWordProblems({ [KIND_WORD_HOME]: "const w = 'Real (stored, not sent)'" })).toEqual([])
   })
   it('the Positions page and its totals render no real exit button or exit dialog', () => {
     const files = realFiles()

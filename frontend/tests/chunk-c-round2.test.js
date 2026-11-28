@@ -30,7 +30,7 @@ describe('title door fails closed (round 2)', () => {
   it('the mixed list title goes through the door too', () => {
     const mixed = [{ kind: 'exit' }, { kind: 'add' }]
     expect(paperDialogTitle(mixed)).toBe('Review Paper orders')
-    expect(paperDialogTitle(mixed, 'real')).toBe('Review Real (Zerodha order) orders')
+    expect(paperDialogTitle(mixed, 'real')).toBe('Review Real (stored, not sent) orders')
   })
 })
 

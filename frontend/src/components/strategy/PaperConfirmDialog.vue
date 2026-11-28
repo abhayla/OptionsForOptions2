@@ -58,7 +58,9 @@
       <input v-model="notLiveAck" type="checkbox" class="mt-1" data-testid="paper-not-live-ack" />{{ notLiveLine }}
     </label>
     <p v-if="note" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-discard-note">{{ note }}</p>
-    <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
+    <!-- Owner 28 Nov (ADR-330 (58)): a REAL position's dialog says before the press that the action is only stored; never "not a real trade" -->
+    <p v-if="isReal" class="mt-3 text-sm font-semibold text-warn" role="note" data-testid="real-not-sent">{{ realDialogText }}</p>
+    <p v-else class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
     <!-- GC-ICFIX Issue 6: these result lines sit in the frame's pinned status area (not the scrolling body), so they show with the buttons -->
@@ -66,8 +68,8 @@
     <template #status>
       <div ref="statusSlot" class="min-h-10" data-testid="paper-status-slot">
       <!-- I-18 (ADR-017): while the post runs; the line is about sending, never about done ("Exit placed on paper" stays the only done sentence) -->
-      <p v-if="busy && state !== 'placed' && rows.some((r) => r.kind === 'exit')" class="text-sm text-ink-muted" role="status" data-testid="paper-placing">{{ EXIT_PLACING_TEXT }}</p>
-      <p v-else-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
+      <p v-if="busy && state !== 'placed' && rows.some((r) => r.kind === 'exit')" class="text-sm text-ink-muted" role="status" data-testid="paper-placing">{{ isReal ? REAL_STORING_TEXT : EXIT_PLACING_TEXT }}</p>
+      <p v-else-if="state === 'placed'" class="text-sm font-medium" role="status" data-testid="paper-placed">{{ isReal ? REAL_STORED_NOT_REFRESHED_TEXT : PAPER_PLACED_NOT_REFRESHED_TEXT }}</p>
       <p v-else-if="state === 'unknown' || lockWindowOver" class="text-sm text-red-700" role="alert" data-testid="paper-unknown" :data-window-over="lockWindowOver ? 'yes' : 'no'">
         {{ lockWindowOver ? EXIT_UNKNOWN_AFTER_WINDOW_TEXT : PAPER_UNKNOWN_TEXT }}
         <button type="button" class="ml-1 font-semibold text-accent underline" data-testid="paper-open-orderbook" @click="emit('orderbook')">{{ PAPER_OPEN_ORDERBOOK_LABEL }}</button>
@@ -97,6 +99,7 @@ import {
   PAPER_UNKNOWN_TEXT, HELD_LABEL, STOP_REPLY_UNREADABLE_TEXT, cancelledStopLines, EXIT_UNKNOWN_WINDOW_MS, EXIT_UNKNOWN_AFTER_WINDOW_TEXT, heldBlock, paperLotsOk, paperPriceOk, paperPriceReason,
 } from '@/lib/tracking'
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
+import { REAL_ADD_DIALOG_TEXT, REAL_EXIT_DIALOG_TEXT, REAL_STORED_NOT_REFRESHED_TEXT, REAL_STORING_TEXT } from '@/lib/positionKind'
 import api from '@/services/api'
 import { EXIT_PLACING_TEXT } from '@/lib/usePaperExit'
 import { isoMillis, istClock } from '@/lib/displayFormat'
@@ -150,6 +153,8 @@ const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: ageNowMs.value,
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => paperDialogTitle(props.orders, props.kind))
+const isReal = computed(() => props.kind === 'real')
+const realDialogText = computed(() => (rows.value.some((r) => r.kind === 'exit') ? REAL_EXIT_DIALOG_TEXT : REAL_ADD_DIALOG_TEXT))
 const reasons = computed(() => rows.value.map((r) => (!paperLotsOk(r.lots) ? PAPER_LOTS_REASON : (r.kind !== 'exit' && !paperPriceOk(r.price)) ? paperPriceReason(r.price) : '')))
 const notLiveAck = ref(false)
 // FA2 item 2: reset on the OPENING only; the line's text carries "as of HH:MM" and changes every minute, which must not un-tick the box

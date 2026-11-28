@@ -278,8 +278,8 @@ export const NET_POSITIONS_LABEL = 'Net Positions'
 export const ORDERBOOK_LABEL = 'Orderbook'
 
 /** ADR-330 (10): every exit confirmation names what it exits in its title. The ONE place the word is spelled: 'Paper', or
- *  'Real (Zerodha order)' for a real exit (none is rendered today, ADR-281). Anything but 'real' reads Paper (fail closed). */
-const KIND_WORDS = { paper: 'Paper', real: 'Real (Zerodha order)' }
+ *  'Real (stored, not sent)' for a real position (owner 28 Nov: its exit is only stored in the app, never a Zerodha order; ADR-281). Anything but 'real' reads Paper (fail closed). */
+const KIND_WORDS = { paper: 'Paper', real: 'Real (stored, not sent)' }
 /** Only exactly 'paper' or 'real' is accepted; anything else THROWS (fail closed: a wrong word on a confirmation is worse than none). */
 export const positionKindWord = (kind) => {
   if (kind !== 'paper' && kind !== 'real') throw new Error(`positionKindWord: unknown kind ${String(kind)}`)
