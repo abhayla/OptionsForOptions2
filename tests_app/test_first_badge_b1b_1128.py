@@ -1,8 +1,9 @@
 # ruff: noqa: F811
 """Lane B1b (coordinator, PC check W-34): after a worker restart a trade's "watched" badge returns when ITS OWN first
 check ends, not at the end of the whole first cycle. Nine running trades, one worker: the snapshot is written after
-each of the first checks, so the first write already names the first trade, every later write names the earlier ones again
-(a trade never goes back to "not listed" while the worker is up and reading), and the last write names all nine."""
+each of the first checks, so the first write already names the first trade, every later write names the earlier ones
+again (a trade never goes back to "not listed" while the worker is up and reading), and the last write names all
+nine."""
 from __future__ import annotations
 
 import itertools
