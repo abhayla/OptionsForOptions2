@@ -1,4 +1,4 @@
-STATUS 17:05 | built and committed on fix/r3-leftovers-1128 (head 4fb5c3855 + this file); gate on a5259db50 running (push it first), gate on the final head next; Opus review done: REVISE, F-1 F-2 F-4 fixed, F-3 listed | next push: a5259db50 when its gate ends TOTAL PASS, then the final head | blocker: none (messages to the coordinator are refused: needs the owner's device trust; this line is the report)
+STATUS 17:40 | DONE (committed): items 1, 2, 3, 4 (N5 N6 N7 N8), 5, 6, 7 (G1, T1), 8 (F4, FEED_MODE no_bus), heartbeat EX 120, issue 876 (a) not reproduced and (b) log line, Opus review fixes F-1 F-2 F-4 | HANDED TO RA2 (not started): plan-watch nine rows, spot_at migration, the templates sentences (Return-door text) and O-P-03 label, FE3 stop-line ids and past tense, T2, F3 (post-commit reads, Opus F-3), F7 and F8 designs (FE4), StrategyOut.position_kind, D-TG-1, durable key decides (item 9), record_plan F2 F4 F5, one market-open clock, the Q3 chain cases (d) to (l) re-run | QUESTIONS FOR THE OWNER stay as written (W-28 word, F3, F2) | blocker: none (messages to the coordinator are refused: the owner's device trust)
 
 # Lane RA: round 3 leftovers (base integration/weekend-r2-1128 17385d88, merged fix/r4-worker-4-1128: clean, no conflict)
 
@@ -120,3 +120,5 @@ wait it can no longer fail by timing, and "not reached" is now a stated failure.
 |---|---|---|
 | items 1 to 9, build and tests | Sonnet (this session) | about 60 |
 | Opus review of N5 to N7, item 5 and G1 | Opus (reviewer agent), read-only | pending |
+
+SAFE TO CLOSE (head: the commit this file is pushed in; what is left: everything listed under HANDED TO RA2 in the STATUS line and under "Not done" / "Designs for the items not built" above)
