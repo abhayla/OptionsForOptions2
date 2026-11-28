@@ -77,3 +77,33 @@ async def test_t106_c_the_pcs_rupee_guard_of_80_alerts_with_no_pin(chain_for, mo
     rows = await c.plan_alerts()
     print("PLAN ALERTS", rows)
     assert rows, "no plan alert at all with the PC's guards"
+
+
+async def test_t106_d_ra_the_pcs_corrected_shape_both_loss_guards_13_on_seen_clear_loss_beyond_both_held_15_min(
+        chain_for, monkeypatch):  # noqa: F811
+    """Lane RA (coordinator, 16:25 IST, issue 876 corrected facts): 27 triggers, 13 on; loss rules on: T-06 (percent of
+    max loss, 5) and the rupee loss stop (``plan.rupee_loss``, Rs 80; the harness's PATH-94 loss is beyond both); the
+    rules read clear before the loss began (the loss starts one frame after the plan is saved: ``seen_clear``); the loss
+    is held 15 minutes; the worker is a separate OS process. Reproduced or not: the assertions say it. Every loss row
+    that exists is ONE row per rule (no duplicate, nothing placed)."""
+    c = await chain_for("PATH-94")
+    await c.seed(monkeypatch, plan=False, pin=None)
+    await c.type_plan(guards={"loss_stop_rupees": "80"}, t06_percent="5", keep=None)
+    c.start_worker()
+    await c.go_to(0)  # 11:40: the rules read clear
+    assert await c.plan_alerts() == []
+    await asyncio.sleep(RELOAD_SECONDS)
+    await c.go_to(1)  # 11:41: the loss is beyond both levels
+    await c.go_to(2)
+    first = await c.plan_alerts()
+    print("PLAN ALERTS AT ONCE", [(r["rule_id"], r["kind"]) for r in first])
+    assert first, "REPRODUCED: no plan alert at all with both loss guards and the loss beyond both"
+    await c.go_to(8)
+    await c.go_to(16)  # 15 minutes after the loss began
+    rows = [r for r in await c.plan_alerts() if r["outcome"] == "open"]
+    rules = sorted(r["rule_id"] for r in rows)
+    print("OPEN ROWS", rules)
+    assert len(rules) == len(set(rules)), rules  # one row per rule
+    assert rules, "REPRODUCED: the alert did not stay open"
+    assert await c.orders_count() == c.orders_at_start
+    assert "loss rule evaluated, no alert" not in c.log() or "already_true" not in c.log() or rows, c.log()[-800:]
