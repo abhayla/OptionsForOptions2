@@ -276,3 +276,33 @@ async def test_a_lock_timeout_on_the_plan_row_answers_the_busy_refusal_not_a_25P
 def test_the_request_field_is_documented_in_the_openapi_file():
     spec = json.loads((pathlib.Path(__file__).resolve().parents[1] / "docs/api/openapi.json").read_text("utf-8"))
     assert "accept" in spec["components"]["schemas"]["PlanIn"]["properties"]
+
+
+async def test_a_second_tabs_put_builds_on_the_plan_read_under_the_lock_not_a_stale_read(
+    app_db_url, admin_engine, monkeypatch
+):
+    """FD3 item 8 (FD review F7): tab A saves a new target; tab B's PUT had read the plan BEFORE that (the pre-lock read
+    is stale). B saves only a stop: A's target must survive (before: B wrote its stale body over it)."""
+    from ofo_app.routes import adjustment_plan as route  # noqa: PLC0415
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-02")
+    system = await _system_ic(app_db_url)
+    status, out = await _call("POST", _plan_path(sid), json={"playbook_id": system.id})
+    assert status == OK, out
+    async with app_db_url.connect() as conn:
+        stale = await pbs.plan_for(conn, USER, sid)  # what tab B read before tab A saved
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "target": "35"})  # tab A
+    assert status == OK, out
+    after_a = json.loads((await _plan_row(app_db_url, sid)).body)
+    assert after_a["guards"]["profit_target_pct_of_max_profit"] == "35"
+    real = route._type_of
+
+    async def stale_read(db, user_ref, strategy_id, tracked, ctx):
+        stype, _plan = await real(db, user_ref, strategy_id, tracked, ctx)
+        return stype, stale  # the read before the lock returns the OLD plan
+
+    monkeypatch.setattr(route, "_type_of", stale_read)
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": system.id, "stop": "40"})  # tab B
+    assert status == OK, out
+    final = json.loads((await _plan_row(app_db_url, sid)).body)
+    assert final["guards"]["profit_target_pct_of_max_profit"] == "35"  # tab A's save survived
+    assert final != after_a  # and tab B's stop did save
