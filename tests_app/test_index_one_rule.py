@@ -47,7 +47,7 @@ async def test_confirmed_save_refuses_a_crossed_quote_with_its_reason():
 
 
 async def test_confirmed_save_still_takes_a_merely_old_valid_quote():
-    assert await readers._index_spot_held(_ctx(OLD), None, "NIFTY", True) == D("24087.30")
+    assert (await readers._index_spot_held(_ctx(OLD), None, "NIFTY", True)) == (D("24087.30"), AT)
 
 
 async def test_entry_facts_refuse_a_stale_index_quote_unless_confirmed():
@@ -106,3 +106,13 @@ async def test_the_first_fill_reader_holds_an_index_nobody_subscribed_yet(monkey
     monkeypatch.setattr(readers, "read_quotes", read_quotes)
     facts = await readers.entry_facts_now(ctx, "NIFTY", sold, feed=object())
     assert held == [["256265"]] and facts is not None and facts.entry_spot == D("24100.55")
+
+
+async def test_fr34_the_held_spot_carries_the_time_of_its_quote_not_the_order_clock():
+    """FR 3.4: ``_index_spot_held`` answers (spot, at); a confirmed old value says WHEN it was quoted, and the basket
+    facts carry that time as ``spot_at``."""
+    assert await readers._index_spot_held(_ctx(_quote(D("24100.55"))), None, "NIFTY", False) == (D("24100.55"), AT)
+    assert await readers._index_spot_held(_ctx(OLD), None, "NIFTY", True) == (D("24087.30"), AT)
+    from ofo_app.entry_facts_store import BasketFacts  # noqa: PLC0415
+    assert BasketFacts(NOW, D("24087.30"), None, {}, AT).spot_at == AT
+    assert BasketFacts(NOW, D("24087.30"), None, {}).spot_at is None

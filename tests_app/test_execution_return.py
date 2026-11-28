@@ -593,3 +593,123 @@ async def test_real_first_fill_stores_entry_facts_once(app_engine, admin_engine,
             assert await entry_facts_store.read(conn, sid) == facts
         finally:
             await trans.rollback()
+
+
+async def _return_with_change(app_engine, admin_engine, monkeypatch, change):
+    """R3: a real ENTRY plan open and filled at Zerodha; ``change(conn, user, sid)`` runs once between the Zerodha
+    read and the strategy lock (the wait the door releases the lock for). Returns the reply, the entry facts, the plan
+    status after."""
+    from ofo_app import entry_facts_store  # noqa: PLC0415
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+    from ofo_app.routes import outcome  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
+    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "SELL", "5.45"))
+            real_lock, fired = route.store.lock_strategy, []
+
+            async def lock(db, u, s):
+                if not fired:
+                    fired.append(1)
+                    await change(conn, user, sid)
+                return await real_lock(db, u, s)
+            monkeypatch.setattr(route.store, "lock_strategy", lock)
+            reads = _Reads("122104", orders=_sold(_data("orders-122104")), trades=_sold(_data("trades-122104")))
+            app = _app_for(conn, user, reads)
+            app.dependency_overrides[outcome.get_market_context] = lambda: _market(ENTRY_SPOT)
+            resp = await _post(app, sid)
+            facts = await entry_facts_store.read(conn, sid)
+            status = (await conn.execute(text("SELECT status FROM public.execution_plans WHERE strategy_id = :i"),
+                                         {"i": sid})).scalar_one()
+        finally:
+            await trans.rollback()
+    return resp, facts, status
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_r3_a_holding_adopted_during_the_read_refuses_the_return_and_stores_nothing(app_engine, admin_engine,
+                                                                                          monkeypatch):
+    """R3 (W-151): the adopted holdings were read before the Zerodha wait; another tab adopts one before the lock ->
+    409 ``gate_broker_unconfirmed`` (the Execute-only "no order was prepared" sentence would be false: a plan exists);
+    the plan stays open and no first-fill facts are stored (ADR-276)."""
+    from ofo.errors import render  # noqa: PLC0415
+    from ofo_app import order_book_store as books  # noqa: PLC0415
+    from test_execute_route import CORE_ID  # noqa: PLC0415
+
+    async def adopt(conn, user, sid):
+        await books.record_adopted(conn, user, sid, books.AdoptedHolding(
+            f"{CORE_ID.exchange_segment}:{CORE_ID.exchange_token}", "BUY", 65, "NRML", D("7.00"), "adopt:r3:1"))
+    resp, facts, status = await _return_with_change(app_engine, admin_engine, monkeypatch, adopt)
+    assert resp.status_code == HTTPStatus.CONFLICT, resp.text
+    assert resp.json()["what_happened"] == render("gate_broker_unconfirmed").what_happened
+    assert (facts, status) == (None, "open")
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_r3_a_strategy_saved_during_the_read_refuses_the_return_and_stores_nothing(app_engine, admin_engine,
+                                                                                         monkeypatch):
+    """R3 (W-151): a save from another tab moves the strategy revision before the lock -> 409, plan stays open."""
+    from ofo.errors import render  # noqa: PLC0415
+    from ofo_app.routes import execution_return as route  # noqa: PLC0415
+
+    real_load = route.store.load
+
+    async def save(_conn, _user, _sid):
+        # the store refuses an update while a plan is open (version_pending), so the other tab's save is simulated at
+        # the read: from here the strategy answers one revision higher than the first read saw
+        async def load(db, user, sid):
+            return dataclasses.replace(await real_load(db, user, sid), revision=99)
+        monkeypatch.setattr(route.store, "load", load)
+    resp, facts, status = await _return_with_change(app_engine, admin_engine, monkeypatch, save)
+    assert resp.status_code == HTTPStatus.CONFLICT, resp.text
+    assert resp.json()["what_happened"] == render("gate_broker_unconfirmed").what_happened
+    assert (facts, status) == (None, "open")
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_fr33_the_return_door_hands_its_live_feed_to_the_first_fill_entry_facts(app_engine, admin_engine,
+                                                                                      monkeypatch):
+    """FD5 3.3: ``entry_facts_now`` got no feed from the Return door, so an index nobody held yet was never held on the
+    shared fan-out; the door's own feed dependency is now passed through."""
+    from ofo_app import adjustment_readers  # noqa: PLC0415
+    from ofo_app.routes import outcome, planned_entry  # noqa: PLC0415
+    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    seen = {}
+    real = adjustment_readers.entry_facts_now
+
+    async def spy(ctx, underlying, sold, confirmed=False, feed=None):
+        seen["feed"] = feed
+        return await real(ctx, underlying, sold, confirmed=confirmed, feed=feed)
+    monkeypatch.setattr(adjustment_readers, "entry_facts_now", spy)
+    monkeypatch.setattr(adjustment_readers, "atm_iv_now", lambda *_a: _none())
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    sentinel = object()
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "SELL", "5.45"))
+            reads = _Reads("122104", orders=_sold(_data("orders-122104")), trades=_sold(_data("trades-122104")))
+            app = _app_for(conn, user, reads)
+            app.dependency_overrides[outcome.get_market_context] = lambda: _market(ENTRY_SPOT)
+            app.dependency_overrides[planned_entry.get_live_feed] = lambda: sentinel
+            assert (await _post(app, sid)).status_code == HTTPStatus.OK
+            assert seen["feed"] is sentinel
+        finally:
+            await trans.rollback()
+
+
+async def _none():
+    return None
