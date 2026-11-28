@@ -28,6 +28,8 @@ const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 // REQ-109 AC-5: "<sentence>, as of <time>" when the server sent the time (as_of / totals_as_of); no time (null, not a
 // string the clock can read): the sentence as sent, never a made-up time. Only a PAUSED book carries one.
 export const withAsOf = (sentence, asOf) => (sentence !== null && typeof asOf === 'string' && istTime(asOf).endsWith('IST') ? `${sentence}, as of ${istTime(asOf)}` : sentence)
+// I-199 (F3, Lane RA2 note): a LIVE book with a readable as_of and no broker session is a stored close; its row says so, with the time. New wording, pending owner read.
+export const STORED_CLOSE_PREFIX = 'As of'
 const isCount = (v) => Number.isInteger(v) && v >= 0
 
 // U16 (REQ-151): the same 'NIFTY 3 Nov 22950 CE' text every other screen shows; the server's contract_text (ISO date) is the fallback.
@@ -126,6 +128,7 @@ export function readPaperStrategy(s, index = 0) {
   if (s.state === 'PAUSED') stateText = withAsOf(PAPER_PAUSED, s.as_of)
   else if (s.state === 'NOT_CONNECTED') stateText = PAPER_NOT_CONNECTED
   else if (s.state === 'EXITED') stateText = EXITED_TEXT
+  else if (s.state === 'LIVE' && typeof s.as_of === 'string' && istTime(s.as_of).endsWith('IST')) stateText = `${STORED_CLOSE_PREFIX} ${istTime(s.as_of)}`
   const pauseReason = s.state === 'PAUSED' || s.state === 'NOT_CONNECTED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text)
   return {
     readable: true,

@@ -29,10 +29,10 @@ describe('REQ-109 AC-5: paused text carries the quote time', () => {
     expect(withAsOf('x', 'not a time')).toBe('x')
     expect(withAsOf(null, AT)).toBe(null)
   })
-  it('book not paused: an as_of is never printed', () => {
+  it('book not paused: the paused sentence is never printed (a LIVE as_of is the stored close, F3 I-199)', () => {
     const d = clone()
     Object.assign(d.strategies[0], { state: 'LIVE', as_of: AT })
-    expect(first(d).stateText).toBe('')
+    expect(first(d).stateText).not.toContain(PAPER_PAUSED)
     expect(first(d).pauseReason).toBe(d.strategies[0].pause_reason_text)
   })
   it('NOT_CONNECTED keeps its current text (no time)', () => {
