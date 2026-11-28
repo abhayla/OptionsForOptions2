@@ -27,6 +27,8 @@ export const formOf = (src) => ({
   stopRupeesShown: decimal(src?.stop_rupees),
   targetRupeeWords: text(src?.target_rupee_words), stopRupeeWords: text(src?.stop_rupee_words),
   stopWarning: text(src?.stop_warning), // ADR-330 (25): the server's line when the rupee stop is above the max loss
+  // I-208: which box of each pair holds what the user typed (the other was filled by the server); both true = both are sent
+  targetTyped: { percent: false, rupees: false }, stopTyped: { percent: false, rupees: false },
   targetLast: src?.target_source === 'rupees' ? 'rupees' : 'percent', stopLast: src?.stop_source === 'rupees' ? 'rupees' : 'percent',
 })
 
@@ -82,10 +84,15 @@ export const asIsBody = (playbookId) => ({ playbook_id: playbookId, accept: true
 export function saveBody(form, picked = false) {
   const body = { playbook_id: form.playbookId }
   if (picked) body.accept = true
-  if (form.targetLast === 'rupees') body.target_rupees = (form.targetRupees ?? '').trim() // "" clears the level
+  const bothTyped = (typed, a, b) => !!typed?.percent && !!typed?.rupees && (a ?? '').trim() !== '' && (b ?? '').trim() !== ''
+  // I-208: both boxes typed by the user and the server could not tie them together: send both, the server names a clash
+  if (bothTyped(form.targetTyped, form.target, form.targetRupees)) { body.target = form.target.trim(); body.target_rupees = form.targetRupees.trim() }
+  else if (form.targetLast === 'rupees') body.target_rupees = (form.targetRupees ?? '').trim() // "" clears the level
   else body.target = form.target.trim() // ADR-305: an empty Target is sent as "" = no target alert for this trade
   // ADR-252 addendum: a stop left as the sheet showed it is not sent (the server also compares; this is the first layer)
-  if (form.stopLast === 'rupees') {
+  if (bothTyped(form.stopTyped, form.stop, form.stopRupees)) {
+    body.stop = form.stop.trim(); body.stop_rupees = form.stopRupees.trim()
+  } else if (form.stopLast === 'rupees') {
     if ((form.stopRupees ?? '').trim() !== (form.stopRupeesShown ?? '').trim()) body.stop_rupees = form.stopRupees.trim()
   } else if (form.stop.trim() !== '' && form.stop.trim() !== (form.stopShown ?? '').trim()) body.stop = form.stop.trim()
   if (form.maxAdjustments.trim() !== '') body.max_adjustments = form.maxAdjustments.trim()

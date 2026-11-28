@@ -201,17 +201,25 @@ async function typed(field) {
   const f = form.value
   if (isTarget) f.targetLast = rupees ? 'rupees' : 'percent'
   else f.stopLast = rupees ? 'rupees' : 'percent'
+  // I-208: which boxes of the pair hold what the user typed (a box the server filled in is not one); Save sends both when both are
+  const flagKey = isTarget ? 'targetTyped' : 'stopTyped'
+  f[flagKey] = { ...f[flagKey] } // own copy: the prefill's object is shared with the server reading
+  const mine = f[flagKey]
+  const side = rupees ? 'rupees' : 'percent'
+  const otherSide = rupees ? 'percent' : 'rupees'
+  mine[side] = true
   const own = isTarget ? (rupees ? f.targetRupees : f.target) : (rupees ? f.stopRupees : f.stop)
   const other = isTarget ? (rupees ? 'target' : 'targetRupees') : (rupees ? 'stop' : 'stopRupees')
   const words = isTarget ? ['targetWords', 'targetRupeeWords'] : ['stopWords', 'stopRupeeWords', 'stopWarning']
   const level = isTarget ? 'target' : 'stop'
   const run = ++levelsRun[level]
   const stamp = saveStamp(props.strategyId)
-  if (own.trim() === '') { f[other] = ''; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
+  if (own.trim() === '') { f[other] = ''; mine[side] = false; mine[otherSide] = false; words.forEach((k) => { f[k] = '' }); return } // nothing typed: nothing to show
   try {
     const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId, picked.value))[level]
     if (run !== levelsRun[level] || form.value !== f || savedSince(props.strategyId, stamp)) return
-    if (!got) return
+    if (!got) return // the server could not work out the other box: it stays as typed (both are sent; the server names a clash)
+    mine[otherSide] = false // the other box is now the server's figure, not the user's
     f[other] = rupees ? got.percent : got.rupees
     f[words[0]] = got.words
     f[words[1]] = got.rupeeWords
@@ -219,6 +227,7 @@ async function typed(field) {
   } catch {
     if (run !== levelsRun[level]) return
     f[other] = '' // a level the server will not read shows no figure (fail closed); Save names the field
+    mine[otherSide] = false
     words.forEach((k) => { f[k] = '' })
   }
 }
