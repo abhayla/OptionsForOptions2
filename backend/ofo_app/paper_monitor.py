@@ -160,10 +160,6 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
 _NOT_APPLICABLE_WHY: dict[str, str] = {"real": monitoring_state.EXIT_NOT_APPLICABLE}
 
 
-class BookUnreadError(RuntimeError):
-    """A read of the book (armed triggers, position kinds, orders) answered nothing usable: the last watch is kept."""
-
-
 class PaperMonitor:
     _held_count: int | None = None  # last logged count (class default: tests skip __init__)
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
@@ -285,11 +281,10 @@ class PaperMonitor:
         evaluated or fired: it is left as it is and told once as not applicable. One read for every armed strategy."""
         from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: the one kind rule and its reader
         kinds = await strategy_store.kinds_of(session, sorted({a.trigger.strategy_id for a in armed}))
-        if armed and self._ever_loaded and all(k == position_kind.UNKNOWN for k in kinds.values()):
-            # Lane FE3 (review F3): ``kinds_of`` answers "unknown" for every id when its read FAILS (it swallows the
-            # error until Lane FD4 makes it raise); every kind unknown after a list was known is that failure, not a new
-            # fact: the last list is kept (and the age rule applies), never replaced by an empty one
-            raise BookUnreadError("the position kinds of every armed strategy could not be read")
+        # Lane RA2 item 8: a failed read RAISES from ``kinds_of`` (Lane FD4) and the last watch is kept
+        # (``reload`` catches it). "Every kind unknown" was a guess at a failure: it is also what ONE missing
+        # strategy row looks like, and it blinded every reload for ever. A missing row reads unknown for ITS trade
+        # only (not watched, not fired, told once); every other trade keeps its watch.
         keep: list[triggers.ArmedTrigger] = []
         self._na_strategies = {}
         for a in armed:
