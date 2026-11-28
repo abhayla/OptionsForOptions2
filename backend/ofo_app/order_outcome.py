@@ -32,7 +32,6 @@ from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
 from fastapi import Depends
-from fastapi.exceptions import HTTPException, RequestValidationError
 from ofo.errors import UserFacingError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -118,7 +117,14 @@ async def open_attempt(db: Any, user_ref: str, strategy_id: int, door: str) -> i
 
 
 #: An exception that is a clean refusal made by the app before it stored anything it could not undo.
-_CLEAN = (StrategyRefused, HTTPException, RequestValidationError, UserFacingError)
+_CLEAN = (StrategyRefused, UserFacingError)
+#: framework refusals raised before the endpoint body runs (a body the schema refuses, an HTTP error), matched by
+#: class name: this module builds no response text and imports no error body type (the error-boundary scan)
+_CLEAN_FRAMEWORK = frozenset({"RequestValidationError", "HTTPException"})
+
+
+def _is_clean(error: BaseException) -> bool:
+    return isinstance(error, _CLEAN) or bool({c.__name__ for c in type(error).__mro__} & _CLEAN_FRAMEWORK)
 
 
 async def close_attempt(db: Any, attempt_id: int, error: BaseException | None) -> None:
@@ -127,7 +133,7 @@ async def close_attempt(db: Any, attempt_id: int, error: BaseException | None) -
     try:
         if error is None:
             state = "stored"
-        elif isinstance(error, _CLEAN):
+        elif _is_clean(error):
             await db.rollback()  # the request's own transaction is over before the database is asked what it holds
             state = "stored" if (await db.execute(_STORED_SINCE, {"id": attempt_id})).scalar_one() else "not_stored"
         else:
