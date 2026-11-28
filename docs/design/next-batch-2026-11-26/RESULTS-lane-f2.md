@@ -1,4 +1,4 @@
-STATUS 22:25 | PUSHED 4e8074a07 to fix/r3-frontend-f2-1128, TOTAL PASS 1057.2s (jobs 4) | I-197 re-fixed (plan-entry-levels-f2-1128, W-30 describe), D-TG2-1, W-29 step 57, W-30 front half, FJ2 stale-box case, item 4 Execute page lock (Opus-reviewed) | KEEP F2's AdjustPlanSheet.vue and PlanEntry.vue at the build wave | W-30 Positions row needs Lane RA2 (plan_watch.py 164-169) | open: Opus F8 (SaveDraftBar polls execute:<id> locks, Lane F1's file), F9 (585 frees the lock), questions (a), (b) | blocker: coordinator link refused, this line is the report
+STATUS 01:00 | SAFE TO CLOSE | wave 1 (8425feea) merged, prepush TOTAL PASS 1054.4s on this head (an earlier run failed 2 RA2 tests only for want of lupa in this container; installed, green) | all F2 items done at code level, none walked in a browser | KEEP F2's AdjustPlanSheet.vue and PlanEntry.vue | open for the owner: questions (a), (b) | blocker: none
 
 # RESULTS Lane F2 (frontend plan screens, Review wording, Execute page), branch fix/r3-frontend-f2-1128
 
@@ -82,3 +82,11 @@ The file held four `it` cases (the coordinator counted three): each is covered b
 | 2026-11-28 | lane F2 | prepush stopped at once: ruff, fastapi, sqlalchemy not installed in a fresh cloud container; fixed by pip install -r requirements-dev.txt -r requirements-app.txt (not in the lane brief or runbook) | 1 run | 3 min | missing tool |
 | 2026-11-28 | lane F2 | The commit gate hook refused git commit/push chained after a pipe or a python heredoc in the same call, so every commit became two or three calls | 5 times | about 10 calls | unclear rule |
 | 2026-11-28 | lane F2 | A hook asks to push 60+ unpushed commits while the brief allows two pushes; the count is mostly the merged integration branch | 3 times | 3 turns | unclear rule |
+
+## Done / not done (final)
+Done (Fixed, not tested in a browser): I-208 (+ FJ2's stale-box case), I-197 and its re-fix (W-30: figure first, reason on the same line), I-41 pins (tests only), D-TG2-1, W-29 step 57, W-30 Plan block, I-182 Execute page lock (Opus-reviewed), the four-case mapping of plan-card-levels-fj2-1128.
+Not done: I-195 (server wording, backend), W-30 Positions Plan watch row (Lane B3 routed by the coordinator), the two questions for the owner, any browser walk of these screens, Opus findings F9 to F11 (listed under Found, not assigned).
+Friction rows for the coordinator: see the Friction section.
+
+SAFE TO CLOSE (head: the push of this commit; what is left: the Not done list above)
+
