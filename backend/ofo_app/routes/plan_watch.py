@@ -109,7 +109,10 @@ async def prefetch(db: Any, strategy_ids: list[int]) -> BatchReads:
         log.warning("plan watch batch: shared reads failed, each row reads for itself: %s", type(exc).__name__)
         rollback = getattr(db, "rollback", None)
         if rollback is not None and isinstance(exc, SQLAlchemyError):  # a failed statement leaves the session unusable
-            await rollback()
+            try:
+                await rollback()
+            except Exception:  # noqa: BLE001 - a broken connection: the rows then refuse one by one, never a whole 500
+                log.warning("plan watch batch: rollback after the shared reads failed too")
         return reads
     reads.triggers, reads.contracts, reads.kinds = triggers, found, kinds
     return reads

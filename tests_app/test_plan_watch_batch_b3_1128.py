@@ -119,3 +119,72 @@ async def test_a_failed_shared_read_fails_no_row_and_a_failed_row_is_its_own_ref
         else:
             assert item["state"] == "ok", item
             assert item["watch"] == singles[item["strategy_id"]]
+
+
+async def _batch_only(ids: list[int], *, other_user: str | None = None, single: bool = False) -> dict:
+    from ofo_app import db as app_db  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415 - the env must be set first
+    from ofo_app.routes.broker import current_user_ref  # noqa: PLC0415
+    from test_adjustment_check import _reset_engine  # noqa: PLC0415
+    _reset_engine()
+    app = create_app()
+    if other_user is not None:
+        app.dependency_overrides[current_user_ref] = lambda: other_user
+    query = ",".join(str(i) for i in ids)
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get(f"/api/plan-watch?strategy_ids={query}")
+        assert r.status_code == 200, r.text  # noqa: PLR2004
+        out = {"batch": r.json()}
+        if single:
+            s = await ac.get(f"/api/strategies/{ids[0]}/plan-watch")
+            out["single"] = {"status": s.status_code, "body": s.json()}
+    await app_db.close_db()
+    return out
+
+
+async def test_a_real_position_in_a_batch_gets_no_paper_stop_line(app_db_url, monkeypatch):  # noqa: F811
+    """ADR-330 (64), Opus review M4: a real (or unknown) position keeps its armed rows stored but shows them as
+    "not applicable", with no price and no distance, in the batch exactly as in the single route."""
+    from ofo_app import position_kind, strategy_store  # noqa: PLC0415
+    ids = await seed_rows(app_db_url, monkeypatch, 3)
+    real = strategy_store.kinds_of
+
+    async def kinds(conn, strategy_ids):
+        out = await real(conn, strategy_ids)
+        return {sid: (position_kind.REAL if sid == ids[1] else k) for sid, k in out.items()}
+
+    monkeypatch.setattr(strategy_store, "kinds_of", kinds)
+    out = await _batch_only(ids)
+    by = {i["strategy_id"]: i for i in out["batch"]["items"]}
+    armed_real = [x for x in by[ids[1]]["watch"]["lines"] if x["section"] == "armed"]
+    assert armed_real and all(x["state"] == "not_applicable" and x["now"] is None and x["distance_rs"] is None
+                              for x in armed_real)
+    armed_paper = [x for x in by[ids[0]]["watch"]["lines"] if x["section"] == "armed"]
+    assert armed_paper and all(x["state"] != "not_applicable" for x in armed_paper)
+
+
+async def test_another_users_strategy_with_armed_triggers_is_refused_as_the_single_route_refuses(
+        app_db_url, monkeypatch):  # noqa: F811
+    """Opus review M4: the batch prefetches triggers by id; a strategy that is not the caller's must answer the same
+    refusal as the single route and show nothing of those triggers (no lines, no watch)."""
+    ids = await seed_rows(app_db_url, monkeypatch, 3)
+    out = await _batch_only(ids, other_user="someone-else", single=True)
+    for item in out["batch"]["items"]:
+        assert item["state"] == "refused" and item["watch"] is None and item["status"] >= 400, item  # noqa: PLR2004
+    first = out["batch"]["items"][0]
+    assert first["status"] == out["single"]["status"], (first, out["single"])
+    for key in ("code", "error_class", "impact"):  # the error reference differs per request, the rest is the same
+        assert first["refusal"][key] == out["single"]["body"][key]
+
+
+async def test_a_release_that_fails_does_not_turn_the_batch_into_a_500(app_db_url, monkeypatch):  # noqa: F811
+    """Opus review M2: ``release_connection`` raising after the shared reads is logged; each row answers on its own."""
+    from ofo_app.routes import plan_watch_batch  # noqa: PLC0415
+    ids = await seed_rows(app_db_url, monkeypatch, 3)
+
+    async def broken(_db):
+        raise RuntimeError("simulated: the connection could not be released")
+
+    monkeypatch.setattr(plan_watch_batch, "release_connection", broken)
+    out = await _batch_only(ids, single=False)
+    assert [i["state"] for i in out["batch"]["items"]] == ["ok", "ok", "ok"]

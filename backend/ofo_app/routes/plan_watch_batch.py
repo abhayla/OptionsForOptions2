@@ -13,6 +13,7 @@ from __future__ import annotations
 import asyncio
 import datetime
 import functools
+import logging
 import time
 from typing import Annotated, Any, Literal
 
@@ -37,6 +38,7 @@ from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import MarketContext, get_market_context, load_charge_rates
 from ofo_app.routes.plan_watch import PlanWatchOut, prefetch, watch_of
 
+log = logging.getLogger(__name__)
 router = APIRouter(route_class=ClosedRoute)
 MAX_ROWS = 20
 #: #859: ONE time budget for the whole request, under the browser's 20 s limit (the old 4 s was per row: 20 hanging rows
@@ -98,7 +100,10 @@ async def plan_watch_batch(  # noqa: PLR0913 - FastAPI dependencies, one per inp
     deadline = time.monotonic() + BATCH_BUDGET_S
     ids = _ids_of(strategy_ids)
     reads = await prefetch(db, ids)  # I-48: the reads every row shares, once (a failed one: each row reads its own)
-    await release_connection(db)  # D-36 (c): shared reads done, rows wait on prices
+    try:
+        await release_connection(db)  # D-36 (c): shared reads done, rows wait on prices
+    except Exception:  # noqa: BLE001 - a broken connection: each row then refuses on its own, the batch still answers
+        log.warning("plan watch batch: the connection could not be released after the shared reads")
     tracked_reader = _with_kind_memo(tracked_reader, reads.expiry_kinds)
     for sid in ids:
         left = deadline - time.monotonic()
