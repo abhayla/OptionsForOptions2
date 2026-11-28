@@ -70,12 +70,18 @@ const reason = (w) => { const g = w.find(`[data-testid="paper-group"][data-strat
 const tick = async (w, cid) => { await t(w, `select-leg-${ID}-${cid}`).setValue(true); await flushPromises() }
 const NAME_784 = /^No price for NIFTY.*23000 CE/
 
-describe('Positions: Exit is grey beforehand and says which contract has no price', () => {
-  it('a ticked leg with no price: Exit (1) disabled, the line names the contract', async () => {
+describe('Positions: Exit opens the dialog that says which contract has no price', () => {
+  it('a ticked leg with no price: Exit (1) is enabled, opens the dialog, the sentence names the contract, Confirm is off (ADR-330)', async () => {
     const w = await list(withLegDown(784))
     await tick(w, 784)
-    expect(t(w, `exit-selected-${ID}`).attributes('disabled')).toBeDefined()
-    expect(reason(w)).toMatch(NAME_784)
+    expect(t(w, `exit-selected-${ID}`).attributes('disabled')).toBeUndefined()
+    await t(w, `exit-selected-${ID}`).trigger('click')
+    await flushPromises()
+    const dlg = w.findComponent(PaperConfirmDialog)
+    expect(dlg.props('open')).toBe(true)
+    expect(dlg.props('blocked')).toBe(true)
+    expect(dlg.props('error')).toMatch(NAME_784)
+    expect(document.body.querySelector('[data-testid="paper-confirm-button"]').disabled).toBe(true)
   })
   it('only the priced leg ticked: Exit enabled, no such line', async () => {
     const w = await list(withLegDown(784))
@@ -87,8 +93,14 @@ describe('Positions: Exit is grey beforehand and says which contract has no pric
     const w = await list(withLegDown(784))
     await tick(w, 776)
     await tick(w, 784)
-    expect(t(w, `exit-selected-${ID}`).attributes('disabled')).toBeDefined()
-    expect(reason(w)).toMatch(/^No price for [^,]*23000 CE$/)
+    expect(t(w, `exit-selected-${ID}`).attributes('disabled')).toBeUndefined()
+    await t(w, `exit-selected-${ID}`).trigger('click')
+    await flushPromises()
+    const dlg = w.findComponent(PaperConfirmDialog)
+    expect(dlg.props('open')).toBe(true)
+    expect(dlg.props('blocked')).toBe(true)
+    expect(dlg.props('error')).toMatch(/^No price for [^,]*23000 CE$/)
+    expect(document.body.querySelector('[data-testid="paper-confirm-button"]').disabled).toBe(true)
   })
   it('nothing ticked: the tick line, as before', async () => {
     const w = await list(withLegDown(784))

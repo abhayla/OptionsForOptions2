@@ -1,5 +1,5 @@
-// Lane FJ r3 (28 Nov 2026), PC round 1 O-A-12: a greyed Exit (1) on Positions ("Prices are not live; try again when they update" / "No price for ...")
-// must not open the Exit dialog by ANY path: click, Enter, or the Live card's exit= link. A blocked control says why (ADR-330 exit rule, ADR-328 (4)).
+// Lane FJ r3 (28 Nov 2026), owner order on PC O-A-12 (same shape as ADR-330 (60)): on Positions an Exit with legs not live / a leg without a price OPENS the dialog by
+// every path (click, ask(), the Live card's exit= link); the dialog says why ("Prices are not live..." / "No price for <contract>") and Confirm is off. A control that does nothing tells nothing.
 // Spec basis: REQ-109 AC-5, ADR-322 (3), ADR-016..019 (fail closed).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -45,7 +45,7 @@ async function positions(list, path = '/positions/current-positions?tab=paper&ex
   const r = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: { template: '<div/>' } }, { path: '/positions/current-positions', component: { template: '<div/>' } }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
   r.push(path)
   await r.isReady()
-  const w = mount(PaperStrategies, { global: { plugins: [r] } })
+  const w = mount(PaperStrategies, { global: { plugins: [r] }, attachTo: document.body })
   mounted.push(w)
   await flushPromises()
   return w
@@ -53,40 +53,45 @@ async function positions(list, path = '/positions/current-positions?tab=paper&ex
 const dlg = (w) => w.findComponent(PaperConfirmDialog)
 const noRequest = () => calls.filter((c) => c.method !== 'GET')
 
-describe('Positions: a greyed Exit opens no dialog', () => {
-  it('good read, legs not live: the button is disabled, a click and Enter open nothing and send nothing', async () => {
+describe('Positions: Exit with legs not live opens the dialog, says why, Confirm off', () => {
+  it('good read, legs not live: the button is enabled, a click opens the dialog with the sentence, Confirm off, nothing sent', async () => {
     const w = await positions(LIST_DOWN, '/positions/current-positions?tab=paper')
-    const b = t(w, 'exit-selected-48')
-    expect(b.exists()).toBe(true)
-    await w.findAll('input[type="checkbox"]').at(0)?.setValue(true)
-    expect(b.attributes('disabled')).toBeDefined()
-    await b.trigger('click')
-    await b.trigger('keydown', { key: 'Enter' })
-    await b.trigger('keyup', { key: 'Enter' })
+    await w.find('[data-testid^="select-leg-48-"]').setValue(true)
     await flushPromises()
-    expect(dlg(w).props('open')).toBe(false)
+    const b = t(w, 'exit-selected-48')
+    expect(b.attributes('disabled')).toBeUndefined()
+    await b.trigger('click')
+    await flushPromises()
+    expect(dlg(w).props('open')).toBe(true)
+    expect(dlg(w).props('blocked')).toBe(true)
+    expect(dlg(w).props('error')).toMatch(/^No price for /)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
     expect(noRequest()).toHaveLength(0)
   })
-  it('the handler itself refuses (a click that ignores the disabled state): ask() on a not-live group opens nothing', async () => {
+  it('ask() on a not-live group opens the dialog (same as the click)', async () => {
     const w = await positions(LIST_DOWN, '/positions/current-positions?tab=paper')
     const g = w.vm.$.setupState.items.find((x) => String(x.id) === '48')
-    w.vm.$.setupState.ask(g, w.vm.$.setupState.tickedOpen(g).length ? w.vm.$.setupState.tickedOpen(g) : g.positions)
+    w.vm.$.setupState.ask(g, g.positions)
     await flushPromises()
-    expect(dlg(w).props('open')).toBe(false)
+    expect(dlg(w).props('open')).toBe(true)
+    expect(dlg(w).props('blocked')).toBe(true)
     expect(noRequest()).toHaveLength(0)
   })
-  it('the exit= link on a not-live good read: no dialog, the reason is told as a note', async () => {
+  it('the exit= link on a not-live good read opens the dialog with "No price for <contract>", Confirm off', async () => {
     const w = await positions(LIST_DOWN, '/positions/current-positions?tab=paper&exit=48')
-    expect(dlg(w).props('open')).toBe(false)
-    expect(w.text()).toMatch(/No price for /)
+    expect(dlg(w).props('open')).toBe(true)
+    expect(dlg(w).props('error')).toMatch(/^No price for /)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
     expect(noRequest()).toHaveLength(0)
   })
-  it('the exit= link with a leg that has no price_state: no dialog', async () => {
+  it('the exit= link with a leg that has no price_state: the dialog opens, Confirm off', async () => {
     const w = await positions(LIST_NO_FIELD, '/positions/current-positions?tab=paper&exit=48')
-    expect(dlg(w).props('open')).toBe(false)
+    expect(dlg(w).props('open')).toBe(true)
+    expect(dlg(w).props('blocked')).toBe(true)
   })
-  it('control: live prices still open the dialog from the link', async () => {
+  it('control: live prices open the dialog from the link with Confirm on', async () => {
     const w = await positions(LIST_LIVE, '/positions/current-positions?tab=paper&exit=48')
     expect(dlg(w).props('open')).toBe(true)
+    expect(dlg(w).props('blocked')).toBe(false)
   })
 })
