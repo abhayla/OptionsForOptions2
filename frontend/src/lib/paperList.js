@@ -126,7 +126,7 @@ export function readPaperStrategy(s, index = 0) {
   if (s.state === 'PAUSED') stateText = withAsOf(PAPER_PAUSED, s.as_of)
   else if (s.state === 'NOT_CONNECTED') stateText = PAPER_NOT_CONNECTED
   else if (s.state === 'EXITED') stateText = EXITED_TEXT
-  const pauseReason = s.state === 'PAUSED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text)
+  const pauseReason = s.state === 'PAUSED' || s.state === 'NOT_CONNECTED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text)
   return {
     readable: true,
     id,
