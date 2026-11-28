@@ -96,7 +96,8 @@ async def test_nine_rows_statement_ceiling_and_each_row_its_own(app_db_url, monk
     assert statements <= BATCH9_CEILING, f"batch of {ROWS}: {statements} statements, ceiling {BATCH9_CEILING}"
 
 
-async def test_a_failed_shared_read_fails_no_row_and_a_failed_row_is_its_own_refusal(app_db_url, monkeypatch):  # noqa: F811
+async def test_a_failed_shared_read_fails_no_row_and_a_failed_row_is_its_own_refusal(
+        app_db_url, monkeypatch):  # noqa: F811
     """I-08: the shared read failing (here: one row's triggers cannot be read) never turns the other rows into a
     refusal; that row alone is refused, with the catalogue sentence and a status, never an empty "not available"."""
     from ofo_app.routes import plan_watch  # noqa: PLC0415
