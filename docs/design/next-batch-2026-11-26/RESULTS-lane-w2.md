@@ -1,4 +1,4 @@
-STATUS 21:05 | group A (a1d704225) + group B1, B3, F2, F3 walked; FAILs D-W2-1, D-W2-2, D-W2-3 | next: re-confirm on the 22:45 build, then group C | blocker: none (send_message works since the owner trusted the session at about 20:00)
+STATUS 21:55 | pushed c75f85d1d (gate TOTAL PASS); this push adds FJ2 4201d3af2 points 1 to 6, I-86, I-57 | next: re-confirm on the 22:45 build, group C rest | blocker: none
 
 # Lane W2 results: per-item cloud proofs of the MUST fixes (28 Nov 2026)
 
@@ -56,6 +56,22 @@ PostgreSQL 16 + Redis; roles as in `app-tests.yml`; the API runs as the non-supe
 | I-207 Positions raw 409 text | 937e80bbe | PARTIAL | `f3.js`, `f3-positions.jpg` | no `error_class` / `BROKER_AUTHENTICATION` / 409 text on Positions (PASS); this run had the harness's fake Zerodha session, so the no-session Connect sentence and the Retry were not exercised |
 | I-203 My Strategies Completed tab | 937e80bbe | PASS | `f3-completed.jpg` | `Completed strategies are listed under Strategies > Completed Strategies.` |
 | I-66 Home re-read in a second tab (Lane F3) | 937e80bbe | NOT WALKED | - | D-W2-2 will be re-run on the 22:45 build |
+
+## Lane FJ2 batch 1 on its own head 4201d3af2 (contains a1d704225), scenario PATH-01 (stores orders), the coordinator's six points
+| Point | Result | Proof | One line |
+|---|---|---|---|
+| 1 D-W2-1: clock +200 s and -200 s across a reload during an unknown outcome | PASS | `fj2.js`, `rel.js`, `fj2-6-unknown-sentence.jpg`, `fj2-1-released.jpg` | reload with the wall clock +200 s and -200 s: Confirm greyed, 0 POSTs both. A reload every 16 s never releases (204 s watched). One reload, then no reload: released between 122 s and 136 s after the reload (the 130 s window from first sight, monotonic); the release event is the next dialog open after that time, no reload needed. Cosmetic: with the clock +200 s the dialog already says "Two minutes have passed and the outcome of the first exit is still not known..." |
+| 2 second tab: tab B's exit stored, tab A ends its unknown state | PASS | `fj2p2.js`, `fj2-2-tabA-builder.jpg`, `fj2-2-tabP-positions.jpg` | fresh context: tab B Exit stored (201); 3 s and 12 s later the builder tab and the Positions tab show no unknown / "Updating the numbers" line (on a1d704225 D-W2-2: about 2 minutes) |
+| 3 same request, prices-not-live confirmation toggled, lock and key stay | NOT WALKABLE in the cloud | vitest `group-a-r3-one-key-r3-fj`, `group-a-r4-key-slots`, `exit-lock-second-tab-fj2-1128`, `builder-exit-key-r3-fj`: 16 passed | scenario mode has no prices-not-live toggle |
+| 4 add while prices tick: same key across ticks | NOT WALKED in a browser | same vitest files | needs an Add with a cut reply and moving prices |
+| 5 leg-expiry Review: stop removed, only for the basket asked | PASS | `p5.js`, `fj2-5-leg1.jpg`, `fj2-5-leg2.jpg` | expiry chip on the leg WITH the stop (NIFTY 23150 PE, stop above 100): `The stop on NIFTY 9 Nov 23150 PE will be removed; set a new one after the move.`; chip on a leg without a stop (23500 CE): no such sentence |
+| 6 unknown-result sentence in the Exit dialog | PARTIAL | `fj2-6-unknown-sentence.jpg` | after the cut the dialog reads `We could not confirm the order. Check Orderbook before trying again.` (not "failed", not "placed"; Confirm greyed; no retry button; "before trying again" is in the sentence). Wall-aged: `Two minutes have passed and the outcome of the first exit is still not known. Open the Orderbook to see whether it was placed; no second exit is sent until the answer is known.` |
+
+## Group C, F3 head 937e80bbe
+| Item | Result | Proof | One line |
+|---|---|---|---|
+| I-86 API stopped, Retry on 10 lists | PARTIAL: 9 of 10 | `i86.js`, `i86-*.jpg` | Retry button on Home (1), Positions (2), Live, My Strategies, Completed, Option Chain, Alerts Active, Alerts History (2), Adjustments (1 each); the builder reads `... could not be read, so it is not shown. Try again.` with NO button; no raw error text on any |
+| I-57 Reset to playbook, changed markers or the Nothing differed line | PASS | `i57.js`, `i57-reset.jpg` | after typing Target 40 and saving, `Reset to playbook` > confirm: `Nothing differed from the playbook, so nothing was put back.` (the reset covers conditions, not the typed levels) |
 
 ## Defects found
 - **D-W2-1 (I-188, FAIL of the clock-jump walk; commits e2da71f50 and a1d704225).** Steps: scenario PATH-01, Positions > Paper, tick a leg, Exit, Confirm with the request cut before the server; open a second tab, reload it with the browser's wall clock set +200 s (script: `sessionStorage w2off`, `Date.now()` shifted, `performance.now()` not) 46 s of real time after the cut; tick the leg, Exit, Confirm. Seen: Confirm was enabled and a POST went out (`90ff30a6`, the same key as the cut one). Expected: the lock holds until the monotonic window (120 s) has passed (Z2 review T3 in `lib/unknownLocks.js`: "a wall clock set forward never releases a lock early"). Cause (read from the header of `unknownLocks.js`): a fresh page instance has no monotonic stamp, so it trusts the wall age ONCE at first sight, clamped to window + 1 s: a reload with a forward-jumped clock reads as an expired lock. Cost: bounded, because the resend carries the SAME key, so the server answers the first request (see I-138); a different set of orders would be the risk. Screenshot `i188-5-clockjump.jpg`.
