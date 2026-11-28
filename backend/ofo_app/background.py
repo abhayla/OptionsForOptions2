@@ -1186,6 +1186,10 @@ class Worker:
         unread = getattr(monitors, "unread", frozenset())  # a failed read is not a strategy leaving (r6 review)
         for sid in [k for k in self._checked_body if k not in body and k not in unread]:  # FE2 #867: no entry for ever
             del self._checked_body[sid]
+        for sid in [k for k in self.status if k not in body and k not in unread]:
+            # FE2 #878: a strategy that left the list is not watched: no ACTIVE entry stays published for it
+            for kept in (self.status, self.paused_reason, self.paused_why, self.user_paused_until):
+                kept.pop(sid, None)
         for sid in [k for k in self._gate_events if k not in body and k not in unread]:  # a plan change keeps them
             gone = self._gate_events.pop(sid)
             self.gate_events_dropped += len(gone)

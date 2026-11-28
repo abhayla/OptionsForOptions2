@@ -50,6 +50,7 @@ PAUSED: Final = "paused"
 WORKERS_DOWN: Final = "workers_down"
 STATE_UNREADABLE: Final = "state_unreadable"
 NOT_LISTED: Final = "not_listed"
+CLOCK_SKEW_S: Final = 5  # how far ahead of the reader's clock a worker's or monitor's stamp may be and still be current
 SNAPSHOT_STALE_S: Final = feed_bus.HEARTBEAT_STALE_S  # the same two minutes as the heartbeat (AC-6)
 INDEX_NOT_LIVE: Final = "index_not_live"  # the ``why`` of a trade whose index exit has no live index reading
 INDEX_EXITS_NOT_RUN: Final = "index_exits_not_run"  # the ``why`` when the monitor's own snapshot stopped
@@ -74,6 +75,13 @@ class Entry:
     reason: str
     why: str
     since: datetime.datetime | None
+
+
+def _current(at: datetime.datetime, now: datetime.datetime) -> bool:
+    """FE2 #879: a stamp is current when it is at most ``SNAPSHOT_STALE_S`` old and at most ``CLOCK_SKEW_S`` ahead of
+    the reader's clock. One-sided: a writer whose clock runs 100 s ahead must not stretch the two-minute window to 220 s
+    (a reading from the future is not a live one)."""
+    return -CLOCK_SKEW_S <= (now - at).total_seconds() <= SNAPSHOT_STALE_S
 
 
 def _aware(at: datetime.datetime) -> datetime.datetime:
@@ -113,7 +121,7 @@ def decode(raw: Any, now: datetime.datetime) -> dict[int, Entry] | None:  # noqa
     if not isinstance(body, dict) or not isinstance(body.get("strategies"), dict):
         return None
     at = _time(body.get("at"))
-    if at is None or abs((now - at).total_seconds()) > SNAPSHOT_STALE_S:
+    if at is None or not _current(at, now):
         return None
     out: dict[int, Entry] = {}
     for sid_text, row in body["strategies"].items():
@@ -353,7 +361,7 @@ async def read_readings(client: Any, now: datetime.datetime) -> Readings | None:
         return None
     at = _time(body.get("at")) if isinstance(body, dict) else None
     items = body.get("readings") if isinstance(body, dict) else None
-    if at is None or abs((now - at).total_seconds()) > SNAPSHOT_STALE_S or not isinstance(items, dict):
+    if at is None or not _current(at, now) or not isinstance(items, dict):
         return None
     return Readings(items)
 
@@ -395,7 +403,7 @@ def decode_exits(raw: Any, now: datetime.datetime) -> dict[int, str] | None:
         slots = _slots(body)
         if slots is None:
             return None
-        fresh = {o: sl for o, sl in slots.items() if abs((now - sl["at"]).total_seconds()) <= SNAPSHOT_STALE_S}
+        fresh = {o: sl for o, sl in slots.items() if _current(sl["at"], now)}
         if not fresh:
             return dict.fromkeys({int(k) for sl in slots.values() for k in (*sl["not_run"], *sl["watching"])},
                                  INDEX_EXITS_NOT_RUN)
