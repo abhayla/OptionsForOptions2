@@ -11,6 +11,7 @@ import asyncio
 import datetime
 import json
 
+from ofo.errors.explanations import render_explanation
 from ofo.timeutil import IST
 from ofo_app import feed_bus
 from ofo_app import monitoring_state as ms
@@ -99,9 +100,37 @@ def test_every_why_code_the_worker_now_sends_is_a_known_reason_with_a_sentence_n
     plain "reason is not known" line, never an empty badge (the code itself is still served in ``reason``)."""
     from ofo.errors.explanations import EXPLANATIONS  # noqa: PLC0415
     for code in WORKER_CODES:
-        assert code in route._WHY, code
-        (o,) = route.compose({5: ms.Entry(5, ms.PAUSED, code, "", None)}, [5], NOW)
-        assert (o.watch_state, o.reason, o.badge_text) == ("paused", code, "Monitoring paused"), code
-        key = f"monitoring_why_{code}" if f"monitoring_why_{code}" in EXPLANATIONS else "monitoring_why_unknown"
-        from ofo.errors.explanations import render_explanation  # noqa: PLC0415
-        assert o.reason_text == render_explanation(key) and str(o.reason_text).strip(), code
+        # RA item 2: the worker's codes ride as the ``why`` of ``stale``; expiry_kind_unknown is a reason of its own
+        reason, why = ("expiry_kind_unknown", "") if code == "expiry_kind_unknown" else ("stale", code)
+        assert ms.sentence_code(ms.Entry(5, ms.PAUSED, reason, why, None)) == code, code
+        (o,) = route.compose({5: ms.Entry(5, ms.PAUSED, reason, why, None)}, [5], NOW)
+        assert (o.watch_state, o.reason, o.badge_text) == ("paused", reason, "Monitoring paused"), code
+        assert f"monitoring_why_{code}" in EXPLANATIONS, code
+        assert o.reason_text == render_explanation(f"monitoring_why_{code}") and str(o.reason_text).strip(), code
+
+
+def test_ra_every_reason_the_worker_and_the_monitor_publish_reaches_its_own_sentence():
+    """Lane RA item 2 (review N2): the route read only ``reason`` (always ``stale``), so every why read "The last price
+    is too old". An entry (reason ``stale``, why X) reads the sentence of X for each why the worker and the monitor
+    send; the badge and the code in ``reason`` are unchanged."""
+    from ofo.errors.explanations import EXPLANATIONS  # noqa: PLC0415
+    whys = ["index_not_live", "leg_not_live", "exit_not_priced", "index_exits_not_run", "exits_not_checked_yet",
+            "book_not_read", "exit_not_applicable"]
+    for why in whys:
+        assert f"monitoring_why_{why}" in EXPLANATIONS, why
+        (o,) = route.compose({5: ms.Entry(5, ms.PAUSED, "stale", why, None)}, [5], NOW)
+        assert o.reason == "stale" and o.badge_text == "Monitoring paused", why
+        assert o.reason_text == render_explanation(f"monitoring_why_{why}"), why
+        assert o.reason_text != render_explanation("monitoring_why_stale"), why  # never the generic line
+
+
+def test_ra_a_paused_reason_with_its_own_sentence_and_the_plain_fallback():
+    (closed,) = route.compose({5: ms.Entry(5, ms.PAUSED, "market_closed", "", None)}, [5], NOW)
+    assert str(closed.reason_text) == "The market is closed."
+    (kind,) = route.compose({5: ms.Entry(5, ms.PAUSED, "expiry_kind_unknown", "", None)}, [5], NOW)
+    assert kind.reason_text == render_explanation("monitoring_why_expiry_kind_unknown")
+    # an unknown reason, and an unknown why on a known reason: the plain line (or the reason's own), never blank
+    (odd,) = route.compose({5: ms.Entry(5, ms.PAUSED, "no_such_reason", "", None)}, [5], NOW)
+    assert str(odd.reason_text) == "Not being watched: the reason is not known."
+    (free,) = route.compose({5: ms.Entry(5, ms.PAUSED, "stale", "a REST detail, free text", None)}, [5], NOW)
+    assert free.reason_text == render_explanation("monitoring_why_stale")
