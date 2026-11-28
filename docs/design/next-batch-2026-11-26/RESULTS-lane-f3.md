@@ -1,4 +1,4 @@
-STATUS 18:55 | items 1-4: Fixed, not tested in a browser (cloud tests green); batch 1 push in progress | items 5-9 not started | next push batch 2 by 01:30 IST Sun | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
+STATUS 19:40 | items 1-4 pushed in batch 1 (gate result in the push line); items 5-9 built in wt-next, batch 2 push next | next push batch 2 by 01:30 IST Sun | blocker: none (send_message to the coordinator refused: elevated_session_untrusted_device; this line is the report)
 
 # RESULTS Lane F3 (frontend tail), branch fix/r3-frontend-f3-1128, base origin/integration/weekend-r3-1129 + FJ2 68a46dd62 + RA2 (fix/r3-leftovers-2-1128)
 
@@ -8,6 +8,11 @@ STATUS 18:55 | items 1-4: Fixed, not tested in a browser (cloud tests green); ba
 | 2 I-199 stored close as-of | Fixed, not tested in a browser | stored-close-asof-f3-1128: a LIVE book with `as_of` printed no time (1 of 3 red) | 3/3; paper-pause-as-of's old assertion "an as_of is never printed on a non-paused book" replaced (RA2 rule) |
 | 3 I-207 raw 409 JSON | Fixed, not tested in a browser | positions-not-connected-409-f3-1128: the JSON text and the sentence printed twice (3 of 4 red) | 4/4 |
 | 4 I-91 closed rows | Partly: the page reads and prints the server's fields; the server sends none yet | closed-row-cells-f3-1128 (3 of 4 red) | 4/4; ClosedRows users 7 files / 83 tests |
+| 5 I-203 Completed rows in My Strategies | Fixed, not tested in a browser (by design: ADR-259) | my-strategies-completed-pointer-f3-1128: no sentence said where Completed rows are (2 of 4 red) | 4/4; My Strategies files 6 / 72 tests |
+| 6 I-209 paused sentence, mixed states | Not reproduced on the base: FJ2's one scope rule already prints it once (3 PAUSED + 3 NOT_CONNECTED + 2 stored closes, 2 as_of cases); regression test kept | paper-paused-mixed-f3-1128 green on first run | 2/2 |
+| 7 I-200 Adjustments page Retry | Already fixed on the base (Lane FC2, I-86: ListLoadFailed with Retry on this page); not rebuilt | list-load-failed-r2-fc2 (includes "Adjustment opportunities") | 14/14 |
+| 8 I-201 dismissed row reason | Fixed, not tested in a browser | opp-dismissed-reason-f3-1128: with a reason sent the page already printed it; with none the row said only "You dismissed this" (2 of 3 red) | 3/3; adjustment tests 5 files / 50 |
+| 9 W-15 | Not built (product decision), see Question for the owner | | |
 
 Guards on the final head: paper-paused-once-fj2-1128 4, home-paused-asof-fj2-1128 2, exit-market-closed-adr330-60 7, exit-rule-all-doors-r3-fj (all) green; Positions tests 71/71 after item 3.
 
@@ -25,14 +30,20 @@ Item 3 cause: with a refused read and the connection read saying disconnected, t
 - A LIVE book with a readable `as_of` is a stored close: "As of <time>" line (RA2 note).
 
 ## Question for the owner
-- none yet (W-15 and the 90 s question go here in batch 2)
+- W-15 (LegList.vue): the B/S badge of a leg is a plain span; there is no side toggle. Real case: W-15, two identical legs (same expiry, strike and type): the user cannot flip one to the other side in the list, only delete and re-add (TG: "not built"). A toggle changes what the builder lets a user do, so it is a product decision. Recommendation: build it as a click on the B/S badge that flips that leg only, with Undo, in LegList for the builder, after you approve the wording.
+- Does the Real total hide at 90 s (the server's own stale rule, as built) or earlier? OLD_FIGURE_TEXT "The real P&L figure is more than 90 seconds old and is hidden until the next read." is marked pending owner read in source. Recommendation: keep 90 s: the page re-reads every 30 s, so a figure older than 90 s means three reads failed.
 
 ## New wording for the owner to read
+- My Strategies pointer: "Completed strategies are listed under Strategies > Completed Strategies." (data-testid completed-pointer)
+- Adjustments, dismissed row with no reason: "No reason given"
 - "As of <time>" (stored-close row line, from paperList STORED_CLOSE_PREFIX)
 - Positions not connected: reuses "No broker is connected, so no real positions are shown." (already pending read)
 
+## Spec line for item 5
+ADR-259 (6 Nov 2026): a strategy whose every leg is closed leaves My Strategies' open list and Live Strategies and is listed on Strategies > Completed Strategies. So My Strategies lists no Completed rows by design; the page now says where they are.
+
 ## Not done
-- items 5 to 9 (batch 2)
+- nothing in the queue; items 6 and 7 needed no change (see table)
 
 ## Tasks
 | task | model | minutes |
