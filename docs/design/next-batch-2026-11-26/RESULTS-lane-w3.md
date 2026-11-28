@@ -1,4 +1,4 @@
-STATUS 00:37 | FINAL: queue items 1 to 3 walked on a1d704225 and re-walked on the wave 1 head 8425feead (D-TG-1/2/3/4/5, D-TG2-1, D-W2-1/2/3, I-66, I-197 PASS on 8425feead; open: D-TG2-2, I-86 builder Retry, rows 55 and 56, paper-list date); 1 new defect D-W3-1 (not reproduced on 8425feead) | next push: none | blocker: none (send_message to the coordinator is refused: session trust; this line is the report)
+STATUS 00:38 | FINAL: queue items 1 to 3 walked on a1d704225 and re-walked on the wave 1 head 8425feead (D-TG-1/2/3/4/5, D-TG2-1, D-W2-1/2/3, I-66, I-197 PASS on 8425feead; open: D-TG2-2, I-86 builder Retry, rows 55 and 56, paper-list date); 1 new defect D-W3-1 (not reproduced on 8425feead) | next push: none | blocker: none (send_message to the coordinator is refused: session trust; this line is the report)
 
 # Lane W3 results: the plan walker on the build (28 Nov 2026)
 
@@ -89,6 +89,17 @@ PostgreSQL 16 and Redis started; roles as in `app-tests.yml` (API as the non-sup
 - **D-W3-1** (new on A; item W-32 / D-TG-2 area, W-07 row 48; **not reproduced on B**). Steps: `ofo_tg` builder #1, `Change expiry of leg 1` to 14 Dec, press `Review`. A: the dialog listed `Exit NIFTY 8 Dec 24000 PE` and `Add NIFTY 14 Dec 24000 PE` and the line `Checking whether this exit leaves a sold option without protection...` stayed for the 45 s watched; the API log showed no `exit-risk` request for the dialog; the per-leg `Exit` dialog answered at once. Expected: the check runs, or the line gives way to a result or a reason. Spec: ADR-330 (48) review step; `PAPER_EXIT_CHECKING_TEXT` (`lib/tracking.js`). B: the line is gone within 5 s (every leg now has a stored-close price). Also walked on B with a leg that has NO stored close (#3 `TC Unpriced Trade`, `d7.js`, `b2-d7-review-unpriced.jpg`): the Review dialog never shows the `Checking...` line in the 30 s watched; it lists the Exit and Add rows, `the server sets the exit price when you confirm` and the market-closed sentence (and no `Sold option with less protection` line either). Screenshots `c21-review-checking.jpg` (A), `b2-c21-review-checking.jpg` (B).
 - Still open on B (not new): **D-TG2-2** (T-09 title, observation); W-07 row 55 (three lines under a leg stop absent); W-07 row 56 (`Prices are not live. Figures are as of ...` line absent: banner instead); I-86 builder has no Retry button; the paper list cards show the stored-close figure with no date of their own; the Plan block still prints `Stop: not being checked: ...` / `Target: not being checked: ...` above the new figure lines; D-37 readout (the what-if block prints figures from the stored close, no not-live sentence).
 
+## Found, not assigned
+(Coordinator's order of 28 Nov 23:35 IST, read and in force: no new tasks, new findings are recorded here and not fixed.)
+- D-W3-1 (above): Review dialog `Checking...` line on a1d704225; not reproduced on 8425feead.
+- D-TG2-2: T-09 title without its amount (Adjustments, When to look); file: the T-09 label in the playbook copy.
+- W-07 row 55: the three lines under a leg stop are not on Positions > Stops on either build.
+- W-07 row 56: `Prices are not live. Figures are as of <time> IST.` does not exist; Live Strategies repeats the paused sentence per paused card.
+- I-86: the builder's `could not be read` box has no Retry button (9 of 10 lists).
+- Paper list cards print the stored-close P&L figure with no date of their own.
+- The Plan block prints `Stop: not being checked: ...` / `Target: not being checked: ...` above the new figure lines.
+- A second order with a new key is stored by the server (Decided for the owner 1).
+
 ## Plan faults (for the plan lane)
 1. `seed_strategies.py`: `TC_API_BASE` must be without `/api` (set-up).
 2. The brief and the plan call a second order with a NEW key "refused"; the server stores it (item 1); only the page lock and the same-key rule stop a repeat.
@@ -115,5 +126,7 @@ PostgreSQL 16 and Redis started; roles as in `app-tests.yml` (API as the non-sup
 - Walk of the lane branches themselves (Lane W2's job), and any head after 8425feead (B3 is not in it).
 - W-30 steps 2 to 6 (need "R2 test" and a live check); W-15 same-side variant (no toggle); T3-15 history screen; T1-20 Monday step 4; T1-21 steps 3 and 5 (Monday); W-07 rows 53, 54, 57 not re-walked; W-09 other cases (TG2's list); T3-17 case 749.
 - T2-21 is Monday: not walked.
+
+Read: the 23:35 order and the coordinator's confirmation (wave 1 head 8425feead).
 
 SAFE TO CLOSE (walked heads a1d704225 and 8425feead; left: the Not done list above, nothing started)
