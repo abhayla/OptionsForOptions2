@@ -215,3 +215,29 @@ async def test_n1_a_paper_strategy_and_a_held_entrys_own_first_basket_still_plac
     await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
         ids[0], "BUY", 65, Decimal("0.00"), "settle", _ADD_AT)])  # a settle is the server's, never refused
     assert await _count(db, stored.id) == 3  # noqa: PLR2004 - open, add, settle
+
+
+async def test_f5_a_plan_only_real_strategy_answers_the_real_position_refusal_before_not_found(
+        app_engine, admin_engine, monkeypatch):
+    """F5 (ADR-330 (64)): a strategy with an execution plan and NO paper order is a real position; the tracking exit
+    answers 409 with the position-kind sentence, never the 404 of an empty paper book; nothing is stored."""
+    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_execution_return import _app_for, _Reads, _store_plan  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "BUY", "3.35"))
+            app = _app_for(conn, user, _Reads("122104"))
+            async with _client(app) as c:
+                reply = await c.post(f"/strategies/{sid}/tracking/exit", json={"legs": [0]})
+            assert reply.status_code == HTTPStatus.CONFLICT, reply.text[:300]
+            assert REAL_SENTENCE in reply.json()["what_happened"] + " " + reply.json()["impact"]
+            assert await _count(conn, sid) == 0
+        finally:
+            await trans.rollback()
