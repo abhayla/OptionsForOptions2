@@ -109,7 +109,8 @@ async def test_the_same_key_with_a_different_body_is_refused_and_places_nothing_
     assert await _count(db, stored) == TWO_ORDERS
 
 
-async def test_a_key_whose_first_request_is_still_running_is_told_and_never_places(db, notified, keys):
+async def test_a_pending_hint_with_no_durable_row_lets_the_repeat_place_once(db, notified, keys):
+    """B2 item 2 (I-138): Redis `pending` is a hint, the durable claim decides (was: refused 582 for 10 minutes)."""
     app, stored, *_ = await _setup(db)
     _use(app, keys)
     _, orders = _prices(stored)
@@ -118,10 +119,9 @@ async def test_a_key_whose_first_request_is_still_running_is_told_and_never_plac
     sent = PaperOrdersIn.model_validate(body).model_dump(mode="json", exclude={"client_request_id"})
     claimed = await keys.claim(request_key.scoped(stored.user_ref, key), request_key.pending(stored.id, sent))
     assert claimed is None
-    reply = await _post(app, stored, body)  # the first is "in flight": claimed, not finished
-    assert reply.status_code == HTTPStatus.CONFLICT, reply.text
-    assert "still being placed" in reply.text.lower(), reply.text
-    assert await _count(db, stored) == 0
+    reply = await _post(app, stored, body)  # the first is "in flight" in Redis only: the table has no row
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert await _count(db, stored) == TWO_ORDERS
 
 
 async def test_two_claims_at_once_let_exactly_one_through(keys):
@@ -154,14 +154,14 @@ class _Down:
         raise request_key.KeyStoreDown("no store")
 
 
-async def test_a_store_that_cannot_be_read_refuses_the_order_by_name(db, notified):
+async def test_a_redis_that_cannot_be_read_no_longer_refuses_the_order(db, notified):
+    """B2 item 2: the durable table decides, so a Redis outage places the order once (was: 503 583)."""
     app, stored, *_ = await _setup(db)
     _use(app, _Down())
     _, orders = _prices(stored)
     reply = await _post(app, stored, _body(orders, uuid.uuid4()))
-    assert reply.status_code == HTTPStatus.SERVICE_UNAVAILABLE, reply.text
-    assert "could not check" in reply.text.lower(), reply.text
-    assert await _count(db, stored) == 0
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert await _count(db, stored) == TWO_ORDERS
 
 
 async def test_a_request_without_a_key_behaves_as_today_and_never_touches_the_store(db, notified):
@@ -233,14 +233,14 @@ async def test_real_door_the_same_key_twice_prepares_one_plan(app_engine, admin_
 
 
 @pytest.mark.usefixtures("order_path_on")
-async def test_real_door_a_store_that_cannot_be_read_refuses_the_press(app_engine, admin_engine, monkeypatch):
+async def test_real_door_a_redis_that_cannot_be_read_still_prepares_one_plan(app_engine, admin_engine, monkeypatch):
     from ofo_app import execution_plan_store as plans  # noqa: PLC0415
     async with admin_engine.connect() as conn:
         trans = await conn.begin()
         try:
             app, sid, user = await _real_app(conn, app_engine, monkeypatch, _Down())
-            reply = await _execute(app, sid, uuid.uuid4())
-            assert reply.status_code == HTTPStatus.SERVICE_UNAVAILABLE, reply.text
-            assert not await plans.plans_for(conn, user, sid)
+            reply = await _execute(app, sid, uuid.uuid4())  # B2 item 2: the table decides, Redis is a hint
+            assert reply.status_code == HTTPStatus.OK, reply.text
+            assert len(await plans.plans_for(conn, user, sid)) == 1
         finally:
             await trans.rollback()

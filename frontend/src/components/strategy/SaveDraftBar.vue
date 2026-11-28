@@ -31,7 +31,7 @@ import { contractName, istTime } from '@/lib/displayFormat'
 import { readPaperBook } from '@/lib/paperDrafts'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
-import { addLockFor, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, onAddLocksChanged, orderKeyFor, saveAddLock } from '@/lib/unknownLocks'
+import { addLockFor, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, keySigOf, onAddLocksChanged, orderKeyFor, saveAddLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
@@ -382,7 +382,7 @@ async function checkAddUnknown() {
       if (stored0 && typeof stored0.before === 'string' && stored0.before.startsWith('#')) continue // R5 N1: the builder's add lock (before '#<book>') is decided ONLY by the builder's own read (it holds the add in memory and rebases its legs); the bar never ends it
       const mine = adoptedAddLock(id, Date.now()) // a lock written before a post whose tab closed: the 130 s rule counts from this first sight
       if (!mine) continue // a malformed lock is read too: a good read sent more than 130 s after its first sight decides it (decideLock)
-      const sentAt = Date.now() // the window is judged by when the read was SENT, not when its answer came (Opus review F3)
+      const sentAt = sentNow() // the window is judged by when the read was SENT, not when its answer came (Opus review F3)
       let read
       try { read = await readPaperBook(api, id) } catch { continue } // a failed read decides nothing (the one door: paperDrafts.readPaperBook)
       const now = addLockFor(id) && adoptedAddLock(id, Date.now()) // the lock that is STORED now (another tab may have replaced it)
@@ -451,7 +451,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   const sig = JSON.stringify(orders)
-  const key = orderKeyFor(target, sig, dialogKey, 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
+  const key = orderKeyFor(target, keySigOf(orders), dialogKey, 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
   const outAt = Date.now() // R5 N5: this write's own identity: a definite answer drops this lock, never another tab's
   saveAddLock(target, { at: outAt, out: true, before: '', key, sig }) // F3: written BEFORE the post goes out; a definite answer removes it (`out`: at = when it went out)
   inflightAdds.add(String(target))
@@ -465,7 +465,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
     if (outcome === PAPER_STATE.REFUSED) paperError.value = refusalText(e?.parts, NEUTRAL_PARTS.what_happened) // 4xx: nothing stored; F6: every part of the reply
     if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
-    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value, 'add') // a definite refusal (580 / 581 / 583 too): nothing stored, the key is free
+    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value, 'add') // a definite refusal (580 / 583 too; a 581 is UNKNOWN, see paperPostOutcome): nothing stored, the key is free
     if (outcome === PAPER_STATE.UNKNOWN) { saveAddLock(target, { at: Date.now(), out: false, before: '', key, sig }); startUnknownTimer() } // `at` is now when the client gave up
     else dropAddLock(target, { key, at: outAt }) // a definite refusal: nothing stored, the lock ends with the answer
     addTick.value++

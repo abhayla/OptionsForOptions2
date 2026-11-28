@@ -72,10 +72,10 @@ async function openPaper(legs) {
 }
 
 describe('D-18: the Positions > Paper row prints the quote time of its price', () => {
-  it('each open row with a price shows that leg\'s own time; none sent says "time not available"', async () => {
+  it('each open row with a price shows that leg\'s own time (with its date when not today, F3 MUST); none sent says "time not available"', async () => {
     const w = await openPaper([pleg(0), pleg(1, { price_at: null })])
     const at = w.findAll('[data-testid="paper-ltp-at"]').map((x) => x.text())
-    expect(at).toEqual(['15:09:28', QUOTE_TIME_UNAVAILABLE_TEXT])
+    expect(at).toEqual(['25 Nov 2026, 15:09:28 IST', QUOTE_TIME_UNAVAILABLE_TEXT])
   })
   it('a row with no live price shows no time', async () => {
     const w = await openPaper([pleg(0, { price_state: 'stale', current_price: null })])

@@ -71,7 +71,7 @@ describe('ADR-330 (57): the builder page of a closed trade', () => {
   it('Lane FJ (UX-A06, owner review 28 Nov): the Plan watch box shows only the closed fact, never reads the plan watch, and offers no way to add a leg', async () => {
     answers['GET /strategies/63/plan-watch'] = never
     const w = await openBuilder()
-    expect(t(w, 'plan-watch-closed').text()).toBe('This trade is closed; nothing is watched.')
+    expect(t(w, 'plan-watch').exists()).toBe(false) // F2 (W-29 step 57, ADR-330 (57)): a closed trade has no Plan watch box
     expect(t(w, 'plan-watch-loading').exists()).toBe(false)
     expect(t(w, 'plan-watch-plan').exists()).toBe(false)
     expect(watchCalls()).toEqual([])

@@ -458,6 +458,35 @@ def step(
     return state, events
 
 
+def silent_reason(state: GateState, rule_id: str, spec: RuleSpec, value: Value | None, *,  # noqa: PLR0911, PLR0913
+                  now: datetime, entry_hold_until: datetime | None = None,
+                  cooldown: timedelta | None = None) -> str | None:
+    """Lane RA2 item 2 (issue 876): why a rule whose value is past its line raised nothing at this check, as a closed
+    word for the worker's log (never shown to a user, never a price or a figure); None = the rule is not past its line
+    (or has no reading), so there is nothing to explain. Read AFTER ``step`` on its new state and only for a rule that
+    gave no event in that step: ``entry_hold`` (the 5 minutes after entry), ``alert_already_open`` (its record is
+    unanswered: one open alert per rule), ``not_rearmed`` (a record was answered and no close has cleared the line
+    since), ``alert_answered`` (a final record), ``cooldown`` (cleared, the cool-down given is running), ``held`` (an
+    event said so already), ``waiting_for_candle_close`` (a rule judged on a close), else ``no_event``."""
+    if value is None or _level(spec, value) < 0:
+        return None
+    rule = state.rule(rule_id)
+    if _in_entry_hold(rule_id, rule, spec, _ist(now), entry_hold_until):
+        return "entry_hold"
+    rec = rule.record
+    if rec is not None and not (rec.dismissed or rec.final):
+        return "alert_already_open"
+    if rec is not None and rec.final:
+        return "alert_answered"
+    if rec is not None and not rule.cleared:
+        return "not_rearmed"
+    if rec is not None and cooldown is not None and _ist(now) < rec.at + cooldown:
+        return "cooldown"
+    if rule.hold is not None:
+        return "held"
+    return "no_event" if _is_plan_exit(rule_id, spec) else "waiting_for_candle_close"
+
+
 def pause(state: GateState, at: datetime) -> GateState:
     """GC-ALERT1 step 5 review round 2, finding 2: the strategy was paused (stale feed, missing leg, a failed read)
     at `at`. A candle that saw a pause was not fully watched, so it has no close, as a candle with no readable value
