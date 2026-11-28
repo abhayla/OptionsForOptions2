@@ -52,6 +52,9 @@ class BasketFacts:
     spot: Decimal
     atm_iv: Decimal | None
     prices: dict[LegKey, Decimal | None]
+    #: FR 3.4: the time of the quote ``spot`` came from (not the order clock): differs from ``clock`` when the user
+    #: confirmed a not-live index value. Carried to the writer; NOT stored (a column needs a migration, not built)
+    spot_at: datetime.datetime | None = None
 
 
 class EntryFactsUnreadable(Exception):

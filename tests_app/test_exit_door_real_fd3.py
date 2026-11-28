@@ -165,7 +165,7 @@ async def test_n1_the_store_itself_refuses_an_open_on_a_real_position_and_the_ki
     new = paper_store.NewOrder(ids[0], "SELL", 65, Decimal("39.15"), "open", _ADD_AT)
     with pytest.raises(StrategyRefused) as err:
         await paper_store.place(db, stored.user_ref, stored.id, [new])
-    assert str(err.value) == "real_position_exit_refused"
+    assert str(err.value) == "real_position_open_refused"
     assert await _count(db, stored.id) == 0
     assert await _kind(db, stored) == "real"  # never flipped to paper
 
@@ -215,3 +215,78 @@ async def test_n1_a_paper_strategy_and_a_held_entrys_own_first_basket_still_plac
     await paper_store.place(db, stored.user_ref, stored.id, [paper_store.NewOrder(
         ids[0], "BUY", 65, Decimal("0.00"), "settle", _ADD_AT)])  # a settle is the server's, never refused
     assert await _count(db, stored.id) == 3  # noqa: PLR2004 - open, add, settle
+
+
+async def test_f5_a_plan_only_real_strategy_answers_the_real_position_refusal_before_not_found(
+        app_engine, admin_engine, monkeypatch):
+    """F5 (ADR-330 (64)): a strategy with an execution plan and NO paper order is a real position; the tracking exit
+    answers 409 with the position-kind sentence, never the 404 of an empty paper book; nothing is stored."""
+    from test_execute_route import _strategy_one  # noqa: PLC0415
+    from test_execution_return import _app_for, _Reads, _store_plan  # noqa: PLC0415
+    from test_strategy_store import _user  # noqa: PLC0415
+
+    monkeypatch.setenv("APP_ENV", "test")
+    monkeypatch.setenv("TEST_CATALOGUE_DATE", "2026-10-16")
+    async with admin_engine.connect() as conn:
+        trans = await conn.begin()
+        try:
+            user = _user()
+            sid = await _strategy_one(conn, user, app_engine.url.username)
+            await _store_plan(conn, user, sid, ("ENTRY", "BUY", "3.35"))
+            app = _app_for(conn, user, _Reads("122104"))
+            async with _client(app) as c:
+                reply = await c.post(f"/strategies/{sid}/tracking/exit", json={"legs": [0]})
+            assert reply.status_code == HTTPStatus.CONFLICT, reply.text[:300]
+            assert REAL_SENTENCE in reply.json()["what_happened"] + " " + reply.json()["impact"]
+            assert await _count(conn, sid) == 0
+        finally:
+            await trans.rollback()
+
+
+# --- FD5 D / N7: a failed kind read answers a catalogue refusal before the commit, and success after it ------------
+
+async def test_d_a_failed_kind_read_refuses_the_order_with_a_catalogue_sentence_and_stores_nothing(db, monkeypatch):
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415
+    from test_paper_armed_exits import _order  # noqa: PLC0415
+    from test_paper_routes import _new  # noqa: PLC0415
+    app, stored, ids = await _book(db, max_adjustments=2)
+    before = await _count(db, stored.id)
+
+    async def failing(_db, _sids):
+        raise SQLAlchemyError("kind read failed")
+
+    monkeypatch.setattr(strategy_store, "kinds_of", failing)
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/orders",
+                             json={"orders": [_order(_new(ids[0], "SELL", 65, "39.15", "add"))]})
+    assert reply.status_code == HTTPStatus.SERVICE_UNAVAILABLE, reply.text[:200]
+    assert reply.json()["what_happened"], reply.text[:200]  # a catalogue sentence, not a bare 500
+    assert await _count(db, stored.id) == before
+
+
+async def test_n7_a_stop_stored_then_a_failed_kind_read_still_answers_success_with_the_line_unknown(db, notified,
+                                                                                                    monkeypatch):
+    """The trigger routes build their answer AFTER the commit: a failed kind read must not turn a stored stop into a 5xx
+    (the user would press again). The answer is the 201 with the lines read as unknown (fail closed)."""
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+    real = strategy_store.kinds_of
+    calls = {"n": 0}
+
+    async def second_call_fails(conn, sids):
+        calls["n"] += 1
+        if calls["n"] > 1:  # the first read is the door's own check, before the commit
+            raise SQLAlchemyError("kind read failed after the commit")
+        return await real(conn, sids)
+
+    monkeypatch.setattr(strategy_store, "kinds_of", second_call_fails)
+    async with _client(app) as c:
+        reply = await c.post(f"/paper/strategies/{stored.id}/triggers",
+                             json={"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "120.00"})
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    (line,) = [t for t in reply.json()["triggers"] if t["kind"] == "leg_stop"]
+    assert line["state"] == "armed" or line["not_applicable_text"] is not None  # stored, and reported, never a 5xx
+    assert calls["n"] >= 2  # noqa: PLR2004
