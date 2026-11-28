@@ -6,8 +6,13 @@
 // and the save bar. A lock carries the WHOLE-BOOK key `before` (`bookOfNet` / `bookOfPositions`: sorted `contractId:signedUnits`, closed legs left out),
 // the signed units of each exited leg (`units`, never empty for an exit), and the book the orders should leave (`expected`). A reader that lacks a field
 // it needs KEEPS the lock (fail closed); empty or absent units never count as stored; storage content that cannot be read is a lock, never a throw.
-// `at` is when the client GAVE UP; a lock written before its post (`out: true`) has no give-up time yet: the first reader that did not write it counts
-// from its own first sight (`adoptedLock`), so a tab closed mid-post never lets the 130 s rule count from the pre-post time.
+// `at` is when the client GAVE UP; a lock written before its post (`out: true`) carries `at` = when its post went out (130 s count from that moment: a read sent
+// later than that, and past the window, decides it; `out` alone never ends it). A lock with no readable `at` counts from the first sight of a reader that did
+// not write it (`adopted`). A lock with no readable `before` counts from `seen` (written at post time, or at first sight).
+// Lane FJ round 4 (Opus review of 4c6bc6b): the builder's ADD lock has the same units as an exit lock (`adds`: the legs the post added, the signed units before and
+// after): it is 'stored' only when the ADDED legs moved toward the expected book; a move on any other leg is unrelated and counts as unchanged. A reader decides
+// the lock that is STORED now (not the copy it holds) and drops only that lock (`sameLock`): another tab's newer lock keeps blocking. One request-key slot per
+// strategy AND action (exit, add): a decided outcome of one never drops the other's key.
 // A browser that refuses storage still has the in-page copy (this module's memory), and every read and write is in try/catch.
 import { UNKNOWN_EXIT_READ_AFTER_MS } from '@/lib/sharedStateText'
 
@@ -116,28 +121,50 @@ export function decideLock(lock, book, sentAt) {
   if (typeof lock.before !== 'string') return KEEP
   const past = Number.isFinite(lock.at) && sentAt - lock.at > UNKNOWN_EXIT_READ_AFTER_MS // the read was sent after the first request's longest commit window
   if (lock.out === true && !past) return KEEP // its post may still be out: only the post's own answer, or a read sent past the window, ends it
+  let legs // the legs the post moved: { id, from, to } in signed units
   if (lock.kind === 'add') {
-    // an add lock of the save bar has before '' (any orders = stored); the builder's add lock has before '#' + the key of the book it was posted against (any other readable book of orders = stored)
-    const base = lock.before.startsWith('#') ? lock.before.slice(1) : null
-    const orders = book.hasOrders === true && (base === null || (!!book.units && !book.key.startsWith('?') && base !== '?' && book.key !== base))
-    if (orders) return { verdict: 'stored' }
-    return past ? { verdict: 'not_stored' } : KEEP
+    if (!lock.before.startsWith('#')) { // an add lock of the save bar has before '' (any orders = stored)
+      if (book.hasOrders === true) return { verdict: 'stored' }
+      return past ? { verdict: 'not_stored' } : KEEP
+    }
+    legs = validAdds(lock.adds)
+  } else {
+    legs = Array.isArray(lock.units) && lock.units.length && lock.units.every((x) => isInt(x?.id) && isInt(x?.units) && x.units !== 0) ? lock.units.map((x) => ({ id: x.id, from: x.units, to: 0 })) : null
   }
-  const legs = lock.units
-  if (!Array.isArray(legs) || !legs.length || !book.units) return KEEP // empty or absent units never count as stored
-  if (!legs.every((x) => isInt(x?.id) && isInt(x?.units) && x.units !== 0)) return KEEP
+  if (!book.units || book.key.startsWith('?')) return KEEP // an unreadable book decides nothing
+  if (!legs) { // no legs to judge by (the book could not be read at post time, or no exited leg was held): only a read sent past the window decides, by the whole book
+    if (!past) return KEEP
+    const base = lock.kind === 'add' ? lock.before.slice(1) : lock.before
+    return base === '?' || book.key === base ? { verdict: 'not_stored' } : KEEP // an unchanged book is not stored; a moved one cannot be judged without the legs: fail closed
+  }
   const at = (id) => book.units[id] ?? 0
-  if (!legs.some((x) => at(x.id) !== x.units)) return past ? { verdict: 'not_stored' } : KEEP // no exited leg moved: an unrelated move proves nothing
-  const toward = (x) => (x.units > 0 ? at(x.id) >= 0 && at(x.id) < x.units : at(x.id) <= 0 && at(x.id) > x.units) // units only, never money
+  if (!legs.some((x) => at(x.id) !== x.from)) return past ? { verdict: 'not_stored' } : KEEP // no moved leg of this post: an unrelated move proves nothing
+  const toward = (x) => (x.to > x.from ? at(x.id) > x.from && at(x.id) <= x.to : at(x.id) < x.from && at(x.id) >= x.to) // units only, never money
   if (legs.every(toward) && !(typeof lock.expected === 'string' && book.key !== lock.expected)) return { verdict: 'stored' }
   return past ? { verdict: 'changed' } : KEEP
 }
+const validAdds = (a) => (Array.isArray(a) && a.length && a.every((x) => x && isInt(x.id) && isInt(x.from) && isInt(x.to) && x.from !== x.to) ? a.map((x) => ({ id: x.id, from: x.from, to: x.to })) : null)
+/** The legs a post of ADD rows moves in `book`: [{ id, from, to }] in signed units; null when the book or a row cannot be read (the lock then waits for a read past the window). */
+export function addsOf(orders, book) {
+  if (!book?.units || !Array.isArray(orders)) return null
+  const to = {}
+  for (const o of orders) {
+    if (o?.kind === 'exit') continue
+    const q = isInt(o?.quantity) && o.quantity > 0 ? o.quantity : isInt(o?.lots) && isInt(o?.lot_size) ? o.lots * o.lot_size : null
+    if (!isInt(o?.contract_id) || q === null || (o.side !== 'BUY' && o.side !== 'SELL')) return null
+    to[o.contract_id] = (to[o.contract_id] ?? book.units[o.contract_id] ?? 0) + (o.side === 'BUY' ? q : -q)
+  }
+  const out = Object.keys(to).map(Number).map((id) => ({ id, from: book.units[id] ?? 0, to: to[id] })).filter((x) => x.from !== x.to)
+  return out.length ? out : null
+}
+/** True when two normalised locks are the SAME lock (same request key and give-up / post time): another tab's newer lock is a different one. */
+export const sameLock = (a, b) => !!a && !!b && (a.key ?? null) === (b.key ?? null) && (b.at === undefined || (a.at ?? null) === (b.at ?? null)) // `at` left out of `b`: a definite answer of a request key ends the lock of that key, whenever it was written
 
 /** The `before` of the builder's add lock: '#' + the whole-book key it was posted against ('#?' when that book cannot be read: then only a read past the window decides, "not stored", the key kept). */
 export const addBeforeOf = (book) => (book ? `#${book.key}` : '#?')
 // ---- the ONE writer (an exit store and an add store of the same shape) ----
 const asLock = (raw, kind) => {
-  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { kind, malformed: true, at: null, before: null, expected: null, names: [], units: null, key: null, sig: null, waiting: null, out: false, seen: null, move: false }
+  if (!raw || typeof raw !== 'object' || Array.isArray(raw)) return { kind, malformed: true, at: null, before: null, expected: null, names: [], units: null, key: null, sig: null, waiting: null, out: false, seen: null, move: false, adds: null }
   const units = Array.isArray(raw.units) && raw.units.length && raw.units.every((u) => u && isInt(u.id) && isInt(u.units) && u.units !== 0) ? raw.units.map((u) => ({ id: u.id, units: u.units })) : null
   const before = typeof raw.before === 'string' ? raw.before : null
   return {
@@ -145,7 +172,7 @@ const asLock = (raw, kind) => {
     expected: typeof raw.expected === 'string' ? raw.expected : null, names: Array.isArray(raw.names) ? raw.names.filter((n) => typeof n === 'string') : [],
     units, key: typeof raw.key === 'string' ? raw.key : null, sig: typeof raw.sig === 'string' ? raw.sig : null,
     waiting: raw.waiting && typeof raw.waiting === 'object' ? raw.waiting : null, out: raw.out === true,
-    seen: typeof raw.seen === 'number' && Number.isFinite(raw.seen) ? raw.seen : null, move: raw.move === true, // `move`: the exit's orders also opened a leg (a move): its reply may have named cancelled stops (Group A R4)
+    seen: typeof raw.seen === 'number' && Number.isFinite(raw.seen) ? raw.seen : null, move: raw.move === true, adds: validAdds(raw.adds), // `move`: the exit's orders also opened a leg (a move): its reply may have named cancelled stops (Group A R4)
   }
 }
 function makeLocks(name, kind) {
@@ -155,6 +182,11 @@ function makeLocks(name, kind) {
     if (!Object.prototype.hasOwnProperty.call(all, String(id))) return null
     const l = asLock(all[String(id)], kind)
     const now = Date.now()
+    if (l.seen !== null && l.seen > now) { // a first-sight time in the future (a clock moved back) counts from now too, written back once
+      const fixed = { ...l, seen: now }
+      writeLock(id, fixed)
+      return fixed.at !== null && fixed.at > now ? { ...fixed, at: now } : fixed
+    }
     if (l.at !== null && l.at > now) { // Group A R2 (f): an `at` in the future (a clock moved back) counts from now, written back once so it does not move on
       const fixed = { ...l, at: now }
       writeLock(id, fixed)
@@ -164,7 +196,7 @@ function makeLocks(name, kind) {
   }
   const writeLock = (id, rec) => {
     const all = entriesOf(name)
-    all[String(id)] = { at: rec.at ?? null, before: rec.before ?? null, expected: rec.expected ?? null, names: rec.names ?? [], units: rec.units ?? null, key: rec.key ?? null, sig: rec.sig ?? null, waiting: rec.waiting ?? null, out: rec.out === true, seen: rec.seen ?? null, move: rec.move === true }
+    all[String(id)] = { at: rec.at ?? null, before: rec.before ?? null, expected: rec.expected ?? null, names: rec.names ?? [], units: rec.units ?? null, key: rec.key ?? null, sig: rec.sig ?? null, waiting: rec.waiting ?? null, out: rec.out === true, seen: rec.seen ?? null, move: rec.move === true, adds: rec.adds ?? null }
     writeAll(name, all)
   }
   return {
@@ -186,13 +218,16 @@ function makeLocks(name, kind) {
       writeLock(id, fixed)
       return fixed
     },
-    drop(id) {
+    /** Drops the lock of `id`; with `only` (the lock a reader decided) it drops that lock alone: a newer lock of another tab (other key or `at`) stays. Returns false when a different lock stayed. */
+    drop(id, only = null) {
       const all = readAll(name)
-      if (all === UNREADABLE) return // nothing this module may call its own
-      if (!(String(id) in all)) return
+      if (all === UNREADABLE) return true // nothing this module may call its own
+      if (!(String(id) in all)) return true
+      if (only && !sameLock(asLock(all[String(id)], kind), only)) return false
       const next = { ...all }
       delete next[String(id)]
       writeAll(name, next)
+      return true
     },
     ids() { const all = readAll(name); return all === UNREADABLE ? [] : Object.keys(all) },
     changed(fn) {
@@ -213,7 +248,7 @@ export const saveExitLock = (id, rec) => exitLocks.save(id, rec)
 /** The remembered lock of strategy `id` (normalised; `malformed: true` when a field every reader needs is missing or the content cannot be read), or null when none is stored. */
 export const exitLockFor = (id) => exitLocks.forId(id)
 export const adoptedExitLock = (id, nowMs) => exitLocks.adopted(id, nowMs)
-export const dropExitLock = (id) => exitLocks.drop(id)
+export const dropExitLock = (id, only = null) => exitLocks.drop(id, only)
 /** Every strategy id that has a lock now (for a page that opens a list; an unreadable store has no ids: ask `exitLockFor` per strategy). */
 export const exitLockIds = () => exitLocks.ids()
 /** `fn()` runs when ANOTHER tab of this browser writes or removes a lock or a key; returns the function that stops listening. */
@@ -222,7 +257,7 @@ export const onExitLocksChanged = (fn) => exitLocks.changed(fn)
 export const saveAddLock = (id, rec) => addLocks.save(id, rec)
 export const addLockFor = (id) => addLocks.forId(id)
 export const adoptedAddLock = (id, nowMs) => addLocks.adopted(id, nowMs)
-export const dropAddLock = (id) => addLocks.drop(id)
+export const dropAddLock = (id, only = null) => addLocks.drop(id, only)
 export const addLockIds = () => addLocks.ids()
 export const onAddLocksChanged = (fn) => addLocks.changed(fn)
 
@@ -230,20 +265,24 @@ export const onAddLocksChanged = (fn) => addLocks.changed(fn)
 // with the strategy, the orders text it is about to send and the dialog's key: the same orders for the same strategy while their record is still
 // open (the last attempt ended unknown, or a re-read said "not stored", also after a remount or in another tab) get the key already held; any other
 // ask is a new action and keeps the dialog's new key. A definite answer (stored, or refused by the server) calls `dropOrderKey`.
-/** The key to send for `orders` (text) of strategy `id`; remembers it until the action is decided. */
-export function orderKeyFor(id, ordersText, dialogKey) {
+/** The slot of a key: one per strategy AND action ('exit' keeps the strategy id; 'add' is `<id>#add`), so a decided exit never drops the key of an add of unknown outcome. */
+const keySlot = (id, action) => (action === 'add' ? `${id}#add` : String(id))
+/** The key to send for `orders` (text) of strategy `id` and `action` ('exit' or 'add'); remembers it until the action is decided. */
+export function orderKeyFor(id, ordersText, dialogKey, action = 'exit') {
+  const slot = keySlot(id, action)
   const all = entriesOf(KEYS_KEY)
-  const cur = all[String(id)]
+  const cur = all[slot]
   if (cur && cur.sig === ordersText && typeof cur.key === 'string' && cur.key) return cur.key
   if (typeof dialogKey !== 'string' || !dialogKey) return null // no key was made (no crypto): none is sent; the lock still holds
-  all[String(id)] = { sig: ordersText, key: dialogKey }
+  all[slot] = { sig: ordersText, key: dialogKey }
   writeAll(KEYS_KEY, all)
   return dialogKey
 }
-export function dropOrderKey(id) {
+export function dropOrderKey(id, action = 'exit') {
+  const slot = keySlot(id, action)
   const all = entriesOf(KEYS_KEY)
-  if (!(String(id) in all)) return
-  delete all[String(id)]
+  if (!(slot in all)) return
+  delete all[slot]
   writeAll(KEYS_KEY, all)
 }
 /** A new request key (a UUID, or 32 hex digits where randomUUID is missing): made at ONE user action (the Confirm dialog's press, which keeps its own maker for now: the repo's money scan pins that line;

@@ -379,20 +379,21 @@ async function checkAddUnknown() {
     for (const id of addLockIds()) {
       if (inflightAdds.has(String(id))) continue // its post is still out: only its answer ends it
       const mine = adoptedAddLock(id, Date.now()) // a lock written before a post whose tab closed: the 130 s rule counts from this first sight
-      if (!mine || mine.malformed) continue
-      if (typeof mine.before === 'string' && mine.before.startsWith('#')) continue // Group A R2 (e): the builder's add lock (before '#<book>') is decided by the builder's own read of the book, which also refreshes what it shows
+      if (!mine) continue // a malformed lock is read too: a good read sent more than 130 s after its first sight decides it (decideLock)
+      const builderLock = typeof mine.before === 'string' && mine.before.startsWith('#') // Group A R2 (e): the builder's add lock (before '#<book>') is decided here as well (the ADDED legs moved); the builder's own read decides it too
       const sentAt = Date.now() // the window is judged by when the read was SENT, not when its answer came (Opus review F3)
       let read
       try { read = await readPaperBook(api, id) } catch { continue } // a failed read decides nothing (the one door: paperDrafts.readPaperBook)
-      const now = addLockFor(id)
+      const now = addLockFor(id) && adoptedAddLock(id, Date.now()) // the lock that is STORED now (another tab may have replaced it)
       if (!now || inflightAdds.has(String(id))) continue // the lock ended or was replaced while the read was out: this answer is not about it
       const d = decideLock(now, bookOfRead(read), sentAt) // the ONE decision (lib/unknownLocks.js)
       if (d.verdict === 'stored') { // orders in the book: stored, this plan never records again
-        dropAddLock(id)
-        dropOrderKey(id)
+        if (!dropAddLock(id, now)) continue // another tab's newer lock stays
+        dropOrderKey(id, 'add')
         addTick.value++
-        if (String(props.current?.id) === String(id)) { paperRecorded.value = true; emit('paper-added', props.current.id) }
-      } else if (d.verdict === 'not_stored') { dropAddLock(id); addTick.value++ } // no orders in a read sent past the window: not stored (the key stays for a resend)
+        if (!builderLock && String(props.current?.id) === String(id)) { paperRecorded.value = true; emit('paper-added', props.current.id) }
+      } else if (d.verdict === 'not_stored') { dropAddLock(id, now); addTick.value++ } // no orders in a read sent past the window: not stored (the key stays for a resend)
+      else if (d.verdict === 'changed') { if (dropAddLock(id, now)) dropOrderKey(id, 'add'); addTick.value++ } // a malformed lock, or the added legs moved some other way, decided by a read sent past the window
     }
   } finally { checking = false }
   if (addLockIds().length === 0) { clearInterval(unknownTimer); unknownTimer = null }
@@ -449,7 +450,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   const sig = JSON.stringify(orders)
-  const key = orderKeyFor(target, sig, dialogKey) // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
+  const key = orderKeyFor(target, sig, dialogKey, 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
   saveAddLock(target, { at: Date.now(), out: true, before: '', key, sig }) // F3: written BEFORE the post goes out; a definite answer removes it (`out`: at = when it went out)
   inflightAdds.add(String(target))
   addTick.value++
@@ -462,9 +463,9 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
     if (outcome === PAPER_STATE.REFUSED) paperError.value = refusalText(e?.parts, NEUTRAL_PARTS.what_happened) // 4xx: nothing stored; F6: every part of the reply
     if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
-    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value) // a definite refusal (580 / 581 / 583 too): nothing stored, the key is free
+    if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value, 'add') // a definite refusal (580 / 581 / 583 too): nothing stored, the key is free
     if (outcome === PAPER_STATE.UNKNOWN) { saveAddLock(target, { at: Date.now(), out: false, before: '', key, sig }); startUnknownTimer() } // `at` is now when the client gave up
-    else dropAddLock(target) // a definite refusal: nothing stored, the lock ends with the answer
+    else dropAddLock(target, { key }) // a definite refusal: nothing stored, the lock ends with the answer
     addTick.value++
     if (outcome === PAPER_STATE.REFUSED) {
       const edited = orders.some((o, i) => { const p = paperOrders.value[i]; return !p || String(o.quantity) !== String(p.lots * p.lot_size) || String(o.price).trim() !== String(p.price ?? '').trim() })
@@ -475,9 +476,9 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   }
   refusedLists.clear()
   inflightAdds.delete(String(target))
-  dropAddLock(target)
+  dropAddLock(target, { key })
   addTick.value++
-  dropOrderKey(paperTarget.value) // stored: the action is over
+  dropOrderKey(paperTarget.value, 'add') // stored: the action is over
   // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"
   paperRecorded.value = true
   try {

@@ -198,7 +198,7 @@ import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
-import { adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock } from '@/lib/unknownLocks'
+import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -480,21 +480,23 @@ function decideUnresolved(now, seq, sentAt = Date.now()) {
     const id = r.key
     const g = now.find((x) => String(x.id) === id)
     if (!g || !g.readable) { if (r.state === 'unknown') exitRec.drop(id); continue } // the usual changed-elsewhere end follows (the stored lock stays: only a good read of its book ends it)
-    const stored = r.state === 'unknown' ? exitLockFor(id) : null // F4: another tab gave up later on the same exit: its time counts (the 130 s rule runs from the give-up)
-    if (stored && !stored.malformed && !stored.out && Number.isFinite(stored.at) && stored.at > (r.lock?.at ?? -Infinity)) { r.lock = stored; r.at = stored.at }
+    if (r.state === 'unknown' && exitLockFor(id)) { // F3: decide the lock that is STORED now: another tab's newer lock (its post still out or not) replaces this page's copy and keeps blocking
+      const stored = adoptedExitLock(id, Date.now())
+      if (stored && !sameLock(stored, r.lock)) { r.lock = stored; r.at = Number.isFinite(stored.at) ? stored.at : r.at }
+    }
     const d = decideLock(r.lock, bookOfPositions(g.positions), sentAt) // the ONE decision (lib/unknownLocks.js): the whole book, the exited legs' units, never money
     const open = !!confirm.value && String(confirm.value.id) === id
     if (d.verdict === 'stored') {
-      dropExitLock(id); dropOrderKey(id) // the server's book decided it: the action is over, its key with it
+      dropExitLock(id, r.lock); dropOrderKey(id, 'exit') // the server's book decided it: the action is over, its key with it
       exitRec.settle(id, r.id, 'placed', exitEndText('done', r.names, {}, NEUTRAL_ERROR))
       if (open) { ticks.value = { ...ticks.value, [id]: [] }; cancelExit() }
     } else if (r.state === 'unknown' && d.verdict === 'not_stored') {
       // Lane FJ item 1: unchanged proves "not stored" only for a read SENT more than UNKNOWN_EXIT_READ_AFTER_MS after the client gave up (the first request can still commit);
       // never a timer: until such a read answers, the lock stays and so does its key. The key is kept for the resend (a late commit then answers it as placed).
-      dropExitLock(id)
+      dropExitLock(id, r.lock)
       exitRec.settle(id, r.id, 'not_stored', exitEndText('not_stored', r.names, null, NEUTRAL_ERROR), { readSeq: seq })
       if (open) dialogState.value = PAPER_STATE.READY
-    } else if (r.state === 'unknown' && d.verdict === 'changed') { dropExitLock(id); dropOrderKey(id); exitRec.drop(id) } // the book changed in some other way: the changed-elsewhere end follows
+    } else if (r.state === 'unknown' && d.verdict === 'changed') { dropExitLock(id, r.lock); dropOrderKey(id, 'exit'); exitRec.drop(id) } // the book changed in some other way: the changed-elsewhere end follows
   }
 }
 // Lane FJ item 1 (c): the lock of this BROWSER (lib/unknownLocks.js, localStorage): a list opened (or reloaded, or a second tab) while an exit of unknown outcome is undecided
@@ -505,7 +507,7 @@ function adoptLock(id, seq, now) {
   const cur = exitRec.cur(id)
   if (cur && cur.state === 'pending') return true // this very instance's post is out
   if (cur && cur.state === 'unknown') { // F4: a lock another tab rewrote later (it gave up later) moves the give-up time on
-    if (!stored.malformed && !stored.out && Number.isFinite(stored.at) && stored.at > (cur.lock?.at ?? -Infinity)) { cur.lock = stored; cur.at = stored.at }
+    if (!sameLock(stored, cur.lock)) { const fresh = adoptedExitLock(id, Date.now()); if (fresh) { cur.lock = fresh; cur.at = Number.isFinite(fresh.at) ? fresh.at : cur.at } } // F3: the stored lock is the one decided
     return true
   }
   const lock = adoptedExitLock(id, Date.now()) // a lock written by another tab or an earlier instance: the 130 s rule counts from its give-up (or, for a post that was still out, from now)
@@ -573,13 +575,13 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
   if (exitGate.notLive.value) return endExit('not_live', c.names) // prices paused (a failed read, or a leg of this dialog not live on the last good read): no POST; the dialog says which leg and why
   if (isUnknown(c.id) || adoptLock(c.id, readSeq + 1)) { dialogState.value = PAPER_STATE.UNKNOWN; return } // F6: this instance's own unknown record counts, whatever storage says; fail closed: an exit of unknown outcome is undecided: nothing is sent until a good re-read decides it
   const sig = JSON.stringify(orders)
-  const key = orderKeyFor(c.id, sig, dialogKey)
+  const key = orderKeyFor(c.id, sig, dialogKey, 'exit')
   const attempt = exitRec.begin(c.id, c.names, c.units) // ONE record per attempt: every answer below goes through it
   busy.value = true
   dialogState.value = PAPER_STATE.READY
   const g = (items.value ?? []).find((x) => String(x.id) === String(c.id))
   const book = g ? bookOfPositions(g.positions) : null // the WHOLE book the orders go against (one key for every page), the exited legs' signed units, and the book they should leave
-  const lock = { at: Date.now(), out: true, before: book?.key ?? null, units: exitUnitsOf(orders, book) ?? c.units, expected: expectedKeyOf(orders, book), names: c.names, key, sig }
+  const lock = { at: Date.now(), out: true, before: book?.key ?? null, units: exitUnitsOf(orders, book) ?? c.units, expected: expectedKeyOf(orders, book), names: c.names, key, sig, seen: book ? null : Date.now() } // `seen`: a lock whose book could not be read counts from the post
   saveExitLock(c.id, lock) // written BEFORE the post goes out (`out`: `at` is when it went out): a list left, reloaded or opened in a second tab meanwhile is covered too; a definite answer removes it
   let reply = null
   try {
@@ -589,18 +591,18 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
     dialogState.value = outcome
     if (outcome === PAPER_STATE.UNKNOWN) {
       const gaveUp = Date.now()
-      const gave = { ...lock, at: gaveUp, out: false } // `at` is now when the client gave up
+      const gave = { ...lock, at: gaveUp, out: false, seen: book ? null : gaveUp } // `at` is now when the client gave up
       saveExitLock(c.id, gave)
       exitRec.settle(c.id, attempt, 'unknown', '', { readSeq, at: gaveUp, lock: exitLockFor(c.id) ?? gave })
     }
     if (outcome === PAPER_STATE.REFUSED) { // a definite answer (a 4xx, 580 / 581 / 583 too): nothing stored, the lock and the key end; the next attempt is a new action
-      dropExitLock(c.id); dropOrderKey(c.id)
+      dropExitLock(c.id, { key }); dropOrderKey(c.id, 'exit')
       exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // all four parts + the legs
     }
     busy.value = false
     return
   }
-  dropExitLock(c.id); dropOrderKey(c.id) // stored (a repeat of the same key answered 201 too): the action is over
+  dropExitLock(c.id, { key }); dropOrderKey(c.id, 'exit') // stored (a repeat of the same key answered 201 too): the action is over
   // STORED (201): the server answered, so the order exists: placed replaces whatever the page guessed meanwhile (unknown / not stored / changed)
   if (confirm.value && String(confirm.value.id) === String(c.id)) confirm.value = null
   ticks.value = { ...ticks.value, [c.id]: [] }
