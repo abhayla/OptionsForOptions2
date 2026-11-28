@@ -1104,6 +1104,12 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This took too long, so no order was stored.",
           "Nothing was stored and the strategy was not changed; pressing again places the orders once.",
           "Placing these paper orders.", "Press Place again."),
+    # Lane RA2 item 9 (FE3's Return-door sentence), new wording, pending the owner's read: the Return found that the
+    # strategy's recorded plans changed while the user was at Kite (another press or tab). Nothing was recorded.
+    _gate("execution_return_changed", _SV, 589,
+          "Something changed on this strategy while you were away at Kite, so nothing was recorded.",
+          "Nothing was recorded and nothing was sent; Zerodha was not asked to change anything.",
+          "Recording the result of your Kite orders.", "Press Return again."),
     # Lane FD2 #877 (ADR-330 (64)): a real position is exited and protected in Kite, not on the paper routes.
     _gate("real_position_exit_refused", _SV, 584,
           "Real position: exit and protect it in Kite.",

@@ -87,10 +87,6 @@ EXIT_NOT_RUN_KIND: Final = "stop_fired"
 INDEX_WAIT_SECONDS: Final = 1.0
 
 
-#: Lane FE3 item 6: the wordings of the line of a leg stop that HAS fired (past tense, the figure at the fill), for
-#: reading a stored line back (``actionable_alerts.inform`` ``restore``); the list in ``paper_alert`` is not
-#: this lane's.
-FIRED_LINE_TEMPLATES: Final = ("paper_leg_stop_fired", "paper_leg_stop_fired_unlimited", "paper_leg_stop_fired_unknown")
 #: Lane FE3 item 2: a reload that could not read the book (armed triggers, position kinds, orders) is tried again this
 #: soon, and the last known watch list is kept for at most ``BOOK_UNREAD_MAX_S`` of failure (the same two minutes as the
 #: heartbeat rule, ``monitoring_state.SNAPSHOT_STALE_S``): past it no exit is judged and every trade is reported
@@ -643,7 +639,7 @@ class PaperMonitor:
             await actionable_alerts.inform(
                 session, a.user_ref, t.strategy_id, "stop_fired",
                 "stop_fired_note" if line is None else "stop_fired_note_with_line", values, at=now,
-                restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES + FIRED_LINE_TEMPLATES})
+                restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
 

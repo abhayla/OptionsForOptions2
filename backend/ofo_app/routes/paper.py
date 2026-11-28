@@ -1750,10 +1750,11 @@ def leg_stop_lines(risk: ExitRisk, names: Mapping[str, Any], terms: Mapping[str,
 
 def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False,  # noqa: PLR0913
                   terms: Mapping[str, Any] | None = None, underlying: str = "",
-                  at_zero: Decimal | None = None) -> ExitRiskOut:
+                  at_zero: Decimal | None = None, fired: bool = False) -> ExitRiskOut:
     """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
     when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell.
-    ``leg_stop``: the figures are worded as the leg-stop line (ADR-330 (6)) instead of the exit confirmation's."""
+    ``leg_stop``: the figures are worded as the leg-stop line (ADR-330 (6)) instead of the exit confirmation's.
+    ``fired`` (RA2 item 9): an index exit that HAS fired is worded in the past tense, not as the preview."""
     if leg_stop and risk.exposed and terms is not None and underlying:  # ADR-330 (55): the three lines
         three = leg_stop_lines(risk, names, terms, underlying, at_zero)
         if three is not None:
@@ -1766,12 +1767,13 @@ def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = Fal
     lines = []
     if before is not None and after is not None:
         lines.append(_stop_line(before, after) if leg_stop else render_explanation(
-            "paper_exit_widens_loss", before=before_text, after=after_text))
+            "paper_exit_fired_loss" if fired else "paper_exit_widens_loss", before=before_text, after=after_text))
     if risk.exposed:
         legs_text = names[risk.exposed[0]]
         for other in risk.exposed[1:]:
             legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
-        lines.append(render_explanation("paper_exit_less_protected", legs=legs_text))
+        lines.append(render_explanation("paper_exit_fired_less_protected" if fired else "paper_exit_less_protected",
+                                        legs=legs_text))
     if not lines:
         return _exit_risk_answer("cannot_tell")
     warning = lines[0] if len(lines) == 1 else render_explanation("paper_exit_warning_join", first=lines[0],
@@ -1915,7 +1917,7 @@ def index_exit_answer(booked: Sequence[Any], exits: Mapping[int, Decimal], terms
     risk = exit_risk(_paper(booked), legs, terms, priced=True)
     if risk.state != "yes":
         return _exit_risk_answer(risk.state)
-    return _exit_warning(risk, names)
+    return _exit_warning(risk, names, fired=True)  # only the monitor asks: this exit has fired (RA2 item 9)
 
 
 def _leg_name(state: Mapping[int, Any], stored: Any, trigger: Any) -> str:
