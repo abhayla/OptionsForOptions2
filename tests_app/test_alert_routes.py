@@ -24,7 +24,7 @@ TRADES = 3  # strategies sharing one name in the alert-label test
 FIRED = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
 STOPPED = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
 ACTIVE_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "no_longer_true_since",
-               "no_longer_true_line", "escalated_at", "worse_line", "answers"}
+               "no_longer_true_line", "escalated_at", "worse_line", "answers", "position_kind", "position_kind_text"}  # ADR-330 (64)
 HISTORY_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "escalated_at",
                 "worse_line", "answer", "answer_label", "answered_at", "closed_reason"}
 

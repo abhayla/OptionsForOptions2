@@ -132,11 +132,14 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     assert status == CREATED, out
     assert (await _record(app_db_url, sid, "T-03")).placed_order_ids == (new_id,)
     # a basket with no link: "Your own change"; the linked row keeps its rule
-    status, out = await _place(app_db_url, sid, None)
+    # FD3 item 6: this is already the THIRD basket after the entry, over the fixture plan's maximum of 2 (ADR-318 (5)): only
+    # a reducing basket is accepted (an "add" is refused STRATEGY_VALIDATION_505), so it reduces (test out of step)
+    status, out = await _place(app_db_url, sid, None, reduce=True)
     assert status == CREATED, out
     rows = (await _history(sid))["rows"]
     assert (rows[-1]["why_text"], rows[-1]["rule_id"], rows[-1]["rule_ids"]) == (OWN, None, [])
-    assert rows[-2]["rule_id"] == "T-03" and rows[-2]["why_text"] == EXPECTED_T03
+    # the linked row keeps its rule: it is the first basket after the entry (the repeat naming it again linked nothing)
+    assert rows[1]["rule_id"] == "T-03" and rows[1]["why_text"] == EXPECTED_T03
 
     # review of c128d015 (MAJOR): ONE basket for TWO acted-on records names BOTH (count line + each condition, in rule
     # order whatever order the ids were sent in), never only the last record read
@@ -155,7 +158,7 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     assert rows[-1]["why_text"] == "2 adjustment conditions triggered"
     lines = [await _inbox_condition(sid, t01.id), await _inbox_condition(sid, t09.id)]
     assert rows[-1]["why_lines"] == lines and lines[0] != lines[1]
-    assert rows[-3]["rule_id"] == "T-03" and rows[-3]["why_text"] == EXPECTED_T03  # the one-record row is unchanged
+    assert rows[1]["rule_id"] == "T-03" and rows[1]["why_text"] == EXPECTED_T03  # the one-record row is unchanged
 
     # a record of ANOTHER strategy (same user) is not found for this one, and the refusal names no new basket
     other = await _seeded(app_db_url, monkeypatch, "ADJ-13")

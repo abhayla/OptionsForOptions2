@@ -49,6 +49,18 @@ async def world(app_db_url, monkeypatch):  # noqa: F811
         await asyncio.sleep(STALL_S)
         return snapshot
 
+    # FD3 item 6: the scenario's frame is a USABLE feed tick, and a usable feed answers the spot with no REST call
+    # (``index_spot_of`` (1), ADR-330 (39)), so the plan-watch tests below never reached their REST reader (test out of
+    # step, not a defect). The feed has no usable tick on ``index_spot_of``'s first pass here: the REST reader is read.
+    from ofo.marketdata.spot_source import SourceReading, SourceState  # noqa: PLC0415
+    from ofo_app.routes import outcome  # noqa: PLC0415
+    real_resolve = outcome.resolve_spot
+
+    def feed_has_no_tick_first(feed, rest, last_close, **kwargs):
+        if rest is None and last_close is None:
+            feed = SourceReading(SourceState.ABSENT)
+        return real_resolve(feed, rest, last_close, **kwargs)
+    monkeypatch.setattr(outcome, "resolve_spot", feed_has_no_tick_first)
     monkeypatch.setattr(paper, "_hold_until_ready", stalled)
     monkeypatch.setattr(paper, "_read_ready", lambda _snapshot, _ids: False)  # an unready read: the hold is taken
     return app, sid, calls
