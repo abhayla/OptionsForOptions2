@@ -2143,13 +2143,14 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
 
 async def _answer_after_commit(db: Any, strategy_id: int, **kwargs: Any) -> TriggersOut:
     """Lane RA2 (Opus F-3 of Lane RA): the answer of a trigger route is built AFTER its commit. A read that fails then
-    (the list, the contracts, the book) must never report a stop that WAS stored as failed: the answer is built once more
+    (the list, the contracts, the book) must never report a stop that WAS stored as failed: the answer is
+    built once more
     on a clean transaction; if that fails too the route answers the success it is, with an empty list (the page reloads
     the list). Nothing is stored twice either way: a repeat press is answered ``already_set``."""
     for attempt in (1, 2):
         try:
             return await _triggers_out(db, strategy_id, **kwargs)
-        except Exception:  # noqa: BLE001 - the change is committed; only the reading of it failed (CancelledError is not caught)
+        except Exception:  # noqa: BLE001 - committed; only the reading failed (CancelledError is not caught)
             _LOG.error("triggers answer of strategy %s after the commit failed (try %s)", strategy_id, attempt,
                        exc_info=True)
             try:
