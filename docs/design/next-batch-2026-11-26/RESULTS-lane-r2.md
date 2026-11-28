@@ -1,4 +1,4 @@
-STATUS 00:30 | R2 items 1-5 + F1-F6 + R1 contract alignment: Fixed, not tested in a browser (frontend unit tests green; full push check pending) | item 6 browser walk: NOT YET (see Browser walk) | next: item 6 browser walk after Lane R1's stage 2 | blocker: the coordinator send_message was refused ("elevated_session_untrusted_device"), so this STATUS line is the report
+STATUS 01:10 | R2 items 1-6 done; browser walk S1-S8 PASS on the real backend (scratch merge of R2 2bcf089d3 + R1 09efab8df), two defects it found fixed (saved-stop spacing, banner); closing | proof level: cloud browser with replay prices, NOT live market, NOT a connected Zerodha session | blocker: none
 
 # Lane R2 results: real positions get the same screens (frontend), 28 Nov 2026
 
@@ -71,5 +71,35 @@ SAFE TO CLOSE: not yet (item 6 open).
 - Positions page: R1's contract gives `/positions` groups no `record`, so the record line there shows only if R1 adds it; the line is built and tested.
 - New tests: real-exit-door-r2-1128, real-builder-kind-r2-1128, real-fail-closed-r2-1128.
 
-## Browser walk (item 6)
-Not run at this STATUS. A walk against R1's real backend needs the cloud DB, the API, a built frontend and a real-tagged seeded position; started next.
+## Browser walk (item 6): cloud browser, real backend, replay prices (proof level: cloud browser; not the live market; no Zerodha session)
+Run by a Sonnet helper on scratch/r2-walk-1128 (R2 2bcf089d3 merged with R1 09efab8df), the API on ofo_test with the replay feed pinned to 8 Oct 2026 09:30 IST (the market is closed on a Saturday). Seeded rows: #1 a sent basket (tag real), #2 paper control, #3 draft (kind none), #4 an execution plan whose tag cannot be written (kind unknown). Screenshots (in the container only, not in the repo): /tmp/claude-0/r2walk/S1.png to S7-done.png. No broker call (api.log: 0 mentions of kite or zerodha), no non-local request from the browser.
+| Step | Result | What was seen |
+|---|---|---|
+| S1 Live row of the real position: Exit and Stops links, row line | PASS | links Stops, Exit, Plan; "Real position. Zerodha shows its quantity and P&L. Exits and stops you store here are not sent. Place them in Kite." and in bold "Not sent to Zerodha. Place it in Kite." |
+| S2 Press Exit: the sentence BEFORE the press | PASS | title "Exit Real (stored, not sent) positions"; "This stores your exit in the app as a record and a reminder. It does not place an order and does not change your Zerodha position. Place it in Kite." |
+| S3 Confirm | PASS | "Exit stored. Not sent to Zerodha. Place it in Kite. This position stays open here until Zerodha shows it closed." (no "paper"); row: "Exit stored 09:30 at 39.15. Not sent to Zerodha. Place it in Kite."; DB: real_action_records 0 to 1 (4 legs), paper_orders for #1 stayed 0 |
+| S4 Reload | PASS | still real, the record line still there |
+| S5 Stops | PASS (one defect, fixed) | "REAL Stops, strategy 1" panel with the real sentence; one leg stop armed, listed armed with Cancel and the not-sent line; a `stop` record stored. Defect: "Saved: stop above 140.70Not sent..." had no separator: fixed (". "), test real-banner-saved-r2-1128 |
+| S6 Alerts | PASS | a stop fired by the monitor: History row "...exit stored at 141.00. Not sent to Zerodha. Place it in Kite.", one `stop_fired` record, no paper order; an active alert offers "Exit the position" and carries "Stop reached 10:00 at 141.00. Stored as an exit record. Not sent to Zerodha. Place it in Kite."; Exit opens the same real dialog and stores one more record |
+| S7 Paper control | PASS | "Exit Paper positions", "This is not a real trade...", "Exit placed on paper (orders 6, 7, 8, 9)." |
+| S8 Fail closed | PASS | unknown #4: only Plan and "Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown."; draft #3 no links; direct POST orders and triggers: 503 on #4, 422 on #3, nothing stored |
+Not provable in this walk (PC ONLY or live, cloud-first-testing T3): "the Zerodha quantity and P&L figure unchanged". With no broker session the real row shows no Zerodha figure at all, so before and after are equal only vacuously; the unit tests pin it with a stated figure (real-same-screens-core, real-record-pages). The Positions page showed the raw error of the missing broker session in its Real P&L box (pre-existing, not touched).
+Defect fixed after the walk: the real Stops panel and the real Exit dialog sat under "Paper trades - not real money". The banner now reads "Paper trades are not real money. A real position here only stores your actions; nothing is sent to Zerodha." whenever a real group, a real Stops panel or a real dialog is on the page.
+
+## Found, not assigned
+- Alerts page: after "Exit the position" is confirmed the exit door closes and the page shows no done line ("Exit stored. Not sent..."); the record is stored and shows in History and on Live Strategies. Pre-existing for paper (the door closes on confirm), but for a real action the user sees no confirmation on that page. File: frontend/src/pages/AlertsPage.vue (`@exit-closed`) with PaperStrategies.vue `watch(confirm)`; evidence: walk S6b. Tests alerts-exit-door-w2b pin the closing, so a change needs the owner's word.
+- Live Strategies logs two 404s (GET /api/paper/strategies/{id}) for a real or unknown strategy (no paper book): console noise only. File: LiveStrategyCard.vue readPaperBook.
+- A real unknown kind cannot occur organically (`kinds_of` claims a tag for any strategy with an order); the walk forced it with a patch. It is the fail-closed path, not a defect.
+
+## Not done
+- The Alerts-page done line (above). The live Zerodha quantity and P&L comparison (needs a connected broker).
+- Positions page record line: R1's `/positions` groups carry no `record`.
+- The builder dialog for a book with no kind field opens locked until the strategy list answers; if R1 adds `position_kind` to the book route that extra read is unnecessary.
+
+| task | model | minutes |
+|---|---|---|
+| build, tests, review fixes | Sonnet (this session) | about 330 |
+| diff review | Opus (reviewer) | 13 |
+| browser walk S1 to S8 | Sonnet helper | 10 |
+
+SAFE TO CLOSE after this push (open: the two items under Found, not assigned, and the live Zerodha figure check).

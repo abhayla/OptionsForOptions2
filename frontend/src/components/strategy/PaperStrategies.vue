@@ -9,7 +9,7 @@
 <template>
   <section class="rounded-lg border-2 border-dashed border-accent text-sm" :class="compact ? 'p-2' : 'p-3'" data-testid="paper-strategies">
     <p class="mb-2 rounded bg-accent-soft px-2 py-1 text-xs font-semibold text-accent" data-testid="paper-mode-header">Paper mode</p>
-    <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ hasReal ? MIXED_BANNER : BANNER }}</p>
+    <p class="rounded bg-amber-50 px-2 py-1 font-medium" data-testid="paper-banner">{{ hasReal || realStops || confirmKind === 'real' ? MIXED_BANNER : BANNER }}</p>
     <p v-for="l in noteLines" :key="l.key" class="mt-2 text-xs text-ink-muted" data-testid="paper-exit-link-note">{{ l.text }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->

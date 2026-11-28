@@ -276,7 +276,7 @@ async function keep(t) {
     <!-- S-26: one reserved status slot, so a line appearing or going does not move the boxes the user is typing in -->
     <div class="mt-2 min-h-5" data-testid="stops-status-slot">
       <p v-if="error" class="text-red-700" role="alert" data-testid="stops-error">{{ error }}</p>
-      <p v-else-if="saved" class="text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ saved }}<template v-if="kind === 'real'"> {{ NOT_SENT_LINE }}</template></p>
+      <p v-else-if="saved" class="text-xs text-ink-muted" role="status" data-testid="stops-saved">{{ kind === 'real' ? `${saved}. ${NOT_SENT_LINE}` : saved }}</p>
     </div>
 
     </div>
