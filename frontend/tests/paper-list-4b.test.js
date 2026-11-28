@@ -22,6 +22,7 @@ vi.mock('@/services/api', async (importActual) => {
 })
 
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
+import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import PositionsPage from '@/pages/PositionsPage.vue'
 import AlertsPage from '@/pages/AlertsPage.vue'
 import { resetActiveAlerts } from '@/lib/paperAlerts'
@@ -250,12 +251,18 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(row.get('[data-testid="paper-ltp"]').text()).toBe('—')
     const id = d.strategies[2].positions[0].contract_id
     await all(w, 'paper-group')[1].get(`[data-testid="select-leg-${d.strategies[2].strategy_id}-${id}"]`).setValue(true)
-    // Lane FJ r3 (TD O-3): the leg has no live price, so Exit (1) is grey beforehand and says which contract has no price; no dialog opens
+    // ADR-330: Exit (1) stays enabled; it opens the dialog, which says which contract has no price and keeps Confirm off
     const btn = t(w, `exit-selected-${d.strategies[2].strategy_id}`)
-    expect(btn.element.disabled).toBe(true)
+    expect(btn.element.disabled).toBe(false)
     const name = all(w, 'paper-group')[1].get(`[data-testid="select-leg-${d.strategies[2].strategy_id}-${id}"]`).attributes('aria-label').replace('Select ', '')
-    expect(all(w, 'paper-exit-reason').map((r) => r.text())).toContain(`No price for ${name}`)
-    expect(w.find('[data-testid="paper-confirm"]').exists()).toBe(false)
+    await btn.trigger('click')
+    await flushPromises()
+    const dlg = w.findComponent(PaperConfirmDialog)
+    expect(dlg.props('open')).toBe(true)
+    expect(dlg.props('blocked')).toBe(true)
+    expect(dlg.props('error')).toBe(`No price for ${name}`)
+    expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
+    expect(calls.filter((c) => c[0] === 'POST')).toHaveLength(0)
   })
 
   it('D-40: the header shows the server\'s left-out line as sent, and no line when none was left out', async () => {

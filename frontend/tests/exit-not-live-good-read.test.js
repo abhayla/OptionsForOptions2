@@ -213,9 +213,12 @@ describe('Positions: the Exit dialog on a GOOD list read whose legs are not live
     expect(dlg(w).props('error')).toMatch(/^No price for /)
   })
 
-  it('a leg\'s price_state missing (unknown): fail closed, no dialog from the link; opened live then unknown it is blocked', async () => {
+  it('a leg\'s price_state missing (unknown): fail closed: the link opens the dialog with Confirm off; opened live then unknown it is blocked', async () => {
     const w = await positions(LIST_NO_FIELD)
-    expect(dlg(w).props('open')).toBe(false)
+    expect(dlg(w).props('open')).toBe(true)
+    expect(dlg(w).props('blocked')).toBe(true)
+    expect(dlg(w).props('error')).toMatch(/^No price for /)
+    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
     const v = await positions(LIST_LIVE)
     await listRead(LIST_NO_FIELD)
     expect(dlg(v).props('blocked')).toBe(true)
