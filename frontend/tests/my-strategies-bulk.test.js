@@ -468,3 +468,20 @@ describe('UX-05 loading line while the list is re-read', () => {
     expect(rowIds(w)).toEqual(['3'])
   })
 })
+
+// I-70 (ADR-330 (8), Lane FC): the spec's own example, plural: 14 selected, 3 running.
+const RUN = { has_order: true, has_paper_order: true, status_word: 'Running' }
+describe('I-70 bulk confirmation, plural running clause', () => {
+  it('names the count and "3 of them are running" (the spec sentence)', async () => {
+    const { bulkConfirmText } = await import('@/lib/strategyActivity')
+    expect(bulkConfirmText(14, 3)).toBe('Delete 14 strategies? 3 of them are running.')
+    expect(bulkConfirmText(2, 2)).toBe('Delete 2 strategies? 2 of them are running.')
+  })
+  it('on the page: three running rows ticked give the plural sentence', async () => {
+    listAnswer = () => Promise.resolve({ data: { strategies: [mk(1, RUN), mk(2, RUN), mk(3, RUN)] } })
+    const w = await open()
+    await tick(w, 1); await tick(w, 2); await tick(w, 3)
+    await w.get('[data-testid="delete-selected"]').trigger('click')
+    expect(w.get('[data-testid="bulk-confirm-text"]').text()).toBe('Delete 3 strategies? 3 of them are running.')
+  })
+})

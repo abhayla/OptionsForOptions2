@@ -68,6 +68,7 @@ PR241_SELECTION = {
     "tests_app/test_paper_order_lots_limit.py",  # Lane K: imports StrategyRefused (the door's refusal class)
     "tests_app/test_exit_adopted_313b.py",  # imports StrategyRefused from ofo_app.routes.strategies
     "tests_app/test_background_cycle.py",  # imports ofo.errors.explanations (changed here)
+    "tests_app/test_exit_market_adr330_60.py",  # Lane FC3: imports ofo.errors.explanations (the host-locale date tests)
     "tests_app/test_wording_scan_once.py",  # Q1 r2: GET adjustment-check, scans ofo.errors.explanations
     "tests_app/test_times_settings.py",  # GC-SET 5a2: calls catalogue_picker.publish_time / loaded_before
     "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes

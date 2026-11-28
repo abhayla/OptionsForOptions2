@@ -64,7 +64,18 @@
       <p v-if="checkStatus === 'failed'" class="mt-1 text-xs text-red-700" data-testid="rules-load-failed">{{ RULES_LOAD_FAILED_TEXT }}</p>
       <p v-if="settledRecords.state === 'failed'" class="mt-1 text-xs text-red-700" data-testid="rules-earlier-failed">{{ RULES_LOAD_FAILED_TEXT }}</p>
       <ul v-if="notChecked.length || earlier.length" class="mt-1 space-y-0.5 text-xs text-ink-muted" data-testid="rules-line">
-        <li v-for="n in notChecked" :key="n.rule_id" data-testid="rules-not-checked">{{ ruleNotCheckedText(n.reason) }}</li>
+        <template v-for="g in notCheckedGroups" :key="g.reason">
+          <li v-if="g.rules.length === 1" data-testid="rules-not-checked">{{ ruleNotCheckedText(g.rules[0].reason) }}</li>
+          <li v-else data-testid="rules-not-checked-group">
+            <!-- UX-SW6: one line for rules that share a reason; the rules behind an expand -->
+            <details data-testid="rules-not-checked-list">
+              <summary data-testid="rules-not-checked-summary">{{ notCheckedGroupText(g.rules.length, g.said) }}</summary>
+              <ul class="mt-0.5 space-y-0.5 pl-4">
+                <li v-for="(r, i) in g.rules" :key="`${r.rule_id}-${i}`" data-testid="rules-not-checked-item">{{ r.condition || r.rule_id }}</li>
+              </ul>
+            </details>
+          </li>
+        </template>
         <li v-for="e in earlier" :key="e.id" data-testid="rules-earlier">{{ ruleEarlierText(e.text, e.outcome_text, istStamp(e.shown_at), istStamp(e.closed_at)) }}</li>
         <li v-if="earlierMore" data-testid="rules-earlier-more">{{ earlierMoreText(earlierMore) }}</li>
       </ul>
@@ -77,7 +88,7 @@
     </div>
     <!-- GC-ADJ2 step 6 (REQ-163): the entry, every adjustment and the whole-trade totals; read when opened -->
     <AdjustSteps :strategy-id="savedId" />
-    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" :exits="exits" :exits-failed="exitsFailed" @retry-check="retryCheck" />
+    <PlanEntry v-if="status === 'tracked'" :strategy-id="savedId" :exits-mode="tradeMode === 'real' ? 'real' : 'paper'" :check="check" :check-status="checkStatus" :check-stale="checkStale" :check-refusal="checkRefusal" :exits="exits" :exits-failed="exitsFailed" @retry-check="retryCheck" />
     <AdjustDrawer
       :open="drawerOpen" :strategy-id="savedId" :lines="drawerLines" :detected="!!view?.detections?.length || flags.length > 0" :card-rows="cardRows(raw)"
       :suggestion-ids="flagIds"
@@ -104,12 +115,13 @@ import { istClock, istStamp } from '@/lib/displayFormat'
 import { openRecords, settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
-import { armedIndexExits, triggerListOf, triggersPath } from '@/lib/paperTriggers'
+import { armedIndexExits, realTriggersPath, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
   shared: { type: Object, default: null }, // GC-ICFIX round 2 (F4): the page's ONE read of /paper/strategies/{id}: the profit figure and its As of come from it
   sharedFailed: { type: Boolean, default: false }, // the last shared read failed: the last figure stays, with the paused sentence
+  tradeMode: { type: String, default: 'paper' }, // 'real' = a real-mode trade: its exits are not read from the paper route (ADR-330 (58))
   legs: { type: Array, default: null }, // the builder reply's legs: their whole-lot count names each paper leg in lots (D-B39)
 })
 
@@ -160,6 +172,17 @@ const typed = computed(() => !!check.value?.strategy_type)
 const flags = computed(() => (typed.value ? (check.value.results ?? []) : [])
   .filter((r) => r.kind === 'flag' && !dismissed.value.includes(r.suggestion_id)))
 const alreadyTrue = computed(() => (typed.value ? (check.value.results ?? []) : []).filter((r) => r.kind === 'already_true'))
+// UX-SW6 (new wording, pending owner read): rules that share one reason are one line with the count
+const notCheckedGroupText = (n, reason) => `${n} rules not checked: ${reason}`
+const notCheckedGroups = computed(() => {
+  const by = new Map()
+  for (const r of notChecked.value) {
+    const key = said(r.reason) || ''
+    if (!by.has(key)) by.set(key, { reason: key, said: key, rules: [] })
+    by.get(key).rules.push(r)
+  }
+  return [...by.values()].map((g) => (g.rules.length > 1 && !g.said ? { ...g, said: 'no reason was given' } : g))
+})
 const notChecked = computed(() => (typed.value ? (check.value.results ?? []) : []).filter((r) => r.kind === 'not_checked' && r.reason))
 // this trade's settled records only, newest first, at most EARLIER_SHOWN_MAX; the app's one read of the records (header), never a second fetch
 const allEarlier = computed(() => [...(settledRecords.byStrategy[props.savedId] ?? [])].sort((a, b) => Date.parse(b.shown_at) - Date.parse(a.shown_at)))
@@ -197,7 +220,7 @@ const exits = ref([])
 const exitsFailed = ref(false)
 async function readExits(id) {
   try {
-    const { data } = await api.get(triggersPath(id))
+    const { data } = await api.get(props.tradeMode === 'real' ? realTriggersPath(id) : triggersPath(id))
     if (id !== props.savedId) return
     const list = triggerListOf(data)
     exits.value = armedIndexExits(list ?? [])

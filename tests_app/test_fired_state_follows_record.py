@@ -123,7 +123,7 @@ def test_r2_held_over_stop_sentence_uses_the_record_figures_only(monkeypatch):
     (held,) = results
     text = route.stop_text(held, _stop_limits(), D("-5000"), fired_at)  # the live loss is far inside the line
     assert "52" in text and "50" in text and "loss now" not in text and "5,000" not in text
-    assert text.endswith("IST") and "reached at" in text
+    assert text.endswith("IST") and "seen by the check at" in text
 
 
 def test_r2_held_over_credit_stop_sentence_uses_the_record_loss(monkeypatch):

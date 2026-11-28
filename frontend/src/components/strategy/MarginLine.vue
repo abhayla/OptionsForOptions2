@@ -17,7 +17,7 @@
 // (D-A40), and the shortfall is ONE visible line with the server's full message behind More (D-A41); the full-width
 // paragraph under the summary is gone.
 import { computed, ref } from 'vue'
-import { istTime } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, istTime } from '@/lib/displayFormat'
 import { displayOrDash, exactLine } from '@/lib/summaryFigures'
 import { MARGIN_LINE_HIDDEN_REASON, capabilityOn } from '@/lib/brokerCapabilities'
 import FigureHint from '@/components/common/FigureHint.vue'
@@ -41,7 +41,8 @@ const shortfallText = computed(() => (hasServerMessage.value ? props.margin.shor
 // I-8: the server's shortfall message already carries both figures, so the figures sentence is not printed a second time.
 const showFigures = computed(() => !(short.value && hasServerMessage.value))
 const openShort = ref(false)
-const checkedAtLine = computed(() => `Checked at ${istTime(props.margin.checked_at)}`)
+// UX-B13: a time that cannot be read prints no "Checked at" line ("Time not available" is never inside a sentence)
+const checkedAtLine = computed(() => { const t = istTime(props.margin.checked_at); return t === TIME_UNAVAILABLE ? null : `Checked at ${t}` })
 </script>
 
 <template>
@@ -61,7 +62,7 @@ const checkedAtLine = computed(() => `Checked at ${istTime(props.margin.checked_
           <dd class="num font-medium text-ink" data-testid="margin-needed" :data-raw="margin.needed">{{ displayOrDash(margin.needed_display) }}</dd>
         </div>
         <div class="flex min-h-6 items-center justify-between gap-2">
-          <dt class="flex items-center text-ink-muted">Margin available<FigureHint id="margin_available" :lines="[checkedAtLine, exactLine(margin.available)]" /></dt>
+          <dt class="flex items-center text-ink-muted">Margin available<FigureHint id="margin_available" :lines="[checkedAtLine, exactLine(margin.available)].filter(Boolean)" /></dt>
           <dd class="num font-medium text-ink" data-testid="margin-available" :data-raw="margin.available">{{ displayOrDash(margin.available_display) }}</dd>
         </div>
       </dl>

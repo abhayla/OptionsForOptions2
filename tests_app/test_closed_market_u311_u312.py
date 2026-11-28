@@ -90,16 +90,16 @@ def _held_stop():
 def test_stop_fired_today_shows_the_time_only():
     at = datetime.datetime(2026, 11, 13, 9, 59, tzinfo=datetime.UTC)  # 15:29 IST
     text = str(chk.stop_text(_held_stop(), (), None, {"T-06": at}, datetime.date(2026, 11, 13)))
-    assert text.endswith("; reached at 15:29 IST"), text
+    assert text.endswith("; seen by the check at 15:29 IST"), text
 
 
 def test_stop_fired_on_an_earlier_day_shows_date_and_time():
     at = datetime.datetime(2026, 11, 13, 9, 59, tzinfo=datetime.UTC)
     text = str(chk.stop_text(_held_stop(), (), None, {"T-06": at}, datetime.date(2026, 11, 16)))
-    assert text.endswith("; reached on 13 Nov 2026 at 15:29 IST"), text
+    assert text.endswith("; seen by the check on 13 Nov 2026 at 15:29 IST"), text
 
 
 def test_stop_fired_late_evening_utc_is_the_next_ist_day():
     at = datetime.datetime(2026, 11, 13, 19, 0, tzinfo=datetime.UTC)  # 00:30 IST on the 14th
     text = str(chk.stop_text(_held_stop(), (), None, {"T-06": at}, datetime.date(2026, 11, 14)))
-    assert text.endswith("; reached at 00:30 IST"), text
+    assert text.endswith("; seen by the check at 00:30 IST"), text
