@@ -6,6 +6,8 @@
      refusal text arrives in `error`. Confirm emits ONE `confirm` with the whole list; `busy` blocks a second press. -->
 <template>
   <Modal :open="open" :title="title" fallback-focus="[data-testid='add-to-paper']" data-testid="paper-confirm" @close="emit('cancel')">
+    <!-- F1b W-25 (1366 x 768): the page's one line about a staged change the Exit all discards comes FIRST: the body scrolls, and below the rows it was out of sight while Confirm stayed in view -->
+    <p v-if="note" class="mb-3 text-sm font-medium text-warn" role="status" data-testid="paper-discard-note">{{ note }}</p>
     <ul class="text-sm" data-testid="paper-orders">
       <li v-for="(row, i) in rows" :key="row.key" class="flex flex-wrap items-center gap-2 border-b border-line py-2" data-testid="paper-order">
         <Chip :kind="row.side === 'BUY' ? 'buy' : 'sell'" :label="row.side === 'BUY' ? 'B' : 'S'" />
@@ -57,7 +59,6 @@
     <label v-if="notLiveLine" class="mt-3 flex items-start gap-2 text-sm font-medium text-warn" data-testid="paper-not-live">
       <input v-model="notLiveAck" type="checkbox" class="mt-1" data-testid="paper-not-live-ack" />{{ notLiveLine }}
     </label>
-    <p v-if="note" class="mt-3 text-sm font-medium text-warn" role="status" data-testid="paper-discard-note">{{ note }}</p>
     <p class="mt-3 text-xs text-ink-muted" data-testid="paper-not-real">{{ PAPER_NOT_REAL_TEXT }}</p>
     <!-- fix/paper-dialog-safe (ADR-017): a stored order is never offered again; an answer of unknown outcome sends the user to the
          Orderbook first and keeps Confirm locked for PAPER_UNKNOWN_HOLD_MS; a refusal (4xx: nothing stored) unlocks after an edit -->
