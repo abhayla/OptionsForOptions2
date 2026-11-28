@@ -5308,6 +5308,15 @@
             "title": "Closed",
             "type": "boolean"
           },
+          "entries_sentence": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Entries Sentence"
+          },
           "next_open_at": {
             "anyOf": [
               {
@@ -5338,6 +5347,7 @@
         "required": [
           "closed",
           "sentence",
+          "entries_sentence",
           "next_open_at",
           "server_time"
         ],
@@ -17843,6 +17853,15 @@
           "level_text": {
             "title": "Level Text"
           },
+          "not_applicable_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Not Applicable Text"
+          },
           "set_before_adjustment": {
             "default": false,
             "title": "Set Before Adjustment",
@@ -17852,7 +17871,8 @@
             "enum": [
               "armed",
               "fired",
-              "cancelled"
+              "cancelled",
+              "not_applicable"
             ],
             "title": "State",
             "type": "string"

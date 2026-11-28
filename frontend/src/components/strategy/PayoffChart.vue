@@ -97,7 +97,7 @@
 </template>
 
 <script setup>
-import { computed, getCurrentInstance, nextTick, ref, watch, onBeforeUnmount, onMounted, onUnmounted } from 'vue'
+import { computed, nextTick, ref, watch, onBeforeUnmount, onMounted, onUnmounted } from 'vue'
 import Chart from 'chart.js/auto'
 import { hatchPattern, pointSigns, segmentColour } from '@/lib/payoffRegions'
 import { groupMoney, strikeLabel } from '@/lib/displayFormat'
@@ -215,11 +215,16 @@ const marks = {
   },
 }
 
-// No chart work once this component is gone: a mounted hook queued behind an unmount, or a watcher, can still call in.
-const vm = getCurrentInstance()
+// Lane FK (28 Nov 2026): a redraw queued before the chart was removed, or before the page's DOM was torn down (a test
+// leaves components mounted), must do no work: no DOM read, no new chart.
 let gone = false
+const domGone = () => gone || typeof document === 'undefined' || !document?.documentElement
 const createChart = () => {
-  if (gone || vm?.isUnmounted || typeof document === 'undefined') return
+  if (domGone()) {
+    if (chartInstance) chartInstance.destroy()
+    chartInstance = null
+    return
+  }
   // G-065 round 2 (REQ-148 AC-6): the previous reply's chart goes FIRST, so a reply with no curve never leaves the
   // old line on screen
   if (chartInstance) chartInstance.destroy()

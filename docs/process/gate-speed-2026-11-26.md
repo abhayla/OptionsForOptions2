@@ -329,3 +329,12 @@ product does.
 - Harness runs were serial, one gate at a time; running two gates at once on one host would slow both.
 - The report line of a stopped step reads `FAIL <step> <s>s`; only its log says `stopped: preflight failed`.
 - The docs lane's gain is small by design.
+
+## Documentation-only path on by default: proof (28 Nov 2026)
+
+Owner decision 28 Nov 2026, 09:55 IST: "turn on the faster path for documentation-only pushes" (documentation only; the
+"changed since last pass" mode for code stays off until after Monday 30 Nov). Commit `196536ed` made the docs-since-pass
+lane the default and narrowed its list to markdown inside a records folder. Measured the same day on a 2-job run of the
+full gate for that commit (it changes code, so it ran in full): `TOTAL PASS 1376.5s (steps sum 2159.6s, jobs 2)`, marker
+written, push accepted. This paragraph is the next commit and changes this one documentation file only, so its gate run
+is the proof of the short path (the lane line, the stages run and the wall time are in the lane's report).

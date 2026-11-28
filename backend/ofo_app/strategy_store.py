@@ -22,7 +22,6 @@ Transaction control (commit) stays with the caller.
 
 from __future__ import annotations
 
-import logging
 
 import dataclasses
 from dataclasses import dataclass
@@ -159,19 +158,41 @@ _KINDS = text(
 
 
 async def kinds_of(conn: Any, strategy_ids: list[int]) -> dict[int, str]:
-    """ADR-330 (64): strategy id -> position kind (position_kind.kind_of) for the asked ids, one read. An id not found,
-    or a read that fails, is "unknown" (never guessed as paper)."""
+    """ADR-330 (64): strategy id -> position kind (position_kind.kind_of) for the asked ids, one read. An id not found
+    is "unknown" (never guessed as paper). A read that fails PROPAGATES (``SQLAlchemyError``): the old catch-all
+    answered "unknown" for every id, and the aborted transaction then failed the next statement and hid the cause (the class of
+    #858). The caller refuses or answers 5xx with the catalogue sentence; it never reads "no kinds" as an answer."""
     from ofo_app import position_kind  # noqa: PLC0415 - one rule, defined beside the sentence
     ids = sorted(set(strategy_ids))
     if not ids:
         return {}
     out = dict.fromkeys(ids, position_kind.UNKNOWN)
-    try:
-        for r in (await conn.execute(_KINDS, {"ids": ids})).all():
-            out[int(r.id)] = position_kind.kind_of(r.has_order, r.has_paper_order, r.held)
-    except Exception:  # noqa: BLE001 - fail closed: every asked id stays unknown
-        logging.getLogger(__name__).warning("position kinds could not be read", exc_info=True)
+    for r in (await conn.execute(_KINDS, {"ids": ids})).all():
+        out[int(r.id)] = position_kind.kind_of(r.has_order, r.has_paper_order, r.held)
     return out
+
+
+async def paper_order_refused(conn: Any, strategy_id: int, order_kinds: Iterable[str]) -> bool:
+    """FD5 N1 (ADR-330 (64), (58)): True when a USER paper order of these kinds must be refused for this strategy. An
+    unreadable kind (or a strategy not found) always refuses (fail closed); a REAL position that is not held at a
+    broker (a basket was sent and no paper order exists) takes no paper order of any kind, because the order would
+    turn its kind from real to paper; a held entry (ADR-292 (4): the user records each broker change with the paper
+    forms) refuses only an exit (ADR-330 (64): no exit here), and its kind stays real whatever is recorded. A read
+    that fails answers the not-available refusal (nothing stored)."""
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415 - only this answer needs it
+
+    try:
+        kind = (await kinds_of(conn, [strategy_id])).get(strategy_id, "unknown")
+    except SQLAlchemyError:  # FD5 D (F4): a failed kind read is a refusal with a catalogue sentence, never a bare 500
+        from ofo_app.errors import Failure  # noqa: PLC0415
+        from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
+        raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
+    if kind == "unknown":
+        return True
+    if kind != "real":
+        return False
+    held = bool((await conn.execute(_HELD, {"id": strategy_id})).scalar())
+    return not held or "exit" in set(order_kinds)
 
 
 async def has_order(conn: Any, strategy_id: int) -> bool:

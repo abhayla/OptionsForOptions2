@@ -55,6 +55,11 @@ CREDIT_UNKNOWN: Final = "stop_credit_unknown"
 MARGIN_NOT_READ: Final = "stop_margin_not_read"
 #: ADR-250: a plan saved before ADR-247 holds a per-stage % (its T-06 / T-16 values); the stage is not known
 STAGE_UNKNOWN: Final = "stop_stage_unknown"
+#: FE2 #861 / #866: the trade's EXPIRY KIND is not known (a far-month leg whose own future is not listed, R3): the
+#: percent stop and T-06 cannot name a stage, and the reason must say THAT, not "stop lines not supplied". Its
+#: sentence is the error catalogue's (Lane FC3: RESULTS-lane-fe2 "For the owner lane"); until then the code answers
+#: with the existing "days left not available" row, fail closed (never a passed stop).
+EXPIRY_KIND_UNKNOWN: Final = "stop_expiry_kind_unknown"
 
 #: the live check's "not checked" code (error catalogue, ``adjust_trigger_*``) for each reason a line has no amount;
 #: a reason outside this map -> ``NOT_CHECKED_OTHER`` (fail closed: never a passed stop)
@@ -70,6 +75,7 @@ NOT_CHECKED: Final = {
     CREDIT_UNKNOWN: f"{_T}stop_credit_unknown",
     MARGIN_NOT_READ: f"{_T}missing_margin",
     STAGE_UNKNOWN: f"{_T}missing_days_left",
+    EXPIRY_KIND_UNKNOWN: f"{_T}expiry_kind_unknown",
 }
 
 
@@ -179,6 +185,7 @@ def is_loss_stop(rule_id_: object, stops: frozenset[str] = frozenset()) -> bool:
 __all__ = [
     "CREDIT_RULE",
     "CREDIT_UNKNOWN",
+    "EXPIRY_KIND_UNKNOWN",
     "GUARDS_UNREADABLE",
     "KINDS",
     "LINE_OF_TRIGGER",

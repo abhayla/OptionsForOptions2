@@ -81,6 +81,7 @@ async def test_core_b_a_trade_whose_exit_cannot_be_checked_is_never_shown_as_wat
     market.tick(keys[1], "12.50")
     client = _Client()
     _w, now = await _worker_cycle(scn, stored.id, client, _rest(scn))
+    await monitoring_state.ExitsPublisher(client, "m").publish([], {}, now)  # (a): a live monitor's report exists
     assert (await monitoring_state.read_states(client, [stored.id], now, heartbeat=_fresh))[stored.id].status \
         == monitoring_state.ACTIVE
 

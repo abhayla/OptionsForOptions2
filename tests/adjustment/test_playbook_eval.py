@@ -470,3 +470,50 @@ def test_stop_with_marked_loss_above_max_loss_is_not_checked_inconsistent_prices
     ok = replace(s, pnl=D(-299))  # inside max loss: the guard is silent
     assert not any(isinstance(r, NotChecked) and r.code.endswith("inconsistent_prices")
                    for r in evaluate(body_of(sc), ok, {}, None).results)
+
+
+# ---- Lane FR item 3 (#860): a plain "HH:MM" time exit does not need the expiry kind ----------------------------------
+def _unknown_kind_state(sc, **over):
+    base = state_of(sc).__dict__
+    return StrategyState(**{**base, "expiry_kind": "", "days_left": None, **over})
+
+
+def _t10b_result(sc, state):
+    body = {**body_of(sc), "guards": {**body_of(sc).get("guards", {}), "time_exit": "14:30"}}
+    ev = evaluate(body, state, {}, None)
+    return next((r for r in ev.results if r.trigger_id == "T-10b"), None)  # None: checked, not met
+
+
+def test_a_plain_time_exit_with_an_unknown_kind_fires_at_its_time_on_expiry_day():
+    sc = load("ADJ-14")
+    expiry = datetime.date.fromisoformat(sc["expiry"])
+    r = _t10b_result(sc, _unknown_kind_state(sc, today=expiry, expiry=expiry, hhmm="14:31"))
+    print("T-10b at 14:31", r)
+    assert isinstance(r, Flag) and (r.value, r.threshold) == ("14:31", "14:30")
+    early = _t10b_result(sc, _unknown_kind_state(sc, today=expiry, expiry=expiry, hhmm="14:29"))
+    assert early is None  # checked and not due: no answer of "not checked"
+
+
+def test_a_plain_time_exit_with_an_unknown_kind_waits_for_expiry_day_on_another_day():
+    sc = load("ADJ-14")
+    expiry = datetime.date.fromisoformat(sc["expiry"])
+    r = _t10b_result(sc, _unknown_kind_state(sc, today=expiry - datetime.timedelta(days=2), expiry=expiry,
+                                             hhmm="14:31"))
+    assert isinstance(r, NotChecked) and r.code == "adjust_trigger_waits_expiry_day"
+
+
+# ---- Lane FR item 4 (#861): no stops because the expiry kind is not known -------------------------------------------
+def test_a_state_without_stops_names_the_unknown_expiry_kind_when_days_left_is_not_known():
+    sc = load("ADJ-14")
+    unknown = StrategyState(**{**state_of(sc).__dict__, "stops": None, "days_left": None})
+    ev = evaluate(body_of(sc), unknown, {}, None)
+    t06 = next(r for r in ev.results if r.trigger_id == "T-06")
+    print("T-06", t06)
+    assert isinstance(t06, NotChecked) and t06.code == sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN)
+
+
+def test_a_state_without_stops_but_with_a_stated_kind_still_says_not_supplied():
+    sc = load("ADJ-14")
+    ev = evaluate(body_of(sc), StrategyState(**{**state_of(sc).__dict__, "stops": None}), {}, None)
+    t06 = next(r for r in ev.results if r.trigger_id == "T-06")
+    assert isinstance(t06, NotChecked) and t06.code == sl.STOPS_NOT_SUPPLIED

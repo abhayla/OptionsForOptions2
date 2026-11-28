@@ -21,6 +21,7 @@ from __future__ import annotations  # noqa: I001 - the import-door test pins the
 
 import dataclasses
 import datetime
+from types import SimpleNamespace
 from collections.abc import Callable, Coroutine, Hashable, Mapping, Sequence
 from dataclasses import dataclass
 from decimal import Decimal
@@ -545,6 +546,9 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     lock (paper_exit, closes="locked"): each named leg closes its whole locked net, a leg already flat is refused, so a
     leg exits once even when two exits race and a leg that grew since the read closes whole."""
     stored = await _load(db, user_ref, strategy_id)
+    # I-158 (64) / F5: a real or unknown position is refused FIRST, before any book read: a strategy with only execution
+    # plans (a real position, no paper order) has no paper book and would otherwise answer the 404 of an empty book
+    await paper_limit.refuse_real_exit(db, strategy_id, [SimpleNamespace(kind="exit")])
     bk = await _load_book(db, strategy_id)
     if bk is None:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)

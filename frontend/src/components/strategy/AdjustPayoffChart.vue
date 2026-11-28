@@ -18,7 +18,7 @@
 </template>
 
 <script setup>
-import { computed, getCurrentInstance, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import Chart from 'chart.js/auto'
 
 const props = defineProps({
@@ -30,12 +30,12 @@ const canvas = ref(null)
 let chart = null
 const shown = computed(() => props.lines.filter((l) => !props.hidden.includes(l.id)))
 
-const vm = getCurrentInstance()
+// Lane FK: no chart work after removal or after the page's DOM is gone
 let gone = false
 function draw() {
   chart?.destroy()
   chart = null
-  if (gone || vm?.isUnmounted || typeof document === 'undefined' || !canvas.value) return
+  if (gone || typeof document === 'undefined' || !canvas.value) return
   chart = new Chart(canvas.value, {
     type: 'line',
     data: {
@@ -53,5 +53,9 @@ function draw() {
 }
 onMounted(draw)
 watch(() => [props.lines, props.hidden], draw, { deep: true })
-onBeforeUnmount(() => { gone = true; chart?.destroy(); chart = null })
+onBeforeUnmount(() => {
+  gone = true
+  chart?.destroy()
+  chart = null
+})
 </script>

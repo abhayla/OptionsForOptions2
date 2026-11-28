@@ -65,6 +65,7 @@ function drop() {
   if (chart) { chart.destroy(); chart = null }
 }
 
+// Lane FK: draw() runs after an await; once the card is removed or the DOM is gone it builds nothing
 let gone = false
 function draw() {
   drop()
@@ -148,5 +149,8 @@ watch(() => [props.strategyId, props.version], () => {
 })
 watch(() => [props.strategyId, props.version, props.active, invert.value], load, { immediate: true })
 watch(reply, async () => { await nextTick(); draw() })
-onBeforeUnmount(() => { gone = true; drop() })
+onBeforeUnmount(() => {
+  gone = true
+  drop()
+})
 </script>

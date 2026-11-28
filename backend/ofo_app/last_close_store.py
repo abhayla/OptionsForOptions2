@@ -605,7 +605,7 @@ def _resolve_id(raw: object, known: dict | None, aliases: dict | None) -> str:
     return next(iter(ids))
 
 
-def _catalogue_check(row: dict, iid: str, known: dict | None) -> None:
+def _catalogue_check(row: dict, iid: str, known: dict | None, aliases: dict | None = None) -> None:
     if known is None:
         return
     name, expiry = known[iid]
@@ -613,8 +613,12 @@ def _catalogue_check(row: dict, iid: str, known: dict | None) -> None:
     segment, _, token = iid.partition(":")
     if token.isdigit() and (segment, int(token)) in INDEX_ROWS:  # an index is "NIFTY 50" or its underlying "NIFTY"
         accepted |= {n.upper() for n in INDEX_ROWS[(segment, int(token))]}
-    if row.get("name") is not None and str(row["name"]).strip().upper() not in accepted:
-        raise _Refused(f"name does not match the catalogue ({name})")
+    given = None if row.get("name") is None else str(row["name"]).strip().upper()
+    # a snapshot may carry the TRADING SYMBOL in its name column: accepted only when it is THIS contract's own symbol
+    # (the match is exact and per contract: another contract's symbol, or any other text, is still refused)
+    own_symbol = given is not None and iid in (aliases or {}).get(f"sym:{given}", ())
+    if given is not None and given not in accepted and not own_symbol:
+        raise _Refused(f"name does not match the catalogue ({name}) or this contract's trading symbol")
     if row.get("expiry") is not None and str(row["expiry"])[:10] != (None if expiry is None else expiry.isoformat()):
         raise _Refused(f"expiry does not match the catalogue ({expiry})")
 
@@ -662,7 +666,7 @@ def _refusal(row: object, known: dict | None, aliases: dict | None = None, mappi
         if mapping is not None:
             row = {f: (None if k is None else row.get(k)) for f, k in mapping.items()}
         iid = _resolve_id(row.get("instrument_id"), known, aliases)
-        _catalogue_check(row, iid, known)
+        _catalogue_check(row, iid, known, aliases)
         source = row.get("source")
         if not isinstance(source, str) or not source.strip():
             raise _Refused("missing source")
@@ -729,9 +733,31 @@ def format_result(res: SeedResult, name: str) -> str:
     lines.append(f"would write {res.written} (--check: nothing written)" if res.checked else f"written {res.written}")
     lines += [f"unchanged {res.unchanged}", f"skipped {len(res.skipped)}"]
     lines += [f"  row {n} {iid}: {reason}" for n, iid, reason in res.skipped]
+    lines += _why_lines(res.skipped)
     if not res.catalogue_checked:
         lines.append("catalogue not checked: instrument ids were not compared with the catalogue")
     return "\n".join(lines)
+
+
+#: refusal reason (its start) -> the fix to try; one "why:" line per kind of refusal, with how many rows it hit
+_FIXES = (
+    ("name does not match", "the name column must be the catalogue name, this contract's own trading symbol, or "
+                           "absent; if the file keeps it under another key, try --map name=<that key>"),
+    ("unknown instrument id", "the id column must hold a contract the catalogue lists today: load the day's "
+                              "instrument list, or try --map instrument_id=<the key with the book id or symbol>"),
+    ("time has no zone", "try --assume-ist when the file's times are IST"),
+    ("a different close is already stored", "nothing to fix: a stored close is kept, never overwritten"),
+)
+
+
+def _why_lines(skipped: list) -> list[str]:
+    """One plain "why:" line per kind of refusal that has a known fix: the count, then what to try."""
+    out = []
+    for start, fix in _FIXES:
+        hit = sum(1 for _n, _i, reason in skipped if reason.startswith(start))
+        if hit:
+            out.append(f"why: {hit} row(s) refused: {start}; to try: {fix}")
+    return out
 
 
 EXIT_FAILED = 2  # the file cannot be read or the database cannot be reached

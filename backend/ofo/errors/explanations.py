@@ -1578,6 +1578,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "The market is closed. Exits can be placed from 09:15 on {day}.", {"day": DayLabel}),
     ExplanationTemplate("exit_market_closed_no_day", "values_seen",
                         "The market is closed. Exits can be placed when it opens."),
+    # Lane FD4 hand-over (28 Nov 2026), pending owner read: the same line for ORDERS (the Add to Paper dialog; it must not
+    # say "Exits"); ``ofo_app/exit_market.entries_sentence`` renders them beside ``exit_market_closed``
+    ExplanationTemplate("exit_market_closed_entries", "values_seen",
+                        "Orders can be placed from 09:15 on {day}.", {"day": DayLabel}),
+    ExplanationTemplate("exit_market_closed_entries_no_day", "values_seen", "Orders can be placed when it opens."),
     ExplanationTemplate("closed_prices_mixed_one", "values_seen",
                         "Market closed. Prices are from {frozen}; 1 leg as of {later}.",
                         {"frozen": ClockHmsOrDated, "later": ClockHmsOrDated}),
@@ -2106,6 +2111,17 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "After these orders, maximum loss: {before} before, {after} after.",
                         {"before": Explained, "after": Explained}),
     # ADR-330 (6): the Stops panel line before a leg stop is saved (figures are the loss sizes, no sign)
+    # UX-A03 (28 Nov 2026), pending owner read: a leg stop that HAS fired, in the past tense;
+    # wrap with stop_fired_at / stop_fired_on for "seen by the check at <time> IST"
+    ExplanationTemplate("paper_leg_stop_fired", "values_seen",
+                        "Stop fired: {leg} reached {level}; max loss at that point Rs {figure}",
+                        {"leg": Explained, "level": IndexLevel, "figure": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_fired_unlimited", "values_seen",
+                        "Stop fired: {leg} reached {level}; there was no fixed maximum loss at that point",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_fired_unknown", "values_seen",
+                        "Stop fired: {leg} reached {level}; the maximum loss at that point was not worked out",
+                        {"leg": Explained, "level": IndexLevel}),
     ExplanationTemplate("paper_leg_stop_widens_loss", "values_seen",
                         "If this stop fires, max loss becomes Rs {after} (now Rs {before}).",
                         {"before": IndexLevel, "after": IndexLevel}),
@@ -2617,6 +2633,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("monitoring_badge", "rule", "Monitoring paused"),
     ExplanationTemplate("monitoring_health_unknown", "rule", "Health unknown"),
     ExplanationTemplate("monitoring_since", "rule", "Since {time}", {"time": ClockHm}),
+    ExplanationTemplate("monitoring_why_no_bus", "rule",
+                        "Not being watched here: this server is not set up to share prices with its background worker, so it cannot tell."),
     ExplanationTemplate("monitoring_why_workers_down", "rule", "Not being watched: no worker has reported in the last 2 minutes."),
     ExplanationTemplate("monitoring_why_state_unreadable", "rule", "Not being watched: the worker's report cannot be read."),
     ExplanationTemplate("monitoring_why_not_listed", "rule", "Not being watched: the worker does not list this trade."),
@@ -2628,6 +2646,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # Lane FD2 hand-over (28 Nov 2026), pending owner read: the pause when no exit rule can be checked because the expiry kind is unknown
     ExplanationTemplate("monitoring_why_expiry_kind_unknown", "rule",
                         "Every exit rule is not checked because whether this trade expires weekly or monthly is not known."),
+    # Lane FE3 (28 Nov 2026), pending owner read: the remaining reasons of the "not being watched" state
+    ExplanationTemplate("monitoring_why_exits_not_checked_yet", "rule", "Not being watched: the exits have not been checked yet."),
+    ExplanationTemplate("monitoring_why_book_not_read", "rule", "Not being watched: the book could not be read, so the exits cannot run."),
+    ExplanationTemplate("monitoring_why_exit_not_applicable", "rule",
+                        "Not being watched: this is a real position, and stops here cover paper trades only."),
     ExplanationTemplate("monitoring_why_stale", "rule", "The last price is too old, so no rule can fire."),
     ExplanationTemplate("monitoring_why_disconnected", "rule", "The price feed is not connected, so no rule can fire."),
     ExplanationTemplate("monitoring_why_leg_missing", "rule", "A leg of this trade has no price, so no rule can fire."),

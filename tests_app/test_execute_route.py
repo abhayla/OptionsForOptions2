@@ -583,7 +583,7 @@ async def test_an_equity_row_in_the_positions_reply_does_not_block_reconciliatio
 
     def request(rows: list) -> SimpleNamespace:
         reads = SimpleNamespace(fetch_positions=lambda: {"net": rows, "day": []})
-        return SimpleNamespace(session=SimpleNamespace(reads=reads), strategy_id=15)
+        return SimpleNamespace(session=SimpleNamespace(reads=reads), strategy_id=15, db=None)
 
     def held(units: dict) -> SimpleNamespace:
         return SimpleNamespace(units=units)

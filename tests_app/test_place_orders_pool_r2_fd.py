@@ -64,6 +64,10 @@ def _world(monkeypatch, *, first: bool):
     async def no_stops(*_a):
         return []
 
+    async def lock(*_a):
+        return None
+
+    monkeypatch.setattr(paper.store, "lock_strategy", lock)  # I-158: the lock is taken before the armed read
     monkeypatch.setattr(paper, "_armed_leg_stops", no_stops)  # FD2: the stops read is not what this file measures
     monkeypatch.setattr(paper, "_load_strategy", load)
     monkeypatch.setattr(paper.tracked_contracts, "resolve", resolve)

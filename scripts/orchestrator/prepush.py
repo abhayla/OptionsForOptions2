@@ -35,6 +35,9 @@ app_tests also runs the tests_app files that READ a docs-folder path (select_doc
 FAIL). The lane SKIPS NOTHING (SKIPPABLE is empty, so the structural marker check rejects any skipped step): on a
 docs-only change today's selectors already run no code-only stage (domain tests narrow to the records tests, the code
 app selection is empty, no frontend step), so the lane removes nothing and only adds the docs-reading app tests.
+Docs-since-pass lane (DEFAULT ON since 2026-11-28, owner: documentation only; --no-since-pass or
+PREPUSH_SINCE_PASS=0 turns it off): see strict_docs_path and since_pass_lane; any file in the diff since the last
+full-pass marker that is not markdown in a records folder = the full lane.
 ruff_ratchet and alembic_guard cost under a second and a red one (e.g. another local ruff version) must refuse.
 KeyboardInterrupt kills every running child's process tree (serial and parallel; the parallel main thread sets the
 stop event first), then propagates: no marker.
@@ -152,6 +155,16 @@ def load_change_scope(repo: str):
 CLASSIFIER = "tools/change_scope.py"
 
 
+def strict_docs_path(path_is_docs):
+    """The documentation-only path's own, narrower test (owner 28 Nov 2026: documentation only): a path counts only
+    when change_scope.path_is_docs says records file AND it is a markdown file inside a records FOLDER (docs/, spec/,
+    views/, knowledge/, work/, ...). A root file, a .json/.yaml/.csv/.html/.svg/.png file, anything under .claude/,
+    backend/, frontend/, tests*/, scripts/, tools/, .github/ or alembic is never documentation here."""
+    def strict(path: str) -> bool:
+        return bool(path_is_docs(path)) and path.endswith(".md") and path.count("/") >= 1
+    return strict
+
+
 def docs_only_entries(path_is_docs, entries) -> int | None:
     """Number of entries when every one is an added / modified / deleted records file (mode 100644, one path), else
     None. entries: (status letter, [paths], (old mode, new mode)) as change_scope.parse_raw_z gives them."""
@@ -167,7 +180,7 @@ def docs_only_entries(path_is_docs, entries) -> int | None:
     return len(entries)
 
 
-def docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main") -> int | None:
+def docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main", strict: bool = False) -> int | None:
     """Count of changed files when the whole change since the merge base is records files, else None (fail closed:
     no merge base, git error, empty diff, tools/change_scope.py not importable or changed, anything unexpected).
     The diff is merge-base..sha, sha being the start sha of the run (HEAD only when none is given)."""
@@ -182,7 +195,8 @@ def docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main
                               capture_output=True, text=True, encoding="utf-8", errors="replace", check=False)
         if proc.returncode != 0:
             return None
-        return docs_only_entries(scope.path_is_docs, scope.parse_raw_z(proc.stdout) or [])
+        test = strict_docs_path(scope.path_is_docs) if strict else scope.path_is_docs
+        return docs_only_entries(test, scope.parse_raw_z(proc.stdout) or [])
     except Exception:  # noqa: BLE001 - any doubt is the full lane
         return None
 
@@ -197,14 +211,19 @@ def docs_readers_patterns(folders) -> tuple[re.Pattern[str], re.Pattern[str]]:
 
 
 def select_docs_app_tests(repo: str) -> tuple[int, list[str], str]:
-    """(rc, tests_app/**/test_*.py files that read a docs path, message); rc != 0 = cannot select (fail closed).
+    """(rc, tests_app/**/test_*.py files that read a docs path, message); rc != 0 = cannot select (fail closed)."""
+    return select_docs_readers(repo, "tests_app")
+
+
+def select_docs_readers(repo: str, subdir: str) -> tuple[int, list[str], str]:
+    """(rc, <subdir>/**/test_*.py files that read a docs path, message); rc != 0 = cannot select (fail closed).
     A helper or conftest.py that names a docs path selects every test that imports it (conftest: every test beside or
     below it)."""
     try:
         literal, joined = docs_readers_patterns(load_change_scope(repo).DOCS_FOLDERS)
-        root = os.path.join(repo, "tests_app")
+        root = os.path.join(repo, subdir)
         if not os.path.isdir(root):
-            return 1, [], "tests_app/ not found"
+            return 1, [], f"{subdir}/ not found"
         tests, helpers = [], []
         for here, dirs, files in os.walk(root):
             dirs[:] = sorted(d for d in dirs if d != "__pycache__")
@@ -217,6 +236,7 @@ def select_docs_app_tests(repo: str) -> tuple[int, list[str], str]:
                     (tests if name.startswith("test_") else helpers).append((rel, text))
         reads = lambda text: bool(literal.search(text) or joined.search(text))  # noqa: E731
         readers = [rel for rel, text in helpers if reads(text)]
+        readers += _tool_readers(repo, reads)  # a module under scripts/ or tools/ that names a docs path
 
         def uses(rel, text, helper):
             stem = os.path.splitext(os.path.basename(helper))[0]
@@ -225,9 +245,172 @@ def select_docs_app_tests(repo: str) -> tuple[int, list[str], str]:
             return re.search(rf"\b{re.escape(stem)}\b", text) is not None
 
         picked = sorted(rel for rel, text in tests if reads(text) or any(uses(rel, text, h) for h in readers))
-        return 0, picked, f"{len(picked)} tests_app files read docs paths"
+        return 0, picked, f"{len(picked)} {subdir} files read docs paths"
     except Exception as exc:  # noqa: BLE001 - cannot select: fail closed
         return 1, [], repr(exc)
+
+
+SINCE_PASS_FLAG = "--code-unchanged-since-pass"  # noqa: S105 - a command-line flag, not a secret
+STEPS_DIR = "steps"
+RESUMABLE = ("preflight", "ci_checks", "domain_tests", "app_tests", "frontend_unit")
+
+
+def select_domain_since(repo: str, base: str, kit=None, readers=None) -> list[str] | None:
+    """Domain tests of the docs-since-pass lane: the kit's selection against the full-pass commit (the records tests)
+    plus every tests/ file that reads a docs path. None = the kit says the whole tests/ (fail closed)."""
+    picked = (kit or select_domain_tests)(repo, base)
+    if picked is None:
+        return None
+    rc, found, message = (readers or select_docs_readers)(repo, "tests")
+    if rc != 0:
+        raise RuntimeError("cannot select the tests/ files that read docs paths: " + message)
+    return sorted(set(picked) | set(found))
+
+
+def last_full_pass(repo: str, sha: str, limit: int = 5000) -> str | None:
+    """The nearest ancestor of sha (never sha itself) whose marker says a FULL pass, or that descends from one (a
+    docs-since-pass marker names its `anchor`); that full-pass sha. None = no such marker here (a fresh container)."""
+    rc, out = _git(repo, "rev-list", f"--max-count={limit}", sha)
+    if rc != 0:
+        return None
+    for cand in out.split():
+        if cand == sha:
+            continue
+        try:
+            with open(marker_path(repo, cand), encoding="utf-8") as handle:
+                body = json.load(handle)
+        except (OSError, ValueError, AttributeError):
+            continue
+        if not isinstance(body, dict) or body.get("sha") != cand:
+            continue
+        mode = body.get("mode") or {}
+        if not isinstance(mode, dict):
+            continue
+        anchor = cand if mode.get("lane") == "full" else mode.get("anchor")
+        if isinstance(anchor, str) and len(anchor) == 40 and has_marker(repo, anchor):  # noqa: PLR2004
+            rc2, _ = _git(repo, "merge-base", "--is-ancestor", anchor, sha)
+            if rc2 == 0:
+                return anchor
+    return None
+
+
+def strict_docs_only_change(repo: str, sha: str | None = None, base: str = "origin/main") -> int | None:
+    """docs_only_change with the strict list (markdown inside a records folder only)."""
+    return docs_only_change(repo, sha, base, strict=True)
+
+
+def since_pass_lane(repo: str, full: bool, sha: str | None, find_base=None, docs_only=None) -> tuple[str, int] | None:
+    """(full-pass sha, changed-file count) when EVERY path changed between the last full-pass commit of this branch
+    and the start sha is a records file (same strict rules as the docs-only lane: added/modified/deleted, plain mode,
+    no rename, symlink or change_scope.py change), else None = the full lane (no marker, a doubt, an empty diff)."""
+    if full or sha is None:
+        return None
+    try:
+        rc, merge_base = _git(repo, "merge-base", "origin/main", sha)
+        rc2, changed = _git(repo, "diff", "--name-only", merge_base, sha, "--", CLASSIFIER)
+        if rc != 0 or rc2 != 0 or changed:  # the classifier must not vouch for itself through an older anchor (F4)
+            return None
+        base = (find_base or last_full_pass)(repo, sha)
+        if base is None or base == sha:
+            return None
+        count = (docs_only or strict_docs_only_change)(repo, sha, base)  # the strict list, never G2's wider one
+    except Exception:  # noqa: BLE001 - any doubt is the full lane
+        return None
+    return None if count is None else (base, count)
+
+
+class Resume:
+    """Pass records per long step, keyed by the exact tree and every input the step's result depends on that is not
+    in the tree (flags, lane, origin/main and the full-pass base the selections diff against, Python and Node
+    versions). A record exists only for a step that passed on a clean committed tree; a failed, stopped or killed
+    step has none, so a re-run on the same tree restarts at the step that did not pass. Any change to the tree
+    changes the key: nothing is reused across a file change."""
+
+    def __init__(self, repo: str, key_parts: list[str], root: str, sha: str | None = None):
+        self.repo, self.parts, self.root, self.sha = repo, list(key_parts), root, sha
+
+    def _path(self, step: str) -> str:
+        digest = hashlib.sha256("\n".join([step, *self.parts]).encode()).hexdigest()
+        return os.path.join(self.root, f"{step}-{digest[:32]}.json")
+
+    def hit(self, step: str) -> dict | None:
+        try:
+            with open(self._path(step), encoding="utf-8") as handle:
+                body = json.load(handle)
+        except (OSError, ValueError):
+            return None
+        ok = isinstance(body, dict) and body.get("rc") == 0 and body.get("step") == step
+        return body if ok else None
+
+    def save(self, step: str, seconds: float) -> None:
+        os.makedirs(self.root, exist_ok=True)
+        body = {"step": step, "rc": 0, "seconds": seconds, "at": datetime.now(UTC).isoformat(timespec="seconds")}
+        fd, tmp = tempfile.mkstemp(dir=self.root, suffix=".tmp")  # two gates on one tree must not share a temp name
+        with os.fdopen(fd, "w", encoding="utf-8") as handle:
+            json.dump(body, handle)
+        os.replace(tmp, self._path(step))
+
+
+def make_resume(repo: str, sha: str | None, full: bool, lane: str, base: str | None, frontend,  # noqa: PLR0913
+                clean: bool, git=None) -> Resume | None:
+    """None (no resume) unless the tree is clean and every key part is known."""
+    git = git or _git
+    if sha is None or not clean:
+        return None
+    rc, tree = git(repo, "rev-parse", f"{sha}^{{tree}}")
+    rc2, main_sha = git(repo, "rev-parse", "origin/main")
+    rc3, merge_base = git(repo, "merge-base", "origin/main", sha)  # the kit selections diff from here (review F3)
+    root = marker_dir(repo)
+    if rc != 0 or rc2 != 0 or rc3 != 0 or not tree or not main_sha or not merge_base or root is None:
+        return None
+    parts = [tree, f"full={int(full)}", f"lane={lane}", f"main={main_sha}", f"mergebase={merge_base}", f"base={base}",
+             f"frontend={frontend!r}", sys.version.split()[0], _node_version(), *_gate_and_env_parts(repo)]
+    return Resume(repo, parts, os.path.join(root, STEPS_DIR), sha)
+
+
+def _file_digest(path: str) -> str:
+    try:
+        with open(path, "rb") as handle:
+            return hashlib.sha256(handle.read()).hexdigest()[:16]
+    except OSError:
+        return "none"
+
+
+def _gate_and_env_parts(repo: str) -> list[str]:
+    """What a step's result depends on that is not in the checked tree (review F5): the gate's own code, which
+    checkout and Python, and the installed frontend packages."""
+    here = os.path.dirname(os.path.abspath(__file__))
+    mine, theirs = (_file_digest(os.path.join(here, n)) for n in ("prepush.py", "merge_preflight.py"))
+    return [f"gate={mine}.{theirs}",
+            f"repo={os.path.abspath(repo)}", f"prefix={sys.prefix}",
+            "nm=" + _file_digest(os.path.join(repo, FRONTEND, "node_modules", ".package-lock.json"))]
+
+
+def _node_version() -> str:
+    exe = shutil.which("node")
+    if not exe:
+        return "node=none"
+    try:
+        return "node=" + subprocess.run([exe, "--version"], capture_output=True, text=True, timeout=20,  # noqa: S603
+                                        check=False).stdout.strip()
+    except (OSError, subprocess.SubprocessError):
+        return "node=unknown"
+
+
+def _tool_readers(repo: str, reads) -> list[str]:
+    """scripts/ and tools/ modules (any depth) whose text names a docs path: a test that imports one reads docs
+    through it (review F1: tests/test_reference_register_real.py runs reference_register.py, which reads docs/)."""
+    found = []
+    for top in ("scripts", "tools"):
+        for here, dirs, files in os.walk(os.path.join(repo, top)):
+            dirs[:] = sorted(d for d in dirs if d not in ("__pycache__", "node_modules"))
+            for name in sorted(files):
+                if name.endswith(".py"):
+                    path = os.path.join(here, name)
+                    with open(path, encoding="utf-8", errors="replace") as handle:
+                        if reads(handle.read()):
+                            found.append(os.path.relpath(path, repo).replace(os.sep, "/"))
+    return found
 
 
 FRONTEND = "frontend"
@@ -264,8 +447,9 @@ class Plan:
     command writes its reason to its log."""
 
     def __init__(self, repo, full, runner, log_dir, select_domain, select_app,  # noqa: PLR0913
-                 frontend=(), which=shutil.which, skips=None):
+                 frontend=(), which=shutil.which, skips=None, resume=None, preflight_flags=()):
         self.skips = dict(skips or {})  # step name -> reason it is not run (the docs-only lane)
+        self.resume, self.preflight_flags = resume, tuple(preflight_flags)
         self.repo, self.full, self.runner, self.log_dir = repo, full, runner, log_dir
         self.select_domain, self.select_app = select_domain, select_app
         self.frontend, self.which = frontend, which  # frontend: frontend_changes() result
@@ -330,7 +514,26 @@ class Plan:
 
     def steps(self):
         """The steps to run, in order (skipped ones left out)."""
-        return [(n, f) for n, f in self.all_steps() if n not in self.skips]
+        return [(n, self._resumable(n, f)) for n, f in self.all_steps() if n not in self.skips]
+
+    def _resumable(self, name, fn):
+        """A long step that already passed on this exact tree and these inputs is not run again; one that passes now
+        leaves its record (only on a clean tree)."""
+        if self.resume is None or name not in RESUMABLE:
+            return fn
+
+        def run(log):
+            prev = self.resume.hit(name)
+            if prev is not None:
+                _note(log, f"RESUMED: passed {prev.get('at')} ({prev.get('seconds')}s) on the same tree and inputs")
+                print(f"RESUME {name}: passed {prev.get('at')} on the same tree and inputs; not run again", flush=True)
+                return 0
+            t0 = time.monotonic()
+            rc = fn(log)
+            if rc == 0 and head_sha(self.repo) == self.resume.sha and tree_is_clean(self.repo):  # review F2
+                self.resume.save(name, round(time.monotonic() - t0, 1))
+            return rc
+        return run
 
     def all_steps(self):
         py = sys.executable
@@ -348,7 +551,7 @@ class Plan:
                       ("frontend_build", lambda log: self.front("npm", ["run", "build"], log))]
         # then the minutes-long checks of a broken merge; a red preflight stops the run (run_all). With --full all of
         # tests/ runs next, so the preflight skips its tests/ repo_scan subset; a selection run keeps it (MINOR 7)
-        skip = ["--no-domain-scans"] if self.full else []
+        skip = (["--no-domain-scans"] if self.full else []) + list(self.preflight_flags)
         steps += [("preflight", lambda log: self.run(py, "scripts/orchestrator/merge_preflight.py", ".", "--log-dir",
                                                      self.log_dir, *skip, log=log)),
                   ("ci_checks", self.ci_checks), ("domain_tests", self.domain_tests), ("app_tests", self.app_tests)]
@@ -696,7 +899,8 @@ def _frontend_changes_or_none(select_frontend, repo):
 
 def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  # noqa: PLR0913
             select_domain=None, select_app=None, select_frontend=None, which=shutil.which, jobs=1,
-            select_docs_only=None, select_docs_app=None) -> int:
+            select_docs_only=None, select_docs_app=None, resume=True, find_base=None, select_since_domain=None,
+            since_docs_only=None, since_pass=False) -> int:
     select_domain = select_domain or select_domain_tests
     select_app = select_app or select_app_tests
     select_frontend = select_frontend or frontend_changes
@@ -713,20 +917,34 @@ def run_all(repo, full=False, runner=None, log_dir=None, clock=time.monotonic,  
     sha = head_sha(repo)
     clean_at_start = tree_is_clean(repo)  # review F3: the tree is the commit for the whole run, not only at the end
     lane, skips, docs_lane = _lane(repo, full, select_docs_only or docs_only_change, sha)
+    base, flags = None, ()
+    since = since_pass_lane(repo, full, sha, find_base, since_docs_only) if (
+        since_pass and not docs_lane and clean_at_start) else None  # opt-in until re-reviewed; clean tree only (F6)
+    if since is not None:
+        base, count = since  # only records files changed since the last full pass of this branch: its code is that code
+        lane, docs_lane, flags = f"docs-since-pass ({count} files since {base[:8]})", True, (SINCE_PASS_FLAG,)
+        pick_since = select_since_domain or select_domain_since
+
+        def select_domain(r, b=base):
+            return pick_since(r, b)
     if docs_lane:  # a docs-only change: no frontend step is planned; app_tests runs the files that read docs paths
-        frontend, select_app = [], select_docs_app or select_docs_app_tests
-        print(f"LANE {lane}: nothing is skipped; app_tests runs the tests_app files that read docs paths")
+        frontend = _frontend_changes_or_none(select_frontend, repo) if flags else []  # since-pass: as full (F1)
+        select_app = select_docs_app or select_docs_app_tests
+        print(f"LANE {lane}: nothing is skipped that reads a records file; app_tests runs the tests_app files that "
+              "read docs paths" + ("; preflight skips the two layers that read Python only" if flags else ""))
         for name, reason in skips.items():
             print(f"SKIP {name} skipped: {reason}")
     else:
         frontend = _frontend_changes_or_none(select_frontend, repo)
-    plan = Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which, skips)
+    resume_store = make_resume(repo, sha, full, lane, base, frontend, clean_at_start) if resume else None
+    plan = Plan(repo, full, runner, log_dir, select_domain, select_app, frontend, which, skips, resume_store, flags)
     order = [n for n, _ in plan.all_steps()]
     serial = jobs <= 1
     results = _run_steps(plan, log_dir, clock) if serial else _run_parallel(plan, log_dir, clock, jobs, stop)
     ok = complete(results, order, skips)
     rows = marker_rows(results, skips, order)
-    note = _marker_note(repo, (sha, clean_at_start), rows, ok, {"jobs": jobs, "lane": lane})
+    mode = {"jobs": jobs, "lane": lane, **({"anchor": base} if base else {})}
+    note = _marker_note(repo, (sha, clean_at_start), rows, ok, mode)
     wall = round(clock() - started, 1)
     total = round(sum(s for _, _, s, _ in results), 1)
     print(f"TOTAL {'PASS' if ok else 'FAIL'} {wall}s (steps sum {total}s, jobs {jobs}) {note}")
@@ -748,12 +966,27 @@ def resolve_jobs(option=None, environ=None) -> int:
     return jobs
 
 
+def since_pass_default(environ=None) -> bool:
+    """On unless PREPUSH_SINCE_PASS=0. It only ever shortens a push that changes documentation files and nothing else;
+    a push that changes code takes the full lane whatever this says (since_pass_lane)."""
+    env = os.environ if environ is None else environ
+    return env.get("PREPUSH_SINCE_PASS") != "0"
+
+
 def main(argv=None) -> int:
     ap = argparse.ArgumentParser()
     ap.add_argument("--full", action="store_true", help="run all of tests/ as the domain tests, and every vitest file")
     ap.add_argument("--repo", default=ROOT, help="the checkout to check (default: this one)")
     ap.add_argument("--jobs", default=None, metavar="N",
                     help="long steps side by side (default: PREPUSH_JOBS, else the CPU count; 1 = serial reference)")
+    ap.add_argument("--since-pass", dest="since_pass", action="store_true", default=since_pass_default(),
+                    help="DEFAULT ON (owner 2026-11-28, documentation only): when every file changed since this "
+                         "branch's last full-pass marker is a markdown file in a records folder, run the "
+                         "docs-since-pass lane; any other change, no marker or a failed run = the full lane")
+    ap.add_argument("--no-since-pass", dest="since_pass", action="store_false",
+                    help="always the full lane (also PREPUSH_SINCE_PASS=0)")
+    ap.add_argument("--no-resume", action="store_true",
+                    help="run every long step even if it already passed on this exact tree (pass records are ignored)")
     a = ap.parse_args(argv)
     if not os.path.isdir(a.repo):
         print("repo not found: " + a.repo)
@@ -763,7 +996,13 @@ def main(argv=None) -> int:
     except ValueError as exc:
         print("usage error: " + str(exc))
         return 2
-    return run_all(a.repo, a.full, jobs=jobs)
+    import tools_present  # noqa: PLC0415 - first step of every run: names every missing tool before anything runs
+    frontend = None if a.full else frontend_changes(a.repo)
+    problems = tools_present.check(a.repo, need_frontend=a.full or frontend is None or bool(frontend))
+    if problems:
+        print(tools_present.report(problems))
+        return 2
+    return run_all(a.repo, a.full, jobs=jobs, resume=not a.no_resume, since_pass=a.since_pass)
 
 
 if __name__ == "__main__":

@@ -45,6 +45,9 @@ STREAM_MAXLEN = 20_000  # entries kept per user (about a minute of a busy feed);
 WANT_TTL_MS = 10_000  # the API refreshes the snapshot every WANT_REFRESH_S; a dead API's wishes lapse after this
 WANT_REFRESH_S = 1.0
 HEARTBEAT_STALE_S = 120  # REQ-115 AC-6: no heartbeat for 2 minutes = the workers are down or late
+#: #879: how far AHEAD of the reader's clock a heartbeat may be and still be live (one-sided, like
+#: ``monitoring_state.CLOCK_SKEW_S``, which imports this module and so cannot be the home; a test holds them equal)
+HEARTBEAT_SKEW_S = 5
 FRESH, STALE, UNREADABLE = "fresh", "stale", "unreadable"
 CONTROL_MAXLEN = 100  # a wake-up stream: a lost or trimmed entry is rebuilt by the feed's fixed re-check
 STATUS_TTL_MS = 5_000  # the feed refreshes every STATUS_EVERY_S; a dead feed's status lapses after this
@@ -184,12 +187,16 @@ def heartbeat_key() -> str:
 
 
 async def write_heartbeat(client: Any, at: datetime.datetime) -> None:
-    await client.set(heartbeat_key(), at.isoformat())
+    # RA: a store-side expiry (the stale window) closes the case of a dead writer whose clock ran ahead (Opus F1, #879)
+    await client.set(heartbeat_key(), at.isoformat(), ex=HEARTBEAT_STALE_S)
 
 
 def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
     """``stale`` when older than HEARTBEAT_STALE_S, ``fresh`` otherwise; ``unreadable`` when missing, not text, not a
-    time with a zone, or more than HEARTBEAT_STALE_S ahead of ``now`` (never read as fresh)."""
+    time with a zone, or more than HEARTBEAT_SKEW_S ahead of ``now`` (never read as fresh: a stamp from the future is
+    not a live reading). Limit (Opus review F1, #879): a writer whose clock runs ahead and then dies still reads fresh
+    until real time passes its last stamp plus HEARTBEAT_STALE_S; only a reader-side clock (noting when the stamp
+    last CHANGED) or a store-side expiry closes that, which is the owner lane's call (RESULTS-lane-fr)."""
     text = _text(raw)
     try:
         at = datetime.datetime.fromisoformat(text) if text else None
@@ -198,9 +205,37 @@ def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
     if at is None or at.utcoffset() is None:
         return UNREADABLE
     age = (now - at).total_seconds()
-    if age < -HEARTBEAT_STALE_S:  # a time far ahead of now is a wrong clock or a simulated one, not a live worker
+    if age < -HEARTBEAT_SKEW_S:  # a time ahead of now is a wrong clock or a simulated one, not a live worker
         return UNREADABLE
     return STALE if age > HEARTBEAT_STALE_S else FRESH
+
+
+class HeartbeatReader:
+    """FD5 3.5 (Opus review F1, #879): a reader that notes, by ITS OWN clock, when the stamp last CHANGED. A worker
+    whose clock runs ahead of the reader's (within HEARTBEAT_SKEW_S) and then dies would read fresh until the real
+    time passes its last stamp plus HEARTBEAT_STALE_S; a stamp unchanged for more than HEARTBEAT_STALE_S on the
+    reader's clock is stale whatever time it states. The first reading has nothing to compare and falls back to the
+    stamp's own age (``judge_heartbeat``)."""
+
+    def __init__(self) -> None:
+        self._text: str | None = None
+        self._changed_at: datetime.datetime | None = None
+
+    def judge(self, raw: Any, now: datetime.datetime) -> str:
+        state = judge_heartbeat(raw, now)
+        text = _text(raw)
+        if text != self._text or self._changed_at is None:
+            self._text, self._changed_at = text, now
+        elif state == FRESH and (now - self._changed_at).total_seconds() > HEARTBEAT_STALE_S:
+            return STALE
+        return state
+
+    async def read(self, client: Any, now: datetime.datetime) -> str:
+        try:
+            return self.judge(await client.get(heartbeat_key()), now)
+        except Exception as exc:  # noqa: BLE001 - a store that cannot answer is "cannot read", never "fine"
+            log.warning("worker heartbeat could not be read: %s", type(exc).__name__)
+            return UNREADABLE
 
 
 async def read_heartbeat_state(client: Any, now: datetime.datetime) -> str:

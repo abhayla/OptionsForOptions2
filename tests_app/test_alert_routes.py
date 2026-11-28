@@ -24,7 +24,8 @@ TRADES = 3  # strategies sharing one name in the alert-label test
 FIRED = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
 STOPPED = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
 ACTIVE_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "no_longer_true_since",
-               "no_longer_true_line", "escalated_at", "worse_line", "answers"}
+               "no_longer_true_line", "escalated_at", "worse_line", "answers",
+               "position_kind", "position_kind_text"}  # the last two: ADR-330 (64)
 HISTORY_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "escalated_at",
                 "worse_line", "answer", "answer_label", "answered_at", "closed_reason"}
 
@@ -153,7 +154,10 @@ async def test_a_trade_with_no_readable_open_leg_shows_its_number_only(app_db_ur
 
     async def flat(*args, **kwargs):
         return None  # no open option leg
+    async def none_batched(*args, **kwargs):
+        return {}  # the batch answers for no trade: each is asked on its own (a real book, nothing traded)
     monkeypatch.setattr(readers, "nearest_expiry", flat)
+    monkeypatch.setattr(readers, "nearest_expiries", none_batched)
     status, active = await _call("GET", "/api/alerts/active")
     named = {a["id"]: a["strategy_name"] for a in active["alerts"]}
     assert status == OK and named[alert_id] == f'"Scenario ADJ-02" (#{sid})'
@@ -181,7 +185,12 @@ async def test_a_failed_expiry_read_for_one_trade_never_stops_the_lists_or_the_b
                     await db.execute(text("SELECT * FROM public.no_such_table"))  # really aborts the transaction
                 raise _failure
             return await real(db, sid)
+        async def batch_fails(db, ids, _failure=failure):
+            if isinstance(_failure, DBAPIError):
+                await db.execute(text("SELECT * FROM public.no_such_table"))  # really aborts the transaction
+            raise _failure
         monkeypatch.setattr(readers, "nearest_expiry", lookup)
+        monkeypatch.setattr(readers, "nearest_expiries", batch_fails)  # the batch fails: each trade is read alone
         status, active = await _call("GET", "/api/alerts/active")
         by_trade = {(a["strategy_id"], a["strategy_name"]) for a in active["alerts"]}
         assert status == OK and active["count"] == len(active["alerts"]) == baseline
@@ -235,3 +244,70 @@ async def test_an_alert_with_no_worded_condition_shows_its_rule_not_the_trade_na
                                           threshold=None, trigger_id="T-07", stage=None)
     row = next(a for a in (await _call("GET", "/api/alerts/active"))[1]["alerts"] if a["id"] == other.id)
     assert row["text"] == "Plan profit target"
+
+
+def test_ra_w28_a_loss_stop_typed_in_rupees_reads_plan_loss_stop_like_one_typed_in_percent():
+    """Lane RA item 3 (W-28, ADR-330 (5)(a)): the Active reason line of a loss stop typed in rupees read "Plan rupee
+    stop: ..."; the PC's test plan says "Plan loss stop". A loss stop typed in rupees (plan_rupee_loss) and one typed in
+    percent (plan_loss_stop) read the SAME word; the figures differ, the word does not. Same for the target pair stays
+    as it was (not asked). No database: the words are built from the record alone."""
+    from types import SimpleNamespace  # noqa: PLC0415
+
+    from ofo_app.routes import alerts as alerts_route  # noqa: PLC0415
+
+    def words(kind: str) -> str:
+        record = SimpleNamespace(kind=kind, value=D("15.5750"), threshold=D("15.4000"), trigger_id="T-06")
+        return str(alerts_route._rule_in_words(record))
+
+    assert words("plan_rupee_loss") == "Plan loss stop: 15.5750 (rule 15.4000)"
+    assert words("plan_rupee_loss") == words("plan_loss_stop")
+    assert alerts_route._KIND_WORDS["plan_rupee_profit"] == "Plan rupee target"  # not asked: unchanged
+async def _statements_of(url: str) -> tuple[int, int, dict]:
+    """(status, statements run, body) of one GET, counted from the engine's cursor events (not wall time: not flaky)."""
+    from httpx import ASGITransport, AsyncClient  # noqa: PLC0415
+    from ofo_app import db as app_db  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    from sqlalchemy import event  # noqa: PLC0415
+    from test_adjustment_check import _reset_engine  # noqa: PLC0415
+    _reset_engine()
+    app = create_app()
+    count = [0]
+    event.listen(app_db.get_engine().sync_engine, "before_cursor_execute",
+                 lambda *_a: count.__setitem__(0, count[0] + 1))
+    async with AsyncClient(transport=ASGITransport(app=app), base_url="http://t") as ac:
+        r = await ac.get(url)
+    await app_db.close_db()
+    return r.status_code, count[0], r.json()
+
+
+async def _answered_trades(app_db_url, monkeypatch, n: int) -> list[int]:
+    sids = []
+    for _ in range(n):
+        sid = await _clean(app_db_url, await _seeded(app_db_url, monkeypatch, "ADJ-03"))
+        async with app_db_url.begin() as conn:
+            await conn.execute(text("UPDATE public.strategies SET name = 'Short Iron Condor' WHERE id = :id"),
+                               {"id": sid})
+        sids.append(sid)
+    for sid in sids:
+        alert_id = await _raise(app_db_url, sid)
+        assert (await _call("POST", f"/api/alerts/{alert_id}/answer", {"answer": "continue"}))[0] == OK
+    return sids
+
+
+async def test_the_alert_lists_run_the_same_statements_for_2_and_12_strategies(app_db_url, monkeypatch):
+    """W-13 (server half): Active and History label each row with its trade's nearest expiry; that read is ONE batch
+    (one orders read, one contract read), so the statement count does not grow with the number of strategies (it was
+    3 to 4 statements per distinct strategy: 6 s on a history of 12). Same labels per row as before."""
+    few = await _answered_trades(app_db_url, monkeypatch, 2)
+    counts = {}
+    for url in ("/api/alerts/answered", "/api/alerts/active"):
+        status, counts[url, 2], _ = await _statements_of(url)
+        assert status == OK
+    many = few + await _answered_trades(app_db_url, monkeypatch, 10)
+    for url in ("/api/alerts/answered", "/api/alerts/active"):
+        status, counts[url, 12], _ = await _statements_of(url)
+        assert status == OK
+        assert counts[url, 12] == counts[url, 2], counts
+    _, _, history = await _statements_of("/api/alerts/answered")
+    named = {i["strategy_id"]: i["strategy_name"] for i in history["items"]}
+    assert [named[sid] for sid in many] == [f'"Short Iron Condor" (#{sid}, 9 Nov)' for sid in many]

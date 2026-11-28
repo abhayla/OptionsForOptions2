@@ -1098,11 +1098,22 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "A basket was already prepared for this press.",
           "No new basket was prepared, so the same orders cannot be sent to Zerodha twice from one press.",
           "Preparing this basket again.", "Open this strategy's plan to see the basket that was prepared."),
+    # Lane RA N5 (review of round 2): the server's own commit deadline (the page gives up at 10 s); it is NOT the busy
+    # store. New wording, pending the owner's read.
+    _gate("order_request_too_slow", _SV, 586,
+          "This took too long, so no order was stored.",
+          "Nothing was stored and the strategy was not changed; pressing again places the orders once.",
+          "Placing these paper orders.", "Press Place again."),
     # Lane FD2 #877 (ADR-330 (64)): a real position is exited and protected in Kite, not on the paper routes.
     _gate("real_position_exit_refused", _SV, 584,
           "Real position: exit and protect it in Kite.",
           "Stops and alerts here cover paper trades only.",
           "Exiting or protecting a real position here.", "Use Kite to exit or protect this position."),
+    # Lane RA F4: the same refusal for an open and an add (own code, the sentence is the exit one's, word for word).
+    *(_gate(code, _SV, number, "Real position: exit and protect it in Kite.",
+            "Stops and alerts here cover paper trades only.",
+            "Exiting or protecting a real position here.", "Use Kite to exit or protect this position.")
+      for code, number in (("real_position_open_refused", 587), ("real_position_add_refused", 588))),
     # GC-ICGUIDE g10 (audit C9; ADR-255): the plan's most adjustments, enforced when the orders are saved.
     _gate("paper_adjustment_limit", _SV, 505,
           "These orders open or add to a leg, and there is no room left: plan maximum of {limit} reached.",
@@ -1493,6 +1504,9 @@ _TRIGGER_TEMPLATES: tuple[MessageTemplate, ...] = (
     _trig("t14_pending", 143, "The loss-from-a-1%-move rule is not checked yet in this version."),
     _trig("switched_off", 144, "This trigger is switched off in this playbook.", None, _TRIG_NEXT_OFF),
     _trig("greyed", 145, "This trigger does not apply to this strategy type.", None, _TRIG_NEXT_NOT_FOR_THIS),
+    # 28 Nov 2026, pending owner read: the percent stop on a trade whose expiry kind is not known
+    _trig("expiry_kind_unknown", 712, "Not checked: this trade's expiry type (weekly or monthly) is not known, so the "
+          "percent stop has no value."),
     _trig("data_unavailable", 146, "The data this trigger needs is not available."),
     _trig("unknown", 147, "Unknown trigger: it is not checked.", None, _TRIG_NEXT_NOT_FOR_THIS),
     _trig("not_evaluated", 148, "This trigger is not checked in this version.", None, _TRIG_NEXT_NOT_FOR_THIS),

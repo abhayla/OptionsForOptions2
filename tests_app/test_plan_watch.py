@@ -365,3 +365,67 @@ async def test_a_just_saved_draft_reads_as_no_plan_never_not_found(app_db_url, m
     assert status == OK, out
     assert out["plan_state"] == "no_plan" and out["lines"] == []
     assert (await _watch(draft.id + 100000))[0] == NOT_FOUND  # a strategy that does not exist stays "not found"
+
+
+REAL_LINE = "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."
+UNKNOWN_LINE = ("Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown. "
+                "Check it in Kite.")
+
+
+def _armed_only(out: dict) -> list[dict]:
+    return [x for x in out["lines"] if x["kind"] in ("index_exit", "leg_stop")]
+
+
+async def test_r6_a_held_real_position_reads_its_armed_lines_not_applicable_with_no_price(app_db_url, monkeypatch):  # noqa: F811
+    """R6 (ADR-330 (64)): the armed rows stay stored, but a held (real) position never shows them as live: each reads
+    ``not_applicable`` with the position-kind sentence, no price and no distance."""
+    from ofo.marketdata.kite_provider import IST  # noqa: PLC0415
+    from ofo_app import held_entry_store  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+    async with app_db_url.begin() as conn:
+        await held_entry_store.record(conn, sid, datetime.datetime(2026, 11, 27, 10, 0, tzinfo=IST), "Zerodha")
+    status, out = await _watch(sid)
+    assert status == OK, out
+    armed = _armed_only(out)
+    assert {x["kind"] for x in armed} == {"index_exit", "leg_stop"}
+    for x in armed:
+        assert (x["state"], x["now"], x["distance_rs"], x["distance_pct"], x["reason"]) == (
+            "not_applicable", None, None, None, REAL_LINE), x
+
+
+async def test_r6_an_unknown_kind_reads_its_armed_lines_not_applicable_with_the_unknown_sentence(app_db_url,  # noqa: F811
+                                                                                                monkeypatch):
+    from ofo_app import strategy_store  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+
+    async def unknown(_conn, ids):
+        return dict.fromkeys(ids, "unknown")
+    monkeypatch.setattr(strategy_store, "kinds_of", unknown)
+    status, out = await _watch(sid)
+    assert status == OK, out
+    armed = _armed_only(out)
+    assert len(armed) >= 3  # noqa: PLR2004 - the three armed here (a shared test database keeps earlier rows)
+    for x in armed:
+        assert (x["state"], x["now"], x["distance_rs"], x["distance_pct"], x["reason"]) == (
+            "not_applicable", None, None, None, UNKNOWN_LINE), x
+
+
+async def test_f4_a_failing_kind_read_is_the_not_available_refusal_and_stores_nothing(app_db_url, monkeypatch):  # noqa: F811
+    """F4: ``kinds_of`` raises ``SQLAlchemyError`` -> 503 with the catalogue sentence, never a plain 500, no lines."""
+    from ofo.errors import render  # noqa: PLC0415
+    from ofo_app import strategy_store  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    await _arm(app_db_url, sid)
+
+    async def broken(*_a, **_k):
+        raise OperationalError("SELECT", {}, Exception("connection lost"))
+    monkeypatch.setattr(strategy_store, "kinds_of", broken)
+    status, out = await _watch(sid)
+    assert status == 503 and "lines" not in out, out  # noqa: PLR2004 - Failure.UPSTREAM_BUSY
+    assert out["what_happened"] == render("user_input_request_not_available").what_happened

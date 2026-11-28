@@ -41,14 +41,16 @@ from ofo_app import return_book as rb
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue
-from ofo_app.db import get_db
+from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, Failure
 from ofo_app.kite_reads import KiteReadError, unconfirmed_template
 from ofo_app.kite_replies import ContractIndex, KiteReplyError, log_ignored, positions_from_reply
 from ofo_app.order_path_switch import require_order_path
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.execute import KiteSession, get_execute_clock, get_kite_session
+from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import MarketContext, get_market_context
+from ofo_app.routes.planned_entry import get_live_feed
 from ofo_app.routes.strategies import StrategyRefused
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
@@ -110,6 +112,7 @@ class _Request:
     now: datetime.datetime
     today: datetime.date  # the database's India date: the session a plan must belong to, to close from the book
     market: Any = None  # the market context (ADR-276): the first fill's entry facts; None = not connected
+    feed: Any = None  # FD5 3.3: the route's live feed, so an index nobody holds yet is held until its first quote
 
 
 def _refuse(template: str) -> StrategyRefused:
@@ -137,14 +140,19 @@ async def return_from_kite(  # noqa: PLR0913 - FastAPI dependencies
     clocks: Annotated[_Clocks, Depends(get_return_clocks)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
     market: Annotated[Optional[MarketContext], Depends(get_market_context)],  # noqa: UP045
+    feed: Annotated[Optional[LiveFeed], Depends(get_live_feed)] = None,  # noqa: UP045
 ) -> ReturnOut:
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if session is None:
             raise _refuse("gate_broker_not_connected")
+        req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db), market, feed)
+        underlying = stored.saved.definition.underlying
+        # FD3 item 4: every Zerodha and market wait comes BEFORE the lock, with no connection held; the lock is taken
+        # after them and what was read is re-checked under it (``_return``)
+        read = await _read_outside(req, underlying)
         await store.lock_strategy(db, user_ref, strategy_id)  # held to commit: one return closes a plan once
-        req = _Request(db, user_ref, strategy_id, session, clocks.now(), await clocks.today_of(db), market)
-        out = await _return(req, stored.saved.definition.underlying)
+        out = await _return(req, underlying, read)
         await db.commit()
     except store.StrategyStoreError as exc:
         await db.rollback()
@@ -155,6 +163,46 @@ async def return_from_kite(  # noqa: PLR0913 - FastAPI dependencies
         await db.rollback()
         raise
     return out
+
+
+@dataclasses.dataclass(frozen=True)
+class _Outside:
+    """What the return reads before it takes the strategy lock: the catalogue, the plan tags it read the book by, the
+    Zerodha read and its book, and the first fill's entry facts (None = none needed or no live spot)."""
+    catalogue: Any
+    tags: frozenset
+    zerodha: Any
+    book: Any
+    facts: Any
+    adopted: tuple = ()  # R3: the adopted holdings and revision read before the wait, re-read under the lock
+    revision: int | None = None
+
+
+async def _read_outside(req: _Request, underlying: str) -> _Outside:
+    """FD3 item 4: the Zerodha reads (off the event loop) and the entry-facts market read, with the pooled connection
+    given back first and no row lock held. A first fill needs the facts: decided on this book exactly as ``_return``
+    will decide it under the lock."""
+    history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
+    catalogue = await load_catalogue(req.db)
+    adopted = await books.adopted_for(req.db, req.user_ref, req.strategy_id)
+    revision = (await store.load(req.db, req.user_ref, req.strategy_id)).revision
+    await release_connection(req.db)
+    zerodha = await asyncio.to_thread(_read_zerodha, req, catalogue)  # sync urllib reads: never on the event loop
+    tags = frozenset(o.tag for p in history for o in p.orders)
+    try:
+        book = rb.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)
+    except ValueError:  # KiteReplyError included: a row we cannot read is never guessed
+        raise _refuse("gate_broker_unconfirmed") from None
+    facts = None
+    open_plans = [p for p in history if p.status == "open"]
+    if open_plans:
+        plan = open_plans[0]
+        if (plan.action == "ENTRY" and er.classify(plan, book, req.today).state == er.FILLED
+                and not adopted and _first_fill_of(history, plan)):
+            from ofo_app.adjustment_readers import entry_facts_now  # noqa: PLC0415 - the readers import the route layer
+            sold = [_listed(catalogue, o.instrument_id).contract for o in plan.orders if o.transaction_type == "SELL"]
+            facts = await entry_facts_now(req.market, underlying, sold, feed=req.feed)
+    return _Outside(catalogue, tags, zerodha, book, facts, tuple(adopted), revision)
 
 
 @dataclasses.dataclass(frozen=True)
@@ -267,7 +315,7 @@ def _final_reason(history: Sequence[plans.StoredPlan], plan: plans.StoredPlan, a
 
 
 async def _settle_open_plan(req: _Request, history: tuple[plans.StoredPlan, ...], book: er.TodaysBook,
-                            world: _World) -> dict[int, er.PlanAnswer]:
+                            world: _World, facts: Any = None) -> dict[int, er.PlanAnswer]:
     open_plans = [p for p in history if p.status == "open"]
     if not open_plans:
         return {}
@@ -282,24 +330,25 @@ async def _settle_open_plan(req: _Request, history: tuple[plans.StoredPlan, ...]
     except plans.PlanStoreError:  # trades that cannot be stored exactly: nothing closes (fail closed, rolled back)
         raise _refuse("gate_broker_unconfirmed") from None
     if plan.action == "ENTRY" and reason == er.FILLED and _first_fill(history, plan, world):
-        await _record_entry_facts(req, plan, world)
+        await _record_entry_facts(req, facts)
     return {}
 
 
 def _first_fill(history: Sequence[plans.StoredPlan], plan: plans.StoredPlan, world: _World) -> bool:
     """ADR-243 / ADR-276: ``plan`` is the strategy's FIRST fill when no earlier plan of it has a filled quantity and it
     has no adopted holding (an adopted lot is held like a fill, ADR-096: the strategy was entered before)."""
-    return not world.adopted and not any(
-        (o.filled_quantity or 0) > 0 for p in history if p.plan_number < plan.plan_number for o in p.orders)
+    return not world.adopted and _first_fill_of(history, plan)
 
 
-async def _record_entry_facts(req: _Request, plan: plans.StoredPlan, world: _World) -> None:
-    """The real first fill's entry facts (spot, the SOLD legs' distances, the entry ATM IV) through the paper route's
-    own reader, in the return's transaction; no live spot -> nothing written; ``record_first`` never rewrites (a
-    replay of the return writes nothing)."""
-    from ofo_app.adjustment_readers import entry_facts_now  # noqa: PLC0415 - the readers import the route layer
-    sold = [_listed(world.catalogue, o.instrument_id).contract for o in plan.orders if o.transaction_type == "SELL"]
-    facts = await entry_facts_now(req.market, world.underlying, sold)
+def _first_fill_of(history: Sequence[plans.StoredPlan], plan: plans.StoredPlan) -> bool:
+    return not any((o.filled_quantity or 0) > 0 for p in history if p.plan_number < plan.plan_number
+                   for o in p.orders)
+
+
+async def _record_entry_facts(req: _Request, facts: Any) -> None:
+    """The real first fill's entry facts (spot, the SOLD legs' distances, the entry ATM IV), read BEFORE the lock
+    (``_read_outside``, through the paper route's own reader) and stored here in the return's transaction; no live spot
+    -> None -> nothing written; ``record_first`` never rewrites (a replay of the return writes nothing)."""
     if facts is not None:
         await entry_facts_store.record_first(req.db, req.strategy_id, facts)
 
@@ -358,19 +407,21 @@ def _answer(req: _Request, history: tuple[plans.StoredPlan, ...], live: Mapping[
         "external_orders": _external_out(book), "realised_pnl": er.pnl_or_none(book.fills)})
 
 
-async def _return(req: _Request, underlying: str) -> ReturnOut:
+async def _return(req: _Request, underlying: str, read: _Outside) -> ReturnOut:
+    """Under the strategy lock (held to commit: one return closes a plan once). The plans are read again HERE and must
+    carry the tags the book was read by; a plan recorded since (another press) is the broker-unconfirmed refusal."""
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
-    catalogue = await load_catalogue(req.db)
-    # NOT released: the strategy row lock (store.lock_strategy, held to commit) makes one return close a plan once
-    zerodha = await asyncio.to_thread(_read_zerodha, req, catalogue)  # sync urllib reads: never on the event loop
-    tags = frozenset(o.tag for p in history for o in p.orders)
-    try:
-        book = rb.read_book(zerodha.orders, zerodha.trades, req.strategy_id, tags)
-    except ValueError:  # KiteReplyError included: a row we cannot read is never guessed
-        raise _refuse("gate_broker_unconfirmed") from None
-    world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha),
-                   await books.adopted_for(req.db, req.user_ref, req.strategy_id))
-    live = await _settle_open_plan(req, history, book, world)
+    if frozenset(o.tag for p in history for o in p.orders) != read.tags:
+        raise _refuse("gate_broker_unconfirmed")
+    catalogue, zerodha, book, tags = read.catalogue, read.zerodha, read.book, read.tags
+    adopted = await books.adopted_for(req.db, req.user_ref, req.strategy_id)
+    # R3 (W-151): adopted holdings and the strategy revision were read before the waits; a change since (another tab
+    # adopted a holding or saved the strategy) refuses before anything is closed or stored (ADR-276 first-fill facts)
+    revision = (await store.load(req.db, req.user_ref, req.strategy_id)).revision
+    if tuple(adopted) != read.adopted or revision != read.revision:
+        raise _refuse("gate_broker_unconfirmed")
+    world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha), adopted)
+    live = await _settle_open_plan(req, history, book, world, read.facts)
     await _record_externals(req, book)
     await order_audit.record_broker_book(req.db, zerodha.orders, zerodha.trades, tags)  # W-103: our orders + trades
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)

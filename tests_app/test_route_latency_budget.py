@@ -33,10 +33,24 @@ SINGLE_MAX_MS = 200.0  # Lane H: measured 60 to 100 ms warm on a 4-core box (was
 CONCURRENT_BUDGET_MS = 2500.0  # 10 concurrent plan-watch; Lane H: measured 600 to 840 ms (was 4000)
 LINE = re.compile(r"request (\w+) (\S+) (\d+) ([\d.]+)ms(?: db=([\d.]+)ms/(\d+)q)?(?: price=([\d.]+)ms)?"
                   r"(?: margin=([\d.]+)ms)?")
+# FD3 item 6: each of the three adjustment routes runs ONE statement more than when the ceilings were set (23 / 19 /
+# 18): the position's expiry kind is read from the stored catalogue by the one rule
+# (adjustment_readers._stored_kind_or_empty -> stored_kind -> load_catalogue; commit b00d304, Lane N items 1, 2, 4).
+# MEASURED: with that read stubbed out the counts are exactly 23 / 19 / 18 again, so it is the only added statement. It
+# is needed for correctness (ADR-330 (19)(b): the kind decides which stop rows apply; an unknown kind fails closed), so
+# the ceilings rise by one, not the guard's meaning: a second added statement still fails.
+# FD5 item 1: plan-watch runs ONE more (25): the armed lines read the position's kind (``strategy_store.kinds_of``,
+# FD3 round 2 / R6, ADR-330 (64): a real or unreadable position has no paper stop). MEASURED: with
+# ``_stored_kind_or_empty`` stubbed out the batch of one row counts 24 (was 23), so the kind read is the only
+# statement added; it runs only when the strategy has armed rows. Needed for correctness, so the ceiling rises by one.
+# FD5: every route that reads the expiry kind from the stored catalogue runs TWO more statements (22 / 21 / 27): the
+# read runs in a SAVEPOINT (``stored_kind``: ``begin_nested`` = SAVEPOINT + RELEASE) so a failed catalogue read can no
+# longer ``rollback()`` the caller's order-key claim and strategy lock (review F1 / N6). MEASURED: the paper book route
+# (no kind read) stays at 11. A deliberate price of correctness, not a second read: one more statement still fails.
 CEILINGS = {  # route -> most statements one request may run: today's counts, an N+1 regression guard
-    "plan-watch": 23,
-    "adjustment-check": 19,
-    "adjustment-plan": 18,
+    "plan-watch": 27,
+    "adjustment-check": 22,
+    "adjustment-plan": 21,
     "paper/strategies/{id}": 11,
 }
 

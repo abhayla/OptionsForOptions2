@@ -58,7 +58,10 @@ def replace_line(rel: str, needle: str, new_line: str) -> str:
 #: (it refuses a selection over MAX_FILES unless --route-tests-anyway). So this pins the set, and each later file that
 #: legitimately joined it is listed with why.
 PR241_SELECTION = {
+    "tests_app/test_exit_market_adr330_60.py",  # FD4 item 5: the exit-state route gained entries_sentence
+    "tests_app/test_monitoring_status_route.py",  # FD4: the reason map gained exits_not_checked_yet
     "tests_app/test_fields_r2_fd2.py",
+    "tests_app/test_exit_door_real_fd3.py", "tests_app/test_order_request_key_durable_fd3.py",  # FD3: name the routes
     "tests_app/test_catalogue_list_carries_over.py",
     "tests_app/test_catalogue_picker_api.py", "tests_app/test_chain_live.py", "tests_app/test_chain_permissions.py",
     "tests_app/test_eligibility_from_zerodha.py", "tests_app/test_response_door.py",
@@ -68,13 +71,15 @@ PR241_SELECTION = {
     "tests_app/test_paper_order_lots_limit.py",  # Lane K: imports StrategyRefused (the door's refusal class)
     "tests_app/test_exit_adopted_313b.py",  # imports StrategyRefused from ofo_app.routes.strategies
     "tests_app/test_background_cycle.py",  # imports ofo.errors.explanations (changed here)
-    "tests_app/test_exit_market_adr330_60.py",  # Lane FC3: imports ofo.errors.explanations (the host-locale date tests)
     "tests_app/test_wording_scan_once.py",  # Q1 r2: GET adjustment-check, scans ofo.errors.explanations
     "tests_app/test_times_settings.py",  # GC-SET 5a2: calls catalogue_picker.publish_time / loaded_before
     "tests_app/test_pinned_clock.py",  # calls the /api/catalogue/{underlying}/... routes
     "tests_app/test_strategy_tracking.py",  # W-122: GET /strategies/{strategy_id}
     "tests_app/test_paper_monitor.py",  # W2-A: imports ofo_app.alert_title, a module this diff changes
     "tests_app/test_stop_fired_message.py",  # W2-A: a new file importing ofo_app.routes.paper
+    "tests_app/test_handovers_fe3_1128.py",  # Lane FE3: imports ofo.errors.explanations (changed here)
+    "tests_app/test_reasons_fe4_1128.py",  # Lane FE4: imports ofo_app.monitoring_state (changed here)
+    "tests_app/test_held_stop_ra_1128.py",  # Lane RA: imports ofo_app.paper_monitor (changed here)
     "tests_app/test_stored_contract_feed_keys.py",  # issue #500: GET /strategies/{id} and /history, StrategyRefused
     "tests_app/test_stored_chain_real.py",  # PR #580 (I-4): real catalogue_picker readers and routes
     "tests_app/test_strategy_tracking_imports.py",  # issue #500: its scan names ofo_app.catalogue_picker as a source
@@ -144,6 +149,7 @@ PR241_SELECTION = {
     "tests_app/test_paper_armed_exits.py",  # #774 (ADR-330 (48)): names ofo.errors.explanations
     "tests_app/test_completed_header_count_r2_1128.py",  # Lane TA 28 Nov: added (I-39), the /strategies list
     "tests_app/test_plan_watch_draft_r2_1128.py",  # Lane TA 28 Nov: added (I-64), imports ofo_app.strategy_store
+    "tests_app/test_bulk_delete_undo_tf_1128.py",  # Lane TF 28 Nov: imports the bulk-delete test
 }
 
 

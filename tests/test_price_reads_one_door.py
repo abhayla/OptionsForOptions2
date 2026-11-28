@@ -75,7 +75,11 @@ EXEMPT: dict[Key, tuple[str, str]] = {
     **_entries("display", "open-interest block of the outcome", "outcome_oi.py",
                {"oi_block": "option_chain_snapshot"}),
     **_entries("display", "adjustment screen read of the market it shows", "adjustment_readers.py",
-               {"read": "underlying_quote option_chain_snapshot latest_day_stats", "_window_spot": "resolve_spot"}),
+               {"held_read.read": "underlying_quote option_chain_snapshot latest_day_stats",
+                "_window_spot": "resolve_spot"}),
+    **_entries("awaiting_phase_8", "the entry facts' decision read of the index (plan section 6 row 13), now inside "
+                                   "the closure of _index_quote_held; moves into read_market in phase 8",
+               "adjustment_readers.py", {"_index_quote_held.read": "underlying_quote"}),
     **_entries("display", "paper book display (the exit read goes through paper_exit.live_exit_prices)",
                "routes/paper.py",
                {"_hold_until_ready": "underlying_quote read_snapshot", "_snapshot": "read_snapshot"}),
@@ -88,10 +92,6 @@ EXEMPT: dict[Key, tuple[str, str]] = {
     **_entries("real_path", "replay of a real order frame", "execute_replay.py", {"frame_quote": "latest_depth"}),
     **_entries("real_path", "the depth reader the real-order leg quote asks for (getattr: a provider may lack depth)",
                "live_market.py", {"latest_depth": "latest_depth"}),
-    # decision read not yet moved
-    **_entries("awaiting_phase_8", "first-fill entry facts are a decision read outside read_market (deferred issue: "
-                                   "plan section 6 row 13 (entry_facts_now decision read))",
-               "adjustment_readers.py", {"entry_facts_now": "underlying_quote"}),
     **_entries("own_process", "ADR-330 (28): a confirmed not-live entry needs the last held index value at any age, "
                               "which read_market does not return (it reads live only)",
                "adjustment_readers.py", {"_index_value_not_live": "underlying_quote"}),
@@ -109,7 +109,12 @@ def scan(rel: str, source: str) -> tuple[list[tuple[str, int, str]], list[str]]:
 
     def walk(node: ast.AST, func: str) -> None:
         for child in ast.iter_child_nodes(node):
-            inner = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else func
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                # FD5 3.7: a closure is keyed by its full path (``outer.inner``), so a read in a nested function can
+                # never ride on the exemption of an unrelated function that happens to share the inner name
+                inner = child.name if func == "<module>" else f"{func}.{child.name}"
+            else:
+                inner = func
             if isinstance(child, ast.ImportFrom):
                 issues.extend(f"aliased import: {rel}:{child.lineno} imports {a.name} as {a.asname}; a call through "
                               f"the alias is invisible, import it by its own name" for a in child.names
@@ -166,13 +171,10 @@ def test_exemptions_carry_a_category_and_a_reason():
     assert bad == []
 
 
-def test_the_shared_tracking_snapshot_is_display_and_the_open_decision_read_names_its_issue():
+def test_the_shared_tracking_snapshot_is_display():
     category, reason = EXEMPT[("ofo_app/routes/tracking.py", "_snapshot", "read_snapshot")]
     assert category == "display"
     assert "paper_exit.live_exit_prices" in reason
-    category, reason = EXEMPT[("ofo_app/adjustment_readers.py", "entry_facts_now", "underlying_quote")]
-    assert category == "awaiting_phase_8"
-    assert "plan section 6 row 13" in reason
 
 
 def test_the_door_itself_is_not_an_exemption():
@@ -212,6 +214,16 @@ def test_mutation_an_aliased_import_gives_one_problem(source):
     found = problems({"ofo_app/x.py": source}, exempt={})
     assert len(found) == 1
     assert found[0].startswith("aliased import: ofo_app/x.py:1")
+
+
+def test_mutation_a_closure_is_not_covered_by_an_exemption_of_another_function_with_its_inner_name():
+    """FD5 3.7: the scan keys a nested function by its full path, so ``outer.read`` cannot ride on ``read``'s entry."""
+    source = "def outer(p):\n    def read():\n        return p.underlying_quote('NIFTY')\n    return read()\n"
+    exempt = {("ofo_app/x.py", "read", "underlying_quote"): ("display", "an unrelated function of the same name")}
+    found = problems({"ofo_app/x.py": source}, exempt=exempt)
+    assert len(found) == 2  # noqa: PLR2004 - the closure is a site outside the door, and the other entry is stale
+    assert "in outer.read calls underlying_quote()" in found[0]
+    assert found[1].startswith("stale exemption: ofo_app/x.py::read")
 
 
 def test_mutation_an_unparsable_file_fails_closed():

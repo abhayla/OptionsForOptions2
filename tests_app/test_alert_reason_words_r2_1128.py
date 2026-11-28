@@ -21,7 +21,7 @@ OK = 200
 CASES = [
     ("T-06", "plan_loss_stop", "T-06", "loss stop"),
     ("T-07", "plan_profit_target", "T-07", "profit target"),
-    ("plan.rupee_loss", "plan_rupee_loss", "plan.rupee_loss", "rupee"),
+    ("plan.rupee_loss", "plan_rupee_loss", "plan.rupee_loss", "plan loss stop"),  # W-28: ONE loss stop (ADR-330 (5)(a))
     ("plan.rupee_profit", "plan_rupee_profit", "plan.rupee_profit", "rupee"),
     ("plan.time_exit", "plan_time_exit", "plan.time_exit", "time exit"),
     ("T-05", "adjustment_rule", "T-05", "djustment"),

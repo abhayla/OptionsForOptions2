@@ -247,3 +247,18 @@ def test_trigger_label_and_unit_answer_states(label, unit, want_label, want_unit
     row = ap._in_force_reply(sif.in_force(None, _plan(body), None))["triggers"][0]
     out = ap.TriggerInForceOut.model_validate(row)
     assert (None if out.label is None else str(out.label), out.unit) == (want_label, want_unit)
+
+
+# ---- Lane FR item 4 (#866): an empty expiry kind names that fact, never "stage unknown" ------------------------------
+def test_an_empty_expiry_kind_names_the_unknown_kind_and_a_stated_kind_is_unchanged():
+    from ofo.adjustment import stop_lines as sl  # noqa: PLC0415
+    found = _stops(_ic(), sif.MoneyInputs(D("23897.04"), D(8918), at=sif.StageAt("", 3)))
+    reasons = {x.kind: x.reason for x in found.lines if x.active}
+    print("EMPTY KIND", reasons)
+    assert reasons["max_loss_pct"] == sl.EXPIRY_KIND_UNKNOWN
+    assert sl.not_checked_code(sl.EXPIRY_KIND_UNKNOWN) == "adjust_trigger_expiry_kind_unknown"  # FE3: its own sentence
+    assert (found.first, found.reason) == (None, sif.FIRST_UNKNOWN)
+    stated = _stops(_ic(), S82)  # a stated kind: the figures, unchanged
+    assert next(x for x in stated.lines if x.kind == "max_loss_pct").reason is None
+    assert next(x for x in _stops(_ic(), sif.MoneyInputs(D("23897.04"), D(8918))).lines
+                if x.kind == "max_loss_pct").reason == sif.STAGE_UNKNOWN  # no stage at all: unchanged
