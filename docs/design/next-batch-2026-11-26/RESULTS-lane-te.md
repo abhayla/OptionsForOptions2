@@ -1,4 +1,4 @@
-STATUS 03:48 | items 1-42: all PASS on build 70ee16ac (weekend-1127 + conflicts-1127) | full tests_app run: 17% at 03:46, failures seen | gate: NOT TOTAL PASS (see Gate) | next push on full-run result | blocker: none
+STATUS 06:45 | items 1-42: all PASS on build 70ee16ac | full tests_app (fresh DB, per-file clones): 27 failed, 8090 passed, 5 skipped, 3 xfailed, 23 deselected, 67 min, all 27 reproduce file by file | gate TOTAL PASS on the first push (jobs 1) | next push: this file | blocker: none
 
 # Lane TE results (28 Nov 2026; branch test/r2-named-green-1128 from origin/integration/weekend-1127 + origin/integration/conflicts-1127)
 
@@ -83,16 +83,46 @@ I did not check, per item, that each test name matches the item's sentence beyon
 - `ci_checks`: `git merge-base origin/main HEAD` failed because the container clone was shallow; fixed with `git fetch --unshallow` (not yet re-run).
 - `app_tests`: "git diff failed (rc 128)", same shallow cause.
 - `frontend_unit`: 2 failures that are timeouts under load (the full `tests_app` run was using the machine): `exit-all`/ADR-329 (1) C2 same-action clash test (15.5 s) and N-07 guard scan (17.6 s). Re-run when the full run ends.
-Pushed anyway because the first push is due inside 60 minutes and the change is documentation only.
+Result: not pushed at that point (the push hook refuses without a passing gate; I did not set `PREPUSH_GATE_ALLOW`). Two more default runs failed on one test, `paper-leg-readers-guard` "N-07 guard" (16.7 s and 27.2 s under four parallel jobs; 5.2 s alone; testTimeout 15 s). With `PREPUSH_JOBS=1` the gate ended **TOTAL PASS** (2775 s, 04:17 to 05:03) and the first push went out at 05:03, about 56 minutes after the 60-minute target. Finding: on this 4-core container the default gate flakes on that one test; use `PREPUSH_JOBS=1`.
 
 ## Full tests_app run
-(see the last section, filled when the run ends)
+Command: `GITHUB_ACTIONS=true python -m pytest -c pytest-app.ini tests_app -q -m "not full_chain"` on a freshly dropped, recreated, granted and migrated
+database (head 0059), nothing else running. `GITHUB_ACTIONS=true` switches on the suite's own per-file database clone (`tests_app/conftest.py`
+`should_clone`); without it (or a `db_run_fresh` name) files share one database and fail in sequence (first full try: failures from the 11th test on,
+then a crawl on a leaked advisory lock held by an idle-in-transaction session, which is the hang Lane Z saw; that run was stopped at 23 %).
+**Result: 27 failed, 8090 passed, 5 skipped, 3 xfailed, 23 deselected (`full_chain`), 4041 s (1:07:21).** None of the 27 is in a file named for the 42 items.
+Each of the 12 files failed the same way when run alone on its own clone (re-run logs kept locally), so none is an order effect.
+
+| file | failed | what it said (first line) | likely class |
+|---|---|---|---|
+| test_adjustment_history_why.py | 1 | `test_an_adjustment_from_a_suggestion_names_its_rule...` line 136: reply is `STRATEGY_VALIDATION_505` ("No order was stored; a partial exit counts as an adjustment") where the test expects acceptance | product or test out of step |
+| test_alert_routes.py | 2 | lines 46 and 86: answer key set differs from the expected set | test out of step with a new field |
+| test_d38_page_counts.py | 1 | line 94: "plan: the reply changed" | test out of step |
+| test_egress_gate_doors.py | 3 | line 55: `KiteExchangeError('kite_unavailable')` instead of the egress-gate refusal | container network (proxy), likely environment |
+| test_kite_broker_reader.py | 1 | `HTTPError 400 Bad Request` from urllib (a real outbound call went through the proxy) | container network, environment |
+| test_execution_return.py | 2 | `test_real_first_fill_stores_entry_facts_once` (2 cases) line 582: `INTERNAL_SYSTEM_002` unhandled error on POST /strategies/1/execution/return | **product, near I-120**; see Defects 2 |
+| test_migration_0059_last_close.py | 4 | line 76: SQLSTATE `22000` where the test expects `23514` (check violation) | Postgres 16 minor version or trigger raise; check |
+| test_pinned_clock.py | 1 | line 140: fixture offered on the real clock (a `default_exp...` dict differs from the pinned one) | clock: today is Sat 28 Nov, market closed |
+| test_pool_not_held_across_market_wait.py | 2 | line 109: "the REST reader was not reached: the measurement proves nothing" | timing or market closed |
+| test_risk_exit_not_gated.py | 1 | line 95: `[] == [(1, 'open')]` (no record opened) | clock: market closed |
+| test_route_latency_budget.py | 4 | statement counts over the ceiling: plan-watch 24 (ceiling 23), adjustment-plan 19 (ceiling 18), adjustment-check, batch of one row 24 | **product**: one extra query per route; see Defects 3 |
+| test_slow_price_source_live_day.py | 5 | `asyncio TimeoutError`, and `XPASS(strict)` on three xfail markers ("a paper read holds its pooled conn", "plan-watch waits out the whole stall") | tests expect the old behaviour; the xfails now pass, so the markers must go |
+
+I did not diagnose root causes beyond this table (budget); the "likely class" column is a guess [Guessing] except the quoted lines.
 
 ## Defects found
-1. Test isolation (class, not product): `tests_app` files leave rows behind (the catalogue refusal "would drop 750 of 750 live NIFTY contracts", an
-   extra `lapsed` alert beside the expected `open`). Run in sequence on one database they fail; each alone on a clean copy they pass.
-   Failing test on a dirty database: `tests_app/test_last_leg_closes_alerts.py` (`['lapsed','open'] == ['open']`). For a fix lane: clean up or use
-   a per-file schema. No product code defect found.
+1. Running `tests_app` on one shared database (the "run the whole suite" way this brief and `db_run.py` imply) fails from the 11th test on and then
+   crawls on a leaked advisory lock; it needs the per-file clone (`GITHUB_ACTIONS=true` or a `db_run_fresh` database name). Repro on a fresh
+   database: `test_acted_on_at_place.py` then `test_actionable_alerts.py` (catalogue refusal "would drop 750 of 750 live NIFTY contracts"); the same
+   files alone pass (36 passed and 2 passed). For the owner lane: say in the runbook that a manual full run must set `GITHUB_ACTIONS=true`
+   (or use `db_run_fresh`). No product code defect.
+2. `tests_app/test_execution_return.py::test_real_first_fill_stores_entry_facts_once` (2 cases) fails on this build with an unhandled error
+   (`INTERNAL_SYSTEM_002`) on POST `/strategies/1/execution/return`; the named I-120 file `test_order_door_entry_facts_confirmed.py` (7) passes, so the
+   first-fill-on-the-return-route path is the one that breaks. Failing test is the one named; needs a fix lane to read the traceback.
+3. `tests_app/test_route_latency_budget.py`: one statement over the ceiling on plan-watch (24 vs 23), adjustment-plan (19 vs 18),
+   adjustment-check and the batch of one row (24): a query was added to those routes after the ceilings were set (finding class: statement-count ceiling).
+4. `tests_app/test_slow_price_source_live_day.py`: three `xfail(strict)` markers now XPASS, so the product got better than the test says; markers
+   to remove. Two other cases time out (real failure or timing, not diagnosed).
 
 ## Not proven by the named test (for Lane TA or TB)
 1. I-51: a server test that the three leg-stop lines are short and carry "theoretical worst case" wording (`tests_app/test_leg_stop_risk.py` and
@@ -103,11 +133,11 @@ Pushed anyway because the first push is due inside 60 minutes and the change is 
 - `frontend/tests/paper-exit-warning.test.js` line 4: the header still says "Confirm is never locked"; update to the hotfix 27 Nov rule.
 
 ## Decided for the owner
-- The full run excludes the `full_chain` marker (migration down-and-back replays; nightly only, per `pytest-app.ini`).
+- The full run set `GITHUB_ACTIONS=true` (the suite's own switch for one database copy per file) and excludes the `full_chain` marker (migration down-and-back replays; nightly only, per `pytest-app.ini`).
 - Each named `tests_app` file was run on its own clean database copy (see How it was run).
 
 ## To file as deferred issues
-- Defect 1 (test isolation across files).
+- Defect 1 (runbook: full run needs `GITHUB_ACTIONS=true`), 2 (execution/return first fill), 3 (latency ceilings), 4 (slow price xfails); the failures in the table that are not listed as a defect.
 
 ## Pending owner read (new on-screen sentences)
 None; no product text was added.
@@ -116,3 +146,8 @@ None; no product text was added.
 | task | model | minutes |
 |---|---|---|
 | set-up, 42 named runs, READ items | Sonnet | about 30 |
+| gate runs (4) | Sonnet | about 90 |
+| full tests_app run, triage of 27 | Sonnet | about 100 |
+
+
+Budget: 240 min wall-clock; used about 215 min plus the final gate run.
