@@ -2625,6 +2625,9 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("monitoring_why_leg_not_live", "rule", "Not being watched: a leg's price is not live, so its stop cannot run."),
     ExplanationTemplate("monitoring_why_exit_not_priced", "rule", "Not being watched: an exit has no price to compare with, so it cannot run."),
     ExplanationTemplate("monitoring_why_index_exits_not_run", "rule", "Not being watched: the index exits are not running right now."),
+    # Lane FD2 hand-over (28 Nov 2026), pending owner read: the pause when no exit rule can be checked because the expiry kind is unknown
+    ExplanationTemplate("monitoring_why_expiry_kind_unknown", "rule",
+                        "Every exit rule is not checked because whether this trade expires weekly or monthly is not known."),
     ExplanationTemplate("monitoring_why_stale", "rule", "The last price is too old, so no rule can fire."),
     ExplanationTemplate("monitoring_why_disconnected", "rule", "The price feed is not connected, so no rule can fire."),
     ExplanationTemplate("monitoring_why_leg_missing", "rule", "A leg of this trade has no price, so no rule can fire."),

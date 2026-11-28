@@ -11,7 +11,7 @@ from http import HTTPStatus
 
 import pytest
 from httpx import ASGITransport, AsyncClient
-from ofo.errors.explanations import ClockHmsOrDated, DayMonth, EarlierDay, TargetValue
+from ofo.errors.explanations import EXPLANATIONS, ClockHmsOrDated, DayMonth, EarlierDay, TargetValue
 from ofo.market_calendar import is_market_open
 from ofo.marketdata.kite_provider import IST
 from ofo_app.exit_market import exit_market_answer
@@ -97,3 +97,9 @@ def test_dated_slots_do_not_follow_the_host_locale(monkeypatch: pytest.MonkeyPat
     assert DayMonth.format(datetime.date(2026, 11, 24)) == "24 Nov"
     assert TargetValue.format(at) == "8 Nov, 15:29 IST"
     assert ClockHmsOrDated.format(EarlierDay(at)) == "8 Nov, 15:29:59"
+
+
+def test_expiry_kind_unknown_pause_has_its_catalogue_sentence() -> None:
+    """FD2 hand-over: the Monitoring paused reason for an unknown expiry kind is one catalogue sentence."""
+    assert EXPLANATIONS["monitoring_why_expiry_kind_unknown"].text == (
+        "Every exit rule is not checked because whether this trade expires weekly or monthly is not known.")

@@ -115,7 +115,7 @@ import { istClock, istStamp } from '@/lib/displayFormat'
 import { openRecords, settledRecords } from '@/lib/paperAlerts'
 import { said } from '@/lib/playbookEditor'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
-import { armedIndexExits, triggerListOf, triggersPath } from '@/lib/paperTriggers'
+import { armedIndexExits, realTriggersPath, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   savedId: { type: Number, default: null },
@@ -219,9 +219,8 @@ let lastKind = null // the previous tick's tracking kind
 const exits = ref([])
 const exitsFailed = ref(false)
 async function readExits(id) {
-  if (props.tradeMode === 'real') return // the paper route would answer for a paper trade only; the card says so instead
   try {
-    const { data } = await api.get(triggersPath(id))
+    const { data } = await api.get(props.tradeMode === 'real' ? realTriggersPath(id) : triggersPath(id))
     if (id !== props.savedId) return
     const list = triggerListOf(data)
     exits.value = armedIndexExits(list ?? [])

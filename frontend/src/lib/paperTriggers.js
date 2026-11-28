@@ -3,6 +3,8 @@
 // Spec basis: REQ-109 AC-8 (the stops panel reads the strategy's triggers).
 
 export const triggersPath = (strategyId) => `/paper/strategies/${strategyId}/triggers`
+// FC3 (28 Nov, Lane FD2's route): a real-mode trade's armed and fired exits, the paper read's exact reply shape (ADR-330 (58))
+export const realTriggersPath = (strategyId) => `/real/strategies/${strategyId}/triggers`
 
 // The triggers array of a reply's data, or null when the reply has none (a reply without the array is a failure).
 export const triggerListOf = (data) => (Array.isArray(data?.triggers) ? data.triggers : null)
@@ -10,14 +12,13 @@ export const triggerListOf = (data) => (Array.isArray(data?.triggers) ? data.tri
 // The Conditional exits still on the screen: armed and fired ones; cancelled ones and per-leg stops are dropped.
 export const armedIndexExits = (list) => list.filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')
 
-// I-24 (Lane FC): the exits of a trade are read from ONE route, the paper one. A real-mode trade has no such route yet, so its exits are neither
+// I-24 (Lane FC): a real-mode trade's exits are read from the real route (FC3, 28 Nov); when that read FAILS they are neither
 // shown nor called "none": the card says this sentence (pending owner read; ADR-330 (58): paper and real read alike, this is the gap).
 export const EXITS_REAL_UNREADABLE_TEXT = 'Exits of a real-mode trade cannot be read here yet.'
 
 // What the Plan card prints about exits: { kind: 'rows' | 'none' | 'failed' | 'real_unreadable', rows }. Any mode but 'real' is read as paper.
 export function exitsViewOf(mode, exits, failed) {
-  if (mode === 'real') return { kind: 'real_unreadable', rows: [] }
-  if (failed) return { kind: 'failed', rows: [] }
+  if (failed) return mode === 'real' ? { kind: 'real_unreadable', rows: [] } : { kind: 'failed', rows: [] } // the sentence is for a failed real read only
   const rows = Array.isArray(exits) ? exits : []
   return { kind: rows.length ? 'rows' : 'none', rows }
 }

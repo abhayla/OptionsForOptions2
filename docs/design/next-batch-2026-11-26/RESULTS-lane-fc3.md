@@ -1,4 +1,4 @@
-STATUS 06:40 | 1: Passed in cloud (adjust-plan + plan-accept-signal, 38) | 2: Passed in cloud tracking half (plan-screens-r2-fc3, 15), real read waiting on FD2 | 3: UX-SW6, B13, A06/A09 Passed in cloud; A05 not done (host files) | 4: Passed in cloud (tests_app 88, tests/errors 711, pins updated) | 5: #880, #875 Passed in cloud | 6: waiting on FD2 (fix/r2-backend-2-1128 not on origin) | 7: finding only (PaperBookPanel follows ADR-330 (56)) | added: outcomeLoading, four monitoring_why_* sentences done; F5, UX-A18, d36 count (no PostgreSQL here) not done | gate 18b55049f TOTAL PASS, pushed | message to @parent refused (untrusted device) | 07:45 coordinator item: the other three strftime month names (TargetValue, ClockHmsOrDated, DayMonth) now use the English table, test test_dated_slots_do_not_follow_the_host_locale (red before, green after); next push after gate | blocker: none
+STATUS 08:10 | 1-5, 7, coordinator adds (outcomeLoading, four monitoring_why_*, three more strftime months): Passed in cloud, pushed c7f8e4235 gate TOTAL PASS | 2 real read: Passed in cloud (plan-entry-exits-mode + plan-screens-r2-fc3; reads GET /real/strategies/{id}/triggers; sentence only for a failed read) | expiry_kind_unknown sentence in the catalogue: Passed in cloud | these two: committed, gate running, next push after it | 6 now_value/now_as_of: still to check | not done: F5, UX-A18, UX-A05, d36 (no PostgreSQL), screenshots | blocker: none
 
 # Lane FC3 results
 
@@ -34,6 +34,10 @@ Branch fix/r2-plan-screens-1128 from origin/fix/r2-small-screens-1128. Paper onl
 - F5 (move wording after an unknown outcome) and UX-A18 (the date in the Exit dialog): the F5 sentences live in usePaperExit.js / StrategyBuilderPage.vue / PaperStrategies.vue (FB2, FC2 files); not done. UX-A18: I found no sold-option date built in explanations.py; waiting for FD2's note.
 - tests_app/test_d36_adjustment_counts.py: golden_d36 does not carry the stop sentences (grep). It needs the project's PostgreSQL (limited role, migrated); this container has none running, so it was not run: PC step: `python scripts/orchestrator/db_run.py . python -m pytest -c pytest-app.ini tests_app/test_d36_adjustment_counts.py`.
 
+## 28 Nov 07:50 additions (coordinator)
+- Real exits read wired: TrackingPanel reads `/real/strategies/{id}/triggers` for `tradeMode` 'real' (same reply shape); `exitsViewOf('real', ...)` now gives rows or none; "Exits of a real-mode trade cannot be read here yet." shows only for a failed real read. Note from FD2: that store holds rows only for stops set through the paper route, so a real trade usually answers an empty list; an empty list prints nothing (no claim of "none").
+- Catalogue sentence `monitoring_why_expiry_kind_unknown` added and pinned. FD2's skipped test in tests_app/test_fields_r2_fd2.py runs once its branch is merged.
+
 ## Item 6
 Waiting on FD2. One test already pins the `expiry_kind_unknown` entry through the badge (passes with no code change). The opportunity page's "Now ... as of ..." names were not checked against the served names.
 
@@ -55,6 +59,7 @@ Not a file of mine. The "Checked at 03:22:40 IST" beside the banner is printed b
 ## New wording for the owner to read
 - "N rules not checked: <reason>" (N is 2 or more); a group with no reason text says "no reason was given".
 - The four "Not being watched: ..." sentences listed in the coordinator additions.
+- "Every exit rule is not checked because whether this trade expires weekly or monthly is not known."
 - "This trade is closed; nothing is watched."
 - "The plan watch is paused while the feed has no live prices. It resumes with them."
 - "Since 10:12, 20 Nov 2026" (date added to the server's since text when not today).

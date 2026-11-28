@@ -5278,5 +5278,9 @@
   "explanation:monitoring_why_index_exits_not_run": {
     "sha256": "896bcb05c2cd1cd47d05dd74b634c44da3037e854a130889b94db2353e835902",
     "reviewed": "pending owner read"
+  },
+  "explanation:monitoring_why_expiry_kind_unknown": {
+    "sha256": "cda9274fc44cf2fd39bcc908f860d91fde1f00d39e0a8531517e12971f90b9db",
+    "reviewed": "pending owner read"
   }
 }

@@ -28,7 +28,9 @@ describe('exitsViewOf: one rule for the exits line', () => {
     expect(exitsViewOf('paper', [X], false)).toEqual({ kind: 'rows', rows: [X] })
     expect(exitsViewOf('paper', [], false)).toEqual({ kind: 'none', rows: [] })
     expect(exitsViewOf('paper', [], true)).toEqual({ kind: 'failed', rows: [] })
-    expect(exitsViewOf('real', [X], false)).toEqual({ kind: 'real_unreadable', rows: [] })
+    // FC3 (28 Nov): the real route exists (GET /real/strategies/{id}/triggers): a real trade reads like a paper one; the sentence stays for a FAILED read only
+    expect(exitsViewOf('real', [X], false)).toEqual({ kind: 'rows', rows: [X] })
+    expect(exitsViewOf('real', [], false)).toEqual({ kind: 'none', rows: [] })
     expect(exitsViewOf('real', [], true)).toEqual({ kind: 'real_unreadable', rows: [] })
     expect(exitsViewOf(undefined, [X], false).kind).toBe('rows')
   })
@@ -46,7 +48,12 @@ describe('PlanEntry exits line by mode', () => {
     const w = await card({ exits: [X] })
     expect(has(w, 'plan-entry-exit-31')).toBe(true)
   })
-  it('real trade: the one plain line; never a row, never "could not read", never silence', async () => {
+  it('real trade, read fine: the armed exit row, no sentence', async () => {
+    const w = await card({ exits: [X], exitsFailed: false, exitsMode: 'real' })
+    expect(w.get('[data-testid="plan-entry-exit-31"]').text()).toContain('25,720')
+    expect(has(w, 'plan-entry-exits-real-unreadable')).toBe(false)
+  })
+  it('real trade, read failed: the one plain line; never a row, never "could not read", never silence', async () => {
     const w = await card({ exits: [], exitsFailed: true, exitsMode: 'real' })
     expect(w.get('[data-testid="plan-entry-exits-real-unreadable"]').text()).toBe('Exits of a real-mode trade cannot be read here yet.')
     expect(has(w, 'plan-entry-exits-failed')).toBe(false)

@@ -7,11 +7,13 @@ import { flushPromises, mount } from '@vue/test-utils'
 
 const calls = []
 let CHECK = null
+let REAL = { triggers: [] }
 const answer = (url) => {
   calls.push(url)
   if (url === '/strategies/7/tracking') return Promise.resolve({ data: { strategy_id: 7, state: 'LIVE', paper_pnl: '195.00', paper_pnl_text: '+195.00', as_of: null, legs: [], detections: [] } })
   if (url === '/strategies/7/adjustment-check') return Promise.resolve({ data: CHECK })
   if (url === '/paper/strategies/7/triggers') return Promise.resolve({ data: { triggers: [] } })
+  if (url === '/real/strategies/7/triggers') return REAL instanceof Error ? Promise.reject(REAL) : Promise.resolve({ data: REAL })
   if (url === '/strategies/7/plan-watch') return Promise.reject({ status: 500, parts: null })
   return Promise.reject({ status: 404, parts: null })
 }
@@ -40,7 +42,7 @@ async function panel(results, props = {}) {
   await flushPromises()
   return w
 }
-beforeEach(() => { calls.length = 0; resetPlanWatchQueueForTests() })
+beforeEach(() => { REAL = { triggers: [] }; calls.length = 0; resetPlanWatchQueueForTests() })
 afterEach(() => { mounted.splice(0).forEach((w) => w.unmount()) })
 
 describe('UX-SW6: the rules not checked, one line per reason', () => {
@@ -71,11 +73,22 @@ describe('UX-SW6: the rules not checked, one line per reason', () => {
 })
 
 describe('item 2: a real trade never calls the paper exits route and never says "none"', () => {
-  it('tradeMode real: no GET of the paper triggers route; the card says the exits cannot be read here yet', async () => {
+  it('tradeMode real: reads the REAL route (never the paper one) and prints its armed exit', async () => {
+    REAL = { triggers: [{ id: 31, strategy_id: 7, kind: 'conditional_exit', direction: 'above', level_text: '25,720', state: 'armed' }] }
     const w = await panel([], { tradeMode: 'real' })
+    expect(calls).toContain('/real/strategies/7/triggers')
     expect(calls).not.toContain('/paper/strategies/7/triggers')
+    expect(t(w, 'plan-entry-exit-31').text()).toContain('25,720')
+    expect(t(w, 'plan-entry-exits-real-unreadable').exists()).toBe(false)
+  })
+  it('tradeMode real, an empty answer: nothing printed about exits; the sentence is not shown', async () => {
+    const w = await panel([], { tradeMode: 'real' })
+    expect(t(w, 'plan-entry-exits-real-unreadable').exists()).toBe(false)
+  })
+  it('tradeMode real, the read fails: the sentence "cannot be read here yet", never "none"', async () => {
+    REAL = Object.assign(new Error('x'), { status: 500, parts: null })
+    const w = await panel([], { tradeMode: 'real' })
     expect(t(w, 'plan-entry-exits-real-unreadable').text()).toBe('Exits of a real-mode trade cannot be read here yet.')
-    expect(t(w, 'plan-entry-exits-failed').exists()).toBe(false)
   })
   it('paper (the default): the paper route is read, no real-mode line', async () => {
     const w = await panel([])
