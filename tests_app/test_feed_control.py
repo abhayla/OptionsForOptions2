@@ -196,6 +196,22 @@ async def test_a_new_login_restarts_the_feed_on_it_and_the_same_session_again_do
     assert rig.kite.accepted == 2 and rig.kite.active == 1
 
 
+async def _read_whole_stream(bus, key: str, page: int = 10) -> list:
+    """Every entry of a stream, read ``page`` entries at a time. One ``XRANGE`` of the whole stream is a reply of
+    about 30 KB; the test's Redis stand-in (fakeredis ``TcpFakeServer``, used when REDIS_URL is unset) writes it on a
+    non-blocking socket and, with the machine busy, drops the connection part-way ("Connection closed by server",
+    10365 of 27972 bytes read: 5 failures in 8 runs under CPU load). Small replies do not depend on how fast the client
+    reads, so the same entries are read and the secret scan below is unchanged."""
+    entries: list = []
+    start = "-"
+    while True:
+        batch = await bus.xrange(key, min=start, count=page)
+        if not batch:
+            return entries
+        entries += batch
+        start = "(" + batch[-1][0].decode()  # exclusive: the next page starts after the last id read
+
+
 async def test_no_token_or_fingerprint_is_on_the_bus_or_in_any_log_line(rig):
     """AC-7 (attack 4): after a login, a restart and a Disconnect through both processes, no key on the bus (ticks,
     control, status, wanted) and no log file holds a token, its sha256 digest or its hex."""
@@ -221,7 +237,7 @@ async def test_no_token_or_fingerprint_is_on_the_bus_or_in_any_log_line(rig):
     assert await rig.bus.xlen(feed_bus.control_key(USER)) >= 2, "the login and the Disconnect were not published"
     blobs = []
     for key in (feed_bus.ticks_key, feed_bus.control_key):
-        blobs += [repr(item).encode() for item in await rig.bus.xrange(key(USER))]
+        blobs += [repr(item).encode() for item in await _read_whole_stream(rig.bus, key(USER))]
     for key in (feed_bus.status_key, feed_bus.want_key):
         blobs.append(await rig.bus.get(key(USER)) or b"")
     for name in ("feedsup", "api"):

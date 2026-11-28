@@ -1,4 +1,4 @@
-STATUS (28 Nov, IST): pushed df1f89764 earlier; CI-2 (frontend job cancelled at 25 min) FOUND, see section CI-2: not a hang; 1956 Playwright tests (was 282) of which 75 fail twice (screen-* specs, not in frontend lane's reach from here) ate about 10 of the 16.5 min; timeout line raised 25 -> 40 in app-tests.yml (frontend job only), not yet pushed. CI-1, I-184, I-126, I-170, I-176 done; I-168 green alone; I-204 build re-run waits for wave 0. Messages to the coordinator are refused (device trust); read this line.
+STATUS (28 Nov, IST): pushed 5342dcb2c (CI-1, CI-2). FLAKE-1 (tests_app/test_feed_control load-flaky) FIXED locally, not pushed yet: cause found, 12 of 12 green under load (was 5 of 8 red). Walker rows (W-07, W-35, TG2 hand-over list) start after wave 1. Messages to the coordinator are refused (device trust); read this line.
 
 # RESULTS: Lane T (test-only gaps and tooling)
 
@@ -56,6 +56,14 @@ Findings:
 Decided: only the frontend job's `timeout-minutes` line in .github/workflows/app-tests.yml, 25 to 40 (the coordinator allowed this line, ci.yml untouched). The raise alone would not make the job green: the 75 failing screen-suite tests must be fixed or re-pinned by the lane that owns frontend/e2e (outside my edit list; screen-alerts first, 20 tests). Measured, not guessed: ~21 min healthy, ~42 min if the failures stay.
 
 Suggested (not done): a `timeout-minutes: 15` on the Playwright step itself so a slow step ends red with its log instead of a cancelled job with none.
+
+## FLAKE-1: tests_app/test_feed_control.py "load-flaky" (coordinator's item)
+
+- **Which test:** `test_no_token_or_fingerprint_is_on_the_bus_or_in_any_log_line`. Alone on a quiet machine: 16 passed in 18.7 s. With six busy-loop processes on 4 CPUs: the file failed in 2 of 3 runs; the one test alone failed in 5 of 8 runs, always at the same line (the `xrange` of the whole ticks and control streams): `redis.exceptions.ConnectionError: Connection closed by server` after `IncompleteReadError: 10365 bytes read on a total of 27972 expected bytes` (other runs 28761 of 30914, 32261 of 32588).
+- **Why it depends on load:** with REDIS_URL unset (a lane's machine, the pre-push check) the `redis_url` fixture serves the bus from fakeredis `TcpFakeServer`, a pure-Python server on a non-blocking socket; one reply of about 30 KB is cut part-way when the machine is busy and the client reads slowly. CI uses a real `redis:7` service and is not exposed. Not shared state between tests, not a sleep, not a product timing fault: no product file to name for Lane B1b.
+- **Fix (test side):** a helper `_read_whole_stream` reads the stream 10 entries at a time (exclusive `(id` start) so no reply is large; the secret scan over the same entries is unchanged. Checked equal to a single `XRANGE` for 0, 1, 10, 11 and 250 entries on the stand-in.
+- **Proof:** same load, the same single test: 12 of 12 passed (before: 5 of 8 failed). Ruff clean.
+- **Same class:** other tests that read a whole stream without a count (`test_broker_disconnect`, `test_bus_socket`, `test_feed_process_boundary`, `test_feed_user_isolation`) run 3 times each under the same load: 12 of 12 passed, so they are not changed. Their reads are small; if one of them ever shows the same error, use the same helper.
 
 ## For Lane Z3
 
