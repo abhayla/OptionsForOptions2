@@ -56,7 +56,7 @@ describe('UX-A06: a settled trade on Positions says it is closed', () => {
     const groups = w.findAll('[data-testid="paper-group"]')
     const settled = groups.find((g) => g.attributes('data-strategy') === String(REAL.strategies[0].strategy_id))
     expect(settled).toBeTruthy()
-    expect(settled.find('[data-testid="plan-watch-closed"]').text()).toBe('This trade is closed; nothing is watched.')
+    expect(settled.find('[data-testid="plan-watch"]').exists()).toBe(false) // F2 (W-29 step 57, ADR-330 (57)): no box on a settled row
     const open = groups.find((g) => g.attributes('data-strategy') === String(REAL.strategies[1].strategy_id))
     expect(open.find('[data-testid="plan-watch-closed"]').exists()).toBe(false)
     expect(calls.some((c) => c[1].includes(`plan-watch?strategy_ids=`) && c[1].split('=')[1].split(',').includes(String(REAL.strategies[0].strategy_id)))).toBe(false)

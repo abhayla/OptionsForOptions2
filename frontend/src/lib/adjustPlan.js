@@ -27,6 +27,8 @@ export const formOf = (src) => ({
   stopRupeesShown: decimal(src?.stop_rupees),
   targetRupeeWords: text(src?.target_rupee_words), stopRupeeWords: text(src?.stop_rupee_words),
   stopWarning: text(src?.stop_warning), // ADR-330 (25): the server's line when the rupee stop is above the max loss
+  // I-208: which box of each pair holds what the user typed (the other was filled by the server); both true = both are sent
+  targetTyped: { percent: false, rupees: false }, stopTyped: { percent: false, rupees: false },
   targetLast: src?.target_source === 'rupees' ? 'rupees' : 'percent', stopLast: src?.stop_source === 'rupees' ? 'rupees' : 'percent',
 })
 
@@ -48,6 +50,7 @@ export function readPlan(body) {
       playbookName: text(body.plan.playbook_name),
       target: decimal(body.plan.target), stop: decimal(body.plan.stop),
       targetWords: text(body.plan.target_words), stopWords: text(body.plan.stop_words),
+      targetRupees: decimal(body.plan.target_rupees), stopRupees: decimal(body.plan.stop_rupees), // I-197: the plan's own levels in rupees, the server's strings
       changed: Array.isArray(body.plan.changed) ? body.plan.changed.filter((x) => typeof x === 'string') : [], // ADR-330 (9): the server's markers
       switchedOff: Array.isArray(body.plan.switched_off) ? body.plan.switched_off.filter((x) => typeof x === 'string') : [],
       maxAdjustments: count(body.plan.max_adjustments), timeExit: clockText(body.plan.time_exit), timeExitOn: text(body.plan.time_exit_on),
@@ -82,10 +85,15 @@ export const asIsBody = (playbookId) => ({ playbook_id: playbookId, accept: true
 export function saveBody(form, picked = false) {
   const body = { playbook_id: form.playbookId }
   if (picked) body.accept = true
-  if (form.targetLast === 'rupees') body.target_rupees = (form.targetRupees ?? '').trim() // "" clears the level
+  const bothTyped = (typed, a, b) => !!typed?.percent && !!typed?.rupees && (a ?? '').trim() !== '' && (b ?? '').trim() !== ''
+  // I-208: both boxes typed by the user and the server could not tie them together: send both, the server names a clash
+  if (bothTyped(form.targetTyped, form.target, form.targetRupees)) { body.target = form.target.trim(); body.target_rupees = form.targetRupees.trim() }
+  else if (form.targetLast === 'rupees') body.target_rupees = (form.targetRupees ?? '').trim() // "" clears the level
   else body.target = form.target.trim() // ADR-305: an empty Target is sent as "" = no target alert for this trade
   // ADR-252 addendum: a stop left as the sheet showed it is not sent (the server also compares; this is the first layer)
-  if (form.stopLast === 'rupees') {
+  if (bothTyped(form.stopTyped, form.stop, form.stopRupees)) {
+    body.stop = form.stop.trim(); body.stop_rupees = form.stopRupees.trim()
+  } else if (form.stopLast === 'rupees') {
     if ((form.stopRupees ?? '').trim() !== (form.stopRupeesShown ?? '').trim()) body.stop_rupees = form.stopRupees.trim()
   } else if (form.stop.trim() !== '' && form.stop.trim() !== (form.stopShown ?? '').trim()) body.stop = form.stop.trim()
   if (form.maxAdjustments.trim() !== '') body.max_adjustments = form.maxAdjustments.trim()
@@ -133,6 +141,30 @@ export async function sendPlan(client, strategyId, body, edit) {
 }
 
 export { isRefusal } from '@/lib/planSaveResult' // the one rule lives in planSaveResult.js
+
+/** D-TG2-1: a reset marker key ("triggers.T-01") is never shown. Its name is the trigger's label in the trade's own rules; a key with no
+ *  readable label (unknown, empty, or the rules could not be read) reads this plain fallback (pending owner read). */
+export const MARKER_FALLBACK_TEXT = 'a condition of the playbook'
+/** `labels`: trigger id -> label from GET .../adjustment-plan/rules. One name per marker, the fallback at most once. */
+export function markerNames(keys, labels) {
+  const out = []
+  for (const k of Array.isArray(keys) ? keys : []) {
+    const m = /^triggers\.([A-Za-z0-9-]+)$/.exec(String(k))
+    const label = m && typeof labels?.[m[1]] === 'string' ? labels[m[1]].trim() : ''
+    const name = label || MARKER_FALLBACK_TEXT
+    if (!out.includes(name)) out.push(name)
+  }
+  return out
+}
+/** The trade's own trigger labels (id -> label) for the reset markers; {} when the read fails (every marker then reads the fallback). */
+export async function fetchTriggerLabels(client, strategyId) {
+  try {
+    const { data } = await client.get(`${planPath(strategyId)}/rules`)
+    return Object.fromEntries(Object.entries(data?.body?.triggers ?? {}).map(([id, t]) => [id, typeof t?.label === 'string' ? t.label : '']))
+  } catch {
+    return {}
+  }
+}
 
 /** ADR-330 (9), (32) "Reset to playbook": the server puts the playbook's conditions back (the typed levels stay) and answers the sheet. Throws the client error. */
 export async function resetPlan(client, strategyId) {

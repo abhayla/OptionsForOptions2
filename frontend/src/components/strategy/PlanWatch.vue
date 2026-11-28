@@ -6,11 +6,10 @@
      A slow or failed read after a good one keeps the last rows, marked updating / not current, with the server's as-of time. A figure the server sent as absent shows a dash and the reason, never 0.
      Decision support only: nothing here exits or places anything. -->
 <template>
-  <section ref="rootEl" class="rounded-lg border border-line bg-surface p-3 text-sm" data-testid="plan-watch" :data-currency="marked ? (notCurrent ? 'not_current' : 'updating') : 'current'" :data-compact="compact ? 'true' : 'false'" :data-strategy="strategyId">
+  <section v-if="!closed" ref="rootEl" class="rounded-lg border border-line bg-surface p-3 text-sm" data-testid="plan-watch" :data-currency="marked ? (notCurrent ? 'not_current' : 'updating') : 'current'" :data-compact="compact ? 'true' : 'false'" :data-strategy="strategyId">
     <h3 class="font-semibold" data-testid="plan-watch-title">Plan watch</h3>
     <!-- "Updating the numbers..." only ever sits over good rows (the mark under the table); with no good answer on screen a read in progress is "Loading" -->
-    <p v-if="closed" class="text-xs text-ink-muted" data-testid="plan-watch-closed">{{ CLOSED_TEXT }}</p>
-    <template v-else-if="outcomeLoading && (view === null || (view.state !== 'ok' && updating))"></template><!-- Lane FB: nothing says "loading" while the builder's own outcome is still loading -->
+    <template v-if="outcomeLoading && (view === null || (view.state !== 'ok' && updating))"></template><!-- Lane FB: nothing says "loading" while the builder's own outcome is still loading -->
     <p v-else-if="view !== null && view.state === 'not_read' && view.retrying" class="text-xs text-ink-muted" data-testid="plan-watch-updating">{{ UPDATING_TEXT }}</p><!-- FJ r3 (W-03): a not_read row is asked again by its host; until then it is "updating", never "not available" -->
     <p v-else-if="view === null || (view.state !== 'ok' && updating)" class="text-xs text-ink-muted" data-testid="plan-watch-loading">{{ LOADING_TEXT }}</p>
     <p v-else-if="view.state !== 'ok'" class="text-xs text-ink-muted" data-testid="plan-watch-message">{{ stale && (view.state === 'failed' || view.state === 'unavailable') ? PRICES_NOT_LIVE_TEXT : view.text }}</p>
@@ -54,7 +53,7 @@
 </template>
 
 <script setup>
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
+import { computed, onBeforeUnmount, onMounted, nextTick, ref, watch } from 'vue'
 import { PLAN_WATCH_COMPACT_READ_GAP_MS, PLAN_WATCH_MIN_READ_GAP_MS, readPlanWatch } from '@/lib/planWatch'
 import { cancelPlanWatchRead, submitPlanWatchRead } from '@/lib/planWatchQueue'
 import { rupeesText } from '@/lib/displayFormat'
@@ -79,7 +78,6 @@ const NO_FIGURE = PAPER_NO_FIGURE
 // new wording, pending owner read (27 Nov 2026): a FIRST read is queued or in flight (no catalogue or label had it)
 const LOADING_TEXT = 'Loading the rule check...'
 // new wording, pending owner read (28 Nov 2026): UX-A06 a closed trade; UX-A09 the feed is paused (not an error)
-const CLOSED_TEXT = 'This trade is closed; nothing is watched.'
 const PRICES_NOT_LIVE_TEXT = 'The plan watch is paused while the feed has no live prices. It resumes with them.'
 const EMPTY_TEXT = 'Nothing to watch yet.'
 const UPDATING_TEXT = 'Updating the numbers...' // the one existing "updating" wording (LegList); REQ-119 AC-4
@@ -169,14 +167,23 @@ onMounted(() => {
   if (props.compact) {
     document.addEventListener('visibilitychange', onVisibility)
     tabShown.value = document.visibilityState === 'visible'
-    if (typeof IntersectionObserver !== 'undefined' && rootEl.value) {
-      observer = new IntersectionObserver((entries) => {
-        const last = entries[entries.length - 1]
-        if (last) { onScreen.value = last.isIntersecting; syncActive() }
-      })
-      observer.observe(rootEl.value)
-    }
+    observe()
   }
+  ask(true)
+})
+// F2 (W-29 step 57): a closed trade draws no box at all; if it is drawn later (the trade opens again) the box is watched from then on
+function observe() {
+  if (observer || gone || typeof IntersectionObserver === 'undefined' || !rootEl.value) return
+  observer = new IntersectionObserver((entries) => {
+    const last = entries[entries.length - 1]
+    if (last) { onScreen.value = last.isIntersecting; syncActive() }
+  })
+  observer.observe(rootEl.value)
+}
+watch(() => props.closed, async (isClosed) => {
+  if (isClosed) { if (observer) { observer.disconnect(); observer = null } return }
+  await nextTick()
+  if (props.compact) observe()
   ask(true)
 })
 onBeforeUnmount(() => {
