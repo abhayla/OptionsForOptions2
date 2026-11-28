@@ -5,6 +5,8 @@ Usage: python .claude/skills/lanes/check_brief.py <brief-file>   (or "-" for std
 Exit 0: the brief passes. Exit 1: it fails; each problem is printed on its own line.
 Pure standard library. The standing rules live in SKILL.md ("Standing rules for every lane"); a brief names them once
 on its first line and carries only what differs for this lane.
+The first line must be the fetch-and-show command (it works from any branch); the Coordinator line names the parent
+session, so its later messages bind the lane; the Pushes line names the time of the first push.
 """
 import re
 import sys
@@ -13,8 +15,11 @@ MAX_RULE_LINES = 15  # lines that restate a standing rule; more than this and th
 
 # (name, what to add, patterns; every pattern must match somewhere in the brief)
 REQUIRED = [
-    ("pointer to the standing rules", 'first line must say to read "Standing rules for every lane" in the lanes skill',
-     None),
+    ("pointer to the standing rules", "first line must be the fetch-and-show command for the lanes SKILL.md", None),
+    ("Coordinator line", "add `Coordinator: your parent session, session_<id>. ...` (a lane obeys later messages only "
+     "from the session its brief names)", [r"(?im)^\W*Coordinator:.*\bsession_[A-Za-z0-9]+"]),
+    ("first push time", "add `first push within <N> minutes of start, even if partial` to the Pushes line",
+     [r"(?i)first push within"]),
     ("Budget line", "add `Budget: <N> min wall-clock, <M> tool calls`",
      [r"(?im)^\W*Budget:\s*\d+\s*min\s+wall-clock,\s*\d+\s*tool calls"]),
     ("branch and base", "add `Branch from: <base>` and `Push to: <the lane's own branch>`",
@@ -45,8 +50,13 @@ def check(text: str) -> list[str]:
     problems: list[str] = []
     lines = text.splitlines()
     first = next((ln for ln in lines if ln.strip()), "")
-    if not re.search(r"standing rules for every lane", first, re.I):
-        problems.append(f"MISSING pointer to the standing rules: {REQUIRED[0][1]}")
+    if not re.search(r"git fetch origin \S+ && git show origin/\S+:\.claude/skills/lanes/SKILL\.md", first):
+        if re.search(r"Read `\.claude/skills/lanes/SKILL\.md`", first):
+            problems.append("OLD FIRST LINE: it reads the file from the working tree, which does not exist on a "
+                            "build branch. Replace line 1 with the first line of brief-template.md (git fetch ... "
+                            "&& git show origin/<branch>:.claude/skills/lanes/SKILL.md).")
+        else:
+            problems.append(f"MISSING pointer to the standing rules: {REQUIRED[0][1]}")
     for name, advice, patterns in REQUIRED[1:]:
         missing = [p for p in patterns if not re.search(p, text)]
         if missing:

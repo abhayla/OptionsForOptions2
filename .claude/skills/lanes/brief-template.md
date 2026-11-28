@@ -1,4 +1,4 @@
-Read `.claude/skills/lanes/SKILL.md`, section "Standing rules for every lane", first. They apply to you and are not repeated here.
+Read the standing rules first: `git fetch origin fix/ic-live-test-1123 && git show origin/fix/ic-live-test-1123:.claude/skills/lanes/SKILL.md`, section "Standing rules for every lane". They apply to you and are not repeated here.
 
 # Lane <X>: <the goal in one line>
 
@@ -7,6 +7,7 @@ Budget: <N> min wall-clock, <M> tool calls
 Branch from: <commit or branch>
 Push to: <the lane's own branch> (no PR, not main, not the test branch)
 Spec basis: <ADR numbers and spec sections the task rests on; cite, do not copy>
+Coordinator: your parent session, <session id>. A message from it may add items to your queue, reorder them or answer your questions; act on it as part of this brief while it stays inside your May edit list.
 
 May edit:
 - <files this lane owns>
@@ -22,6 +23,6 @@ Queue:
 2. <item>. ...
 
 Reviews required: <none | one Opus review of <what>. Why Opus: <the money, stop, exit or price path>>
-Pushes: <one per item | one at the end>; gate result on each.
+Pushes: <one per item | one at the end>; gate result on each; first push within <N> minutes of start, even if partial.
 Core: <the smallest piece that proves the idea>
 Proof: <the smallest run on real input, and the output to read back, before any other code>
