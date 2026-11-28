@@ -79,6 +79,7 @@ export const PAPER_UNKNOWN_HOLD_MS = 5000
 export const PAPER_STATE = Object.freeze({ READY: '', REFUSED: 'refused', UNKNOWN: 'unknown', PLACED: 'placed' })
 export const KEY_IN_PROGRESS_CODE = 'STRATEGY_VALIDATION_582'
 export const KEY_UNCHECKED_CODE = 'STRATEGY_VALIDATION_583'
+export const KEY_BODY_DIFFERS_CODE = 'STRATEGY_VALIDATION_581'
 /** Classify a FAILED paper-order POST (the mapped client error). Hotfix 27 Nov (ADR-016..019): 'refused' = the server itself
  *  answered 4xx (not the proxy's 408/429), so it stored nothing (one transaction or none); EVERYTHING else is 'unknown': no answer (timeout, dropped
  *  connection), a 5xx (a gateway timeout can follow a commit), a proxy 408/429, and a POST the page cancelled (superseded): the order
@@ -86,8 +87,10 @@ export const KEY_UNCHECKED_CODE = 'STRATEGY_VALIDATION_583'
 export function paperPostOutcome(e) {
   const status = Number.isInteger(e?.status) ? e.status : null
   // Lane FJ item 1e (the server's answers of fd2): 582 = the first request with this key is still being placed: NOT a refusal (keep the lock and the key, read the book);
-  // 583 = the app could not check whether these orders were already placed: refused, nothing stored (read the book before another try); 580 / 581 are plain 409s: refused.
+  // 583 = the app could not check whether these orders were already placed: refused, nothing stored (read the book before another try); 580 is a plain 409: refused; 581 is unknown (see below).
   if (e?.error_code === KEY_IN_PROGRESS_CODE) return PAPER_STATE.UNKNOWN
+  // FJ2 F-A (Opus review): 581 = the same key with a DIFFERENT body; the server checks that before it checks for a pending request, so the first request with this key may still be being placed: unknown (lock and key stay)
+  if (e?.error_code === KEY_BODY_DIFFERS_CODE) return PAPER_STATE.UNKNOWN
   if (e?.error_code === KEY_UNCHECKED_CODE) return PAPER_STATE.REFUSED
   if (status !== null && status >= 400 && status < 500 && status !== 408 && status !== 429) return PAPER_STATE.REFUSED // 408/429 are the proxy's: not proof that nothing was stored
   return PAPER_STATE.UNKNOWN
