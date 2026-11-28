@@ -72,3 +72,23 @@ async def test_an_armed_leg_stop_whose_contract_cannot_be_read_keeps_its_stored_
     run = types.SimpleNamespace(market=None, tracked=None, spot=None)
     lines = await pw._armed_lines(object(), 1, run, True)
     assert lines[0]["state"] == "not_computable" and lines[0]["fires_at"] == D("90.00")
+
+
+def _rupee(rule: str, state: str, amount):
+    return _lim(rule, state, amount=amount, rule=rule)
+
+
+def test_the_rupee_profit_target_is_a_target_at_plus_its_level_checked_or_not():
+    """Opus review F1 (real evaluator ids: the rupee rows' trigger id IS their rule id, "plan.rupee_profit"): the
+    target was taken for a stop and shown at minus its level (fires at -600 on a 600 rupee target)."""
+    rule = "plan.rupee_profit"
+    closed = pw._plan_lines_all(_run([_rupee(rule, "not_checked", D("600"))]), live=True)[0]
+    assert closed["kind"] == "target" and closed["state"] == "not_computable" and closed["fires_at"] == D("600.00")
+    fresh = pw._plan_lines_all(_run([_rupee(rule, "checked", D("600"))]), live=True)[0]
+    assert fresh["kind"] == "target" and fresh["fires_at"] == D("600.00") and fresh["now"] == D("-500.00")
+    assert fresh["distance_rs"] == D("1100.00")  # rupees still to go: from -500 up to +600
+
+
+def test_the_rupee_loss_stop_is_still_a_stop_at_minus_its_level():
+    line = pw._plan_lines_all(_run([_rupee("plan.rupee_loss", "not_checked", D("400"))]), live=True)[0]
+    assert line["kind"] == "stop" and line["fires_at"] == D("-400.00")

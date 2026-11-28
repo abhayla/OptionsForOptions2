@@ -96,6 +96,16 @@ its database is next door, so the statement counts 219 -> 136 were the wrong goa
   `_mapping`, `.keys()`, `.scalars()` (every current caller uses first, all, one_or_none, scalar_one_or_none and
   positions or field names); M1 triggers, pause and records are as of the request start for every row.
 
+- Opus review (Tier A, narrow) of the orders and kinds tables and of W-30: orders and kinds served from memory equal the
+  database row for row and type for type (13 asked lists, another user, a write and re-reads); REVISE for two points, both fixed
+  test first: F1 the plan's rupee PROFIT target (trigger id = rule id = `plan.rupee_profit`) was classified as a stop, so
+  W-30 would have shown it at minus its level (`fires_at -600` on a 600 rupee target); it is now a target at plus its
+  amount (`target` kind, `distance` rupees still to go). The same one-line classification also corrects the CHECKED line of
+  that rule, which showed `stop` / `fires_at -600` / distance 700 before this lane (a wrong figure that existed already:
+  recorded under "Found, not assigned" because the brief said checked rows stay unchanged; this row changes from wrong to
+  right on purpose); F2 `_serve_many` returned an id's orders twice when the asked list repeated it (`= ANY` returns them
+  once; no caller does that today, a position netted twice would double): now once per id.
+
 ## Item 3 (I-202, O-P-03): running trade, not a draft
 Real case (plan row I-202): "A running paper trade shows the Draft Live data not connected heading above the monitoring
 badge". New catalogue sentence `outcome_running_not_live` = "Prices are not live". `outcome.not_connected(..., running=True)`
@@ -204,6 +214,10 @@ that dialog shows another "The market is closed." line beside it, the prefix rep
 from the cloud. Until the owner answers, `test_the_entries_sentences_are_the_wording_in_the_build` pins the build's wording.
 
 ## Found, not assigned
+- The plan's rupee PROFIT target line showed `kind stop`, `fires_at` minus its amount and a wrong distance before this lane
+  (`routes/plan_watch.py`, kind mapping by trigger id `T-07` only; the rupee rows' trigger id is `plan.rupee_profit`).
+  Changed here by the same classification fix that W-30 needed; tell the board that a CHECKED rupee-profit line's figures
+  moved (from wrong to right). Evidence: `tests_app/test_plan_watch_fires_at_b3_1128.py` (evaluator ids).
 - `frontend/src/components/strategy/PaperStrategies.vue` (`watch([planIds, goodReadToken], readPlanBatches)`, about lines 335 to
   370) cancels the batch in flight each time a good positions read changes `goodReadToken`; on the owner's connection (16 to 19 s
   an answer) the batch never finished, which fits "no planned box showed its rule rows" and 11 requests in 3 minutes. [Likely,
@@ -244,3 +258,4 @@ SAFE TO CLOSE (head: the commit this file is pushed in; left: the three items ab
 | A fresh cloud session had no Python or frontend dependencies: DB tests failed on `import httpx`, the first `prepush.py` stopped at "frontend/node_modules is missing", and the test database had no migrations | about 15 min, the 1 h check's first start wasted | the environment setup script runs `pip install -r requirements-app.txt -r requirements-dev.txt`, `npm ci` in frontend/ and the alembic upgrade through `db_run.py` |
 | `send_message` to the coordinator refused 3 times (elevated_session_untrusted_device); the coordinator reached the lane but the lane could not answer | no report channel except the STATUS line | the owner decides on the trust card, or the brief says "STATUS line is the report" up front |
 | `git checkout <file>` blocked by the discard guard for a file holding only my own probe | 2 retries | none needed; the guard is right, remove a probe with an edit |
+| The shared test database `ofo_test` (the template per-file clones copy) held rows left by a run that wrote to it directly: a check I stopped mid-run, or a helper's run without `OFO_TEST_DB_PER_FILE=1`; the next file then met "8 leg stops, expected 2" | 20 min of reading | clear with `SET LOCAL session_replication_role = replica; TRUNCATE public.strategies CASCADE; TRUNCATE public.catalogue_contracts CASCADE` in one transaction (the alert-style guard refuses a plain truncate); better: `db_run.py` refuses a write run on `ofo_test` itself without the per-file flag |

@@ -293,7 +293,7 @@ def _serve_many(per: dict[int, list[Any]], asked: Any, match: Match) -> Rows | N
     batch dropped, because it is not the user's, sends the whole statement to the database)."""
     if not isinstance(asked, (list, tuple)) or not all(isinstance(sid, int) and sid in per for sid in asked):
         return None
-    rows = [row for sid in asked for row in per[sid]]
+    rows = [row for sid in dict.fromkeys(asked) for row in per[sid]]  # once each, as ``= ANY`` returns them
     if match.order_key is not None:
         rows.sort(key=match.order_key)
     return Rows(rows)

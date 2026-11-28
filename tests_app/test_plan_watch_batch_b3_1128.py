@@ -6,6 +6,7 @@ Real case (plan rows I-48, I-08): the Positions page asked for nine running trad
 """
 from __future__ import annotations
 
+import types
 from decimal import Decimal
 
 import pytest
@@ -341,3 +342,14 @@ async def test_the_adr247_memo_is_kept_per_parameters():
     again = (await db.execute(statement, {"reason": "A"})).scalar()
     other = (await db.execute(statement, {"reason": "B"})).scalar()
     assert (first, again, other) == ("A", "A", "B") and db.asked == ["A", "B"]
+
+
+def test_a_list_that_repeats_an_id_is_answered_once_per_id():
+    """Opus review F2: ``= ANY(:ids)`` returns each row once; the memory must not return a strategy's orders twice (a
+    position netted twice would double its quantity)."""
+    from ofo_app import plan_watch_prefetch as pf  # noqa: PLC0415
+    from sqlalchemy import text  # noqa: PLC0415
+    row = types.SimpleNamespace(id=5)
+    pre = pf.Prefetch("owner", {"orders": {1: [row]}})
+    got = pf.serve_statement(pre, text(pf.ORIGINAL["orders"]), {"ids": [1, 1], "user_ref": "owner"})
+    assert got is not None and got.all() == [row]

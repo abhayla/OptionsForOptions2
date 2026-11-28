@@ -229,7 +229,8 @@ def _plan_lines_all(run: CheckRun, live: bool) -> list[dict]:
     pnl = state.pnl if live else None
     for lim, shown in zip(ev.limits, out.limits, strict=True):
         seen.add(lim.rule_id)
-        kind = ("target" if lim.trigger_id == "T-07" else "credit_stop" if lim.rule_id == sl.CREDIT_RULE else "stop")
+        kind = ("target" if lim.trigger_id == "T-07" or lim.rule_id == sl.RUPEE_PROFIT_RULE
+                else "credit_stop" if lim.rule_id == sl.CREDIT_RULE else "stop")
         label = shown.text or render_explanation("adjust_condition_line_id", label=lim.trigger_id)
         if lim.state == "already_true":
             lines.append(_line(lim.trigger_id, kind, "plan", label, "pnl_rupees", "not_applicable"))
@@ -273,6 +274,8 @@ def _fires_at(kind: str, lim: pe.LimitNow, state: pe.StrategyState) -> Decimal |
     """The P&L level, in rupees, at which the limit is reached: the target = its % of max profit; a stop = minus the
     evaluator's own rupee loss line (``LimitNow.amount``); None = not known (never a guess)."""
     if kind == "target":
+        if lim.rule_id == sl.RUPEE_PROFIT_RULE:  # the plan's rupee profit: its amount IS the level (plus, not minus)
+            return lim.amount if isinstance(lim.amount, Decimal) else None
         if isinstance(state.max_profit, Decimal) and isinstance(lim.threshold, Decimal):
             return adjust_money.pct_of(state.max_profit, lim.threshold)
         return None
