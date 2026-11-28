@@ -1,4 +1,4 @@
-STATUS 20:45 | items 1, 2, 3 (F7, F8), 4, 5, 6, 8, 9 (a, b, d, e), 10 pushed (88500c2a9, gate TOTAL PASS); 7, market-open clock, O-P-03 not done (designs below) | SAFE TO CLOSE | blocker: none
+STATUS 21:50 | batch 1: stored-close guard tests added (option b, 3 named tests), gate running | next: F-3 stored stop reported failed, adx ValueError, unreadable slot, D-TG2-2 (batch 2, 01:30) | blocker: none
 
 # Lane RA2: the standing backend leftovers lane (base fix/r3-leftovers-1128 a5259db50)
 
@@ -21,6 +21,19 @@ non-superuser, one test file at a time, proxy variables unset. Ruff: the pinned 
 | 5 | nothing to do | tests_app/test_slow_price_source_live_day.py has no xfail marker on this head (grep: none). |
 | 9 | built except O-P-03 | tests_app/test_wording_ra2_1128.py: 4 passed; tests/errors 726 passed (pins moved with the strings, "pending owner read"). |
 | 10 F2, F5 | re-checked, pass | test_paper_orders_r2_fd2 4, test_order_request_key_durable_fd3 19, test_order_routes_fd4 2, test_exit_door_real_fd3 14, test_response_door 215. |
+
+## Stored close is not a live price (coordinator rule 17:37 and 18:25 IST): option (b), proven; one point left as a question
+Taken: (b). The book state reads LIVE with `as_of` from the stored close, as a connected session already does on a closed market (ADR-212
+`display_price`); nothing that needs a live price follows from it. Named tests, tests_app/test_stored_close_not_live_ra2_1128.py (3 passed):
+`test_guard_1_a_stored_close_is_never_a_fill_or_stop_price_but_is_a_display_price` (the only price a fill, stop or exit reads,
+`paper.leg_price`, is not live and has no price; the display price is, with the close's own time),
+`test_guard_2_the_monitor_fires_nothing_from_a_stored_close` (index exit crossed, stored closes in the feed: 0 fires, no stop order),
+`test_guard_3_the_exit_state_stays_closed_with_only_a_stored_close` (sentence "The market is closed. Exits can be placed from 09:15 on
+Monday 12 Oct", so Exit Confirm stays greyed, ADR-330 (60)).
+NOT met, and not decided: "no leg's price_state reads live". Each leg's `price_state` is `live` for a stored close because it is the display price
+(the same for a connected session on a closed market, which the pages already turn into the last-close state from the market state).
+Making it non-live for a stored close would change the connected closed-market book too and needs the page's rule (frontend). Question for the
+coordinator and owner: keep `price_state: live` + `as_of` + market-closed (current), or add a leg state `last_close`?
 
 ## Item 1 (cause, fix, real case)
 Real case (Lane TG, 28 Nov, no session): Live card leg LTP 147.50 (15:29:58) while every running paper row read "P&L - /
