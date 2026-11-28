@@ -9,6 +9,7 @@ from __future__ import annotations
 import uuid
 from http import HTTPStatus
 
+import pytest
 from ofo_app import order_outcome
 from sqlalchemy import text
 from test_order_request_key_r2_fd2 import _body, _count, _post, _prices, _use, keys  # noqa: F401 - fixtures
@@ -18,6 +19,12 @@ from test_strategy_store import _client
 
 TWO_ORDERS = 2
 UNKNOWN = "no known result yet"
+
+
+@pytest.fixture(autouse=True)
+def _no_wait(monkeypatch):
+    """The wait for a running first request is its own test; the refusal tests need the answer at once."""
+    monkeypatch.setattr(order_outcome, "WAIT_SECONDS", 0.0)
 
 
 async def _states(db, stored) -> list[str]:
@@ -179,3 +186,41 @@ async def test_a_body_the_schema_refuses_releases_the_attempt_at_once(db, notifi
     assert (await _post(app, stored, bad)).status_code == HTTPStatus.UNPROCESSABLE_ENTITY
     assert await _states(db, stored) == ["not_stored"]
     assert (await _post(app, stored, _body(orders))).status_code == HTTPStatus.CREATED
+
+
+async def test_a_request_that_finds_a_running_first_waits_for_it_and_then_places(db, notified, keys, monkeypatch):
+    """The double click: the first request is still running; the second waits for it to close, then places (the
+    idempotent saves rely on this), and is refused only if the outcome stays unknown."""
+    import asyncio  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    monkeypatch.setattr(order_outcome, "WAIT_SECONDS", 3.0)
+    running = await order_outcome.open_attempt(_ConnMaker(db), stored.user_ref, stored.id, "paper")
+    second = asyncio.ensure_future(_post(app, stored, _body(orders, uuid.uuid4())))
+    await asyncio.sleep(0.5)
+    assert not second.done()  # waiting, not refused
+    await order_outcome.close_attempt(_ConnMaker(db), running, None)
+    reply = await second
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert await _count(db, stored) == TWO_ORDERS
+
+
+def test_every_order_route_carries_the_outcome_guard_and_the_start_up_check_sees_one_missing(monkeypatch):
+    """Opus review F6: the structural check. With the app as built nothing is misguarded; strip the guard from the
+    Execute door and from a paper door in turn and the check names exactly that route (a mutation of the wiring)."""
+    from ofo_app import scenario_mode  # noqa: PLC0415
+    from ofo_app.main import create_app  # noqa: PLC0415
+    monkeypatch.setenv("APP_ENV", "test")
+    app = create_app()
+    assert scenario_mode.misguarded_order_routes(app.routes) == []
+    for method, path, guard in (("POST", "/strategies/{strategy_id}/execute", order_outcome.guard_real_outcome),
+                                ("POST", "/paper/strategies/{strategy_id}/orders", order_outcome.guard_paper_outcome)):
+        route = next(r for r in app.routes if getattr(r, "path", "") == path and method in r.methods)
+        kept = list(route.dependant.dependencies)
+        route.dependant.dependencies = [d for d in kept if d.call is not guard]
+        try:
+            assert scenario_mode.misguarded_order_routes(app.routes) == [(method, path)], path
+        finally:
+            route.dependant.dependencies = kept
+    assert scenario_mode.misguarded_order_routes(app.routes) == []

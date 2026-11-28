@@ -26,6 +26,7 @@ outcome); ``scenario_mode.misguarded_order_routes`` fails the start-up when one 
 """
 from __future__ import annotations
 
+import asyncio
 import contextlib
 import logging
 from collections.abc import AsyncIterator
@@ -46,6 +47,10 @@ _LOG = logging.getLogger(__name__)
 #: An open attempt older than this with nothing stored is known not stored: far beyond the 8 s request deadline and
 #: any commit; the unknown-outcome window of the request key is 120 s too.
 SETTLE_SECONDS = 120
+#: A request that finds a YOUNG open attempt waits this long for it to close (a double click, two tabs: the first is
+#: simply still running, as the idempotent trigger saves rely on) and is refused only if the outcome stays unknown.
+WAIT_SECONDS = 4.0
+POLL_SECONDS = 0.1
 UNKNOWN_TEMPLATE = "order_outcome_unknown"
 STORE_TEMPLATE = "request_key_store_unavailable"
 
@@ -91,7 +96,8 @@ async def open_attempt(db: Any, user_ref: str, strategy_id: int, door: str) -> i
         if (await db.execute(_OWNS, {"u": user_ref, "s": strategy_id})).first() is None:
             await _end_transaction(db, commit=False)  # the door's own answer for a strategy that is not the user's
             raise _refused("user_input_request_not_available", Failure.NOT_FOUND)
-        for _ in range(3):
+        waited = 0.0
+        for _ in range(3 + int(WAIT_SECONDS / POLL_SECONDS) + 1):
             row = (await db.execute(_OPEN, {"u": user_ref, "s": strategy_id, "d": door})).first()
             if row is not None:
                 await db.commit()
@@ -105,7 +111,11 @@ async def open_attempt(db: Any, user_ref: str, strategy_id: int, door: str) -> i
                 await db.execute(_CLOSE, {"st": "not_stored", "id": earlier.id})
             else:
                 await _end_transaction(db, commit=False)
-                raise _refused(UNKNOWN_TEMPLATE)
+                if waited >= WAIT_SECONDS:
+                    raise _refused(UNKNOWN_TEMPLATE)
+                await asyncio.sleep(POLL_SECONDS)  # the first request may simply still be running: look again
+                waited += POLL_SECONDS
+                continue
             await db.commit()
     except StrategyRefused:
         raise

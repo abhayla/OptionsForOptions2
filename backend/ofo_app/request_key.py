@@ -149,7 +149,7 @@ def done(strategy_id: int, body: Mapping[str, Any], result: Mapping[str, Any]) -
 
 async def finish(store: KeyStore, user_ref: str, key: uuid.UUID, record: Mapping[str, Any]) -> None:
     """The first request committed: keep its result (``done``) for a repeat. A store that fails now leaves the key
-    pending (a repeat is told "still being placed"), and the first request's own answer is still sent."""
+    pending (a hint only; the durable row decides a repeat), and the first request's own answer is still sent."""
     try:
         await store.put(scoped(user_ref, key), record)
     except KeyStoreDown:
@@ -168,8 +168,8 @@ async def free(store: KeyStore, user_ref: str, key: uuid.UUID) -> None:
 # ---- the durable record (Lane FD3 item 2, migration 0061): public.order_request_keys ---------------------------------
 # The record of truth. The claim is written in the SAME transaction as the orders (or the sealed plan), so a crash can
 # neither store the orders without the key nor the key without the orders; a repeat reads the row. Redis stays the fast
-# path for "the first request is still running" (582). A table that cannot be read or written refuses the keyed
-# request by name (583) and stores nothing.
+# path (a hint; B2: it no longer refuses). A table that cannot be read or written refuses the keyed request by name
+# (583) and stores nothing.
 
 _DB_CLAIM = text(
     "INSERT INTO public.order_request_keys (user_ref, request_key, strategy_id, body_sha256, door, state) "

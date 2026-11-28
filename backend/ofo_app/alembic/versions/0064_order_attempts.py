@@ -10,9 +10,10 @@ server must be the guarantee: while a strategy has an order attempt whose outcom
 request for it is refused, whatever its key or body.
 
 Changes (owner-run, one transaction; ADDITIVE: ONE new table, nothing existing changed):
-- public.order_attempts(id, user_ref, strategy_id -> public.strategies(id), door ('paper'|'real'), started_at, state
-  ('open'|'stored'|'not_stored'), resolved_at). A partial unique index allows ONE 'open' attempt per strategy: opening
-  is the atomic claim, so two tabs cannot both pass.
+- public.order_attempts(id, user_ref, strategy_id -> public.strategies(id) ON DELETE CASCADE (an attempt means
+  nothing without its strategy; the application role has no DELETE), door ('paper'|'real'), started_at, state
+  ('open'|'stored'|'not_stored'), resolved_at). A partial unique index allows ONE 'open' attempt per strategy:
+  opening is the atomic claim, so two tabs cannot both pass.
 - Grants to the application role: SELECT; INSERT on user_ref, strategy_id, door and state only (the
   database sets started_at; a request cannot back-date or pre-close an attempt); UPDATE on state and resolved_at
   only; no DELETE.
@@ -63,7 +64,7 @@ def upgrade() -> None:
         CREATE TABLE {TABLE} (
             id          BIGINT      GENERATED ALWAYS AS IDENTITY PRIMARY KEY,
             user_ref    TEXT        NOT NULL CHECK (user_ref <> ''),
-            strategy_id BIGINT      NOT NULL REFERENCES public.strategies (id),
+            strategy_id BIGINT      NOT NULL REFERENCES public.strategies (id) ON DELETE CASCADE,
             door        TEXT        NOT NULL CHECK (door IN ('paper', 'real')),
             started_at  TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
             state       TEXT        NOT NULL CHECK (state IN ('open', 'stored', 'not_stored')),
