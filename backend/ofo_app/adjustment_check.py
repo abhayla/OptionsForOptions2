@@ -401,11 +401,11 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
     kind = market.expiry_kind or position.expiry_kind  # "" = not known: no stage, no stop lines (R3, fail closed)
     stops = None
     stop_base = getattr(tracked, "stop_base", None)  # ADR-330 (1): fixed at entry, None = not checked
-    if resolved is not None and kind:
+    if resolved is not None:  # FR 3.6: also for an unknown kind (""): a kind-free stop (an IC's 2x credit) is still checked
         from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
         stops = sif.stops_of(resolved, sif.MoneyInputs(None if stop_base is None else stop_base.max_loss,
                                                        None if stop_base is None else stop_base.credit, stated_margin),
-                             sif.StageAt(kind, (expiry - now.date()).days))
+                             sif.StageAt(kind, (expiry - now.date()).days))  # days_left stays None for the state when no kind
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
         expiry_kind=kind or "weekly",  # type: ignore[arg-type]  # a placeholder: with no kind days_left is None
         days_left=(expiry - now.date()).days if kind else None, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,
