@@ -106,7 +106,7 @@ describe('ADR-330 (59): Exit all with a staged change', () => {
     expect(orderPosts()).toHaveLength(1)
     expect(orderPosts()[0].body.orders.every((o) => o.kind === 'exit')).toBe(true)
     expect(orderPosts()[0].body.orders).toHaveLength(OPEN_IDS.length)
-    expect(Object.keys(orderPosts()[0].body).sort()).toEqual(['orders'])
+    expect(Object.keys(orderPosts()[0].body).sort()).toEqual(['client_request_id', 'orders'])
     expect(t(w, 'staged-not-kept').text()).toMatch(/^The change waiting on .+ was discarded\.$/)
     expect(S(w).pendingOrders).toEqual([])
     expect(router.currentRoute.value.query.acted).toBeUndefined() // the discarded change's acted / basket / approach do not outlive it

@@ -30,12 +30,12 @@
                  and the reason; prices not live: no number. Not capped: a larger Profit left carries the server's recover line. -->
             <div class="min-w-0">
               <span class="text-xs text-ink-muted" data-testid="profit-left-label">{{ `${PROFIT_LEFT_LABEL} ${left.profit.label}`.trim() }}</span>
-              <div class="num mt-0.5 whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left"><AfterChargesTap :breakdown="left.profit.breakdown ?? null">{{ left.profit.text ?? '-' }}</AfterChargesTap></div>
+              <div class="num mt-0.5 max-w-full break-words rounded bg-profit-soft px-1.5 py-0.5 text-sm font-semibold text-profit" data-testid="profit-left">{{ held ? UPDATING_NUMBERS_TEXT : null }}<AfterChargesTap v-if="!held" :breakdown="left.profit.breakdown ?? null">{{ left.profit.text ?? '-' }}</AfterChargesTap></div>
               <p v-if="left.recover" class="max-w-[14rem] text-xs text-ink-muted" data-testid="profit-left-recover">{{ left.recover }}</p>
             </div>
             <div class="min-w-0">
               <span class="text-xs text-ink-muted" data-testid="loss-left-label">{{ `${LOSS_LEFT_LABEL} ${left.loss.label}`.trim() }}</span>
-              <div class="num mt-0.5 whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left"><AfterChargesTap :breakdown="left.loss.breakdown ?? null">{{ left.loss.text ?? '-' }}</AfterChargesTap></div>
+              <div class="num mt-0.5 max-w-full break-words rounded bg-loss-soft px-1.5 py-0.5 text-sm font-semibold text-loss" data-testid="loss-left">{{ held ? UPDATING_NUMBERS_TEXT : null }}<AfterChargesTap v-if="!held" :breakdown="left.loss.breakdown ?? null">{{ left.loss.text ?? '-' }}</AfterChargesTap></div>
             </div>
             <p v-if="left.profit.reason || left.loss.reason" class="max-w-xs text-xs text-ink-muted" data-testid="left-after-reason">{{ left.profit.reason ?? left.loss.reason }}</p>
           </template>
@@ -55,15 +55,15 @@
         <div class="flex flex-nowrap items-start gap-x-3" data-testid="summary-pills-row">
           <div class="min-w-0">
             <span class="flex items-center text-xs text-ink-muted">Max Profit<span v-if="left?.extremes?.after" class="ml-1" data-testid="max-profit-basis">{{ AFTER_CHARGES }}</span><FigureHint id="max_profit" :lines="[whatCanIMake, fundsLine, exactLine(maxProfitExact)]" /></span>
-            <div class="mt-0.5 inline-flex flex-col items-start whitespace-nowrap rounded bg-profit-soft px-1.5 py-0.5 leading-tight text-profit" data-testid="max-profit-pill">
-              <span class="num text-sm font-semibold" data-testid="max-profit">{{ maxProfit }}</span>
+            <div class="mt-0.5 inline-flex max-w-full flex-col items-start break-words rounded bg-profit-soft px-1.5 py-0.5 leading-tight text-profit" data-testid="max-profit-pill">
+              <span class="num text-sm font-semibold" data-testid="max-profit">{{ held ? UPDATING_NUMBERS_TEXT : maxProfit }}</span>
               <span v-if="fundsShare?.max_profit_text" class="text-[11px]">(<span data-testid="max-profit-percent">{{ fundsShare.max_profit_text }}</span>)</span>
             </div>
           </div>
           <div class="min-w-0">
             <span class="flex items-center text-xs text-ink-muted">Max Loss<span v-if="left?.extremes?.after" class="ml-1" data-testid="max-loss-basis">{{ AFTER_CHARGES }}</span><FigureHint id="max_loss" :lines="[whatCanILose, fundsLine, exactLine(maxLossExact)]" /></span>
-            <div class="mt-0.5 inline-flex flex-col items-start whitespace-nowrap rounded bg-loss-soft px-1.5 py-0.5 leading-tight text-loss" data-testid="max-loss-pill">
-              <span class="num text-sm font-semibold" data-testid="max-loss">{{ maxLoss }}</span>
+            <div class="mt-0.5 inline-flex max-w-full flex-col items-start break-words rounded bg-loss-soft px-1.5 py-0.5 leading-tight text-loss" data-testid="max-loss-pill">
+              <span class="num text-sm font-semibold" data-testid="max-loss">{{ held ? UPDATING_NUMBERS_TEXT : maxLoss }}</span>
               <span v-if="fundsShare?.max_loss_text" class="text-[11px]">(<span data-testid="max-loss-percent">{{ fundsShare.max_loss_text }}</span>)</span>
             </div>
           </div>
@@ -142,6 +142,7 @@ import Tooltip from '@/components/common/Tooltip.vue'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL, LOSS_LEFT_LABEL, PROFIT_LEFT_LABEL } from '@/lib/paperDrafts'
 import { AFTER_CHARGES } from '@/lib/tracking'
 import { MAX_NOT_AVAILABLE } from '@/lib/displayFormat'
+import { UPDATING_NUMBERS_TEXT } from '@/lib/sharedStateText'
 import { PLAN_BASIS_AFTER_CHARGES_TEXT, PLAN_BASIS_BEFORE_CHARGES_TEXT } from '@/lib/targetBlock'
 const props = defineProps({
   maxProfit: { type: String, default: '-' }, // summaryFigure(summary, 'profit'): the server's display string
@@ -170,7 +171,11 @@ const props = defineProps({
   left: { type: Object, default: null },
   // S-06: the served summary (only its `charges` is read: null = the figures are before charges); null = no summary, no basis line
   summary: { type: Object, default: null },
+  // UX-B25 (27 Nov PC test): while the page cannot say which legs these figures belong to (the book was changed elsewhere, or an exit's outcome is
+  // not known yet), Profit left, Loss left, Max Profit and Max Loss hold the existing "Updating the numbers..." words instead of an older leg set's numbers
+  holding: { type: Boolean, default: false },
 })
+const held = computed(() => props.holding === true)
 // REQ-081 AC-10 (basis changed by ADR-207 (8)): the margin needed the percentages are of and when Zerodha was read, in
 // the "?" of both figures (ADR-202 (1)); absent with the percentages when the margin needed could not be read. The figure
 // has no server display string, so its digits are only regrouped as text (groupMoney, never parsed).

@@ -160,3 +160,5 @@ export const closedBannerFor = (loading, fresh, settled) => {
   if (loading) return settled ?? { at: null, text: null }
   return fresh
 }
+/** The one existing "updating" wording (LegList, PlanWatch); the summary figures hold it while their leg set is not known (UX-B25). */
+export const UPDATING_NUMBERS_TEXT = 'Updating the numbers...'

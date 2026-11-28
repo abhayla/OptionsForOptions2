@@ -27,6 +27,7 @@ export const ALLOWED = [
   { file: PICKER, fn: 'remove', kind: 'emit', door: null, reason: 'removing a leg adds or moves nothing' },
   { file: PICKER, fn: 'resolveDuplicates', kind: 'emit', door: 'admitHere(', reason: 'picker Done / futures: admitHere -> door.admit, emits only the Increase result' },
   { file: PICKER, fn: 'addChosen', kind: 'emit', door: null, reason: 'only reached after resolveDuplicates (the door) has answered; asserted below' },
+  { file: PICKER, fn: 'fillCaptures', kind: 'emit', door: null, reason: 'Lane FB2: fills the planned entry on legs already admitted and shown; adds, moves and removes nothing, never replaces a typed price' },
   { file: READY, fn: 'run', kind: 'emit', door: null, reason: 'ready-made replaces the whole list from the served shape (plan: keeps its flow)' },
   { file: PAGE, fn: 'nameLegsFrom', kind: 'assign', door: null, reason: 'names the same legs from the catalogue answer (same ids, contracts, actions, lots); adds and moves nothing' },
   { file: PAGE, fn: 'setLegs', kind: 'assign', door: null, reason: 'the page funnel: replaces the list for the non-add flows (remove, Undo, Exit, saved load, Compare, ready-made, plan) and the already-admitted picker and chain results' },
@@ -132,7 +133,7 @@ describe('the leg emitter guard (Phase 5, ADR-319 / ADR-328 / ADR-329)', () => {
 
   it('D1: the scan finds the expected emitters (a pattern that matches nothing proves nothing)', () => {
     expect(Object.keys(files).length).toBeGreaterThan(50)
-    expect(hits.filter((h) => h.kind === 'emit').length).toBe(6) // ReadyMadePanel 1 + LegPicker 5 (save x2, remove, resolveDuplicates, addChosen)
+    expect(hits.filter((h) => h.kind === 'emit').length).toBe(7) // ReadyMadePanel 1 + LegPicker 6 (save x2, remove, resolveDuplicates, addChosen, fillCaptures)
     expect(hits.filter((h) => h.kind === 'assign').length).toBe(4)
     expect(new Set(hits.map((h) => `${h.file}::${h.fn}::${h.kind}`)).size).toBe(ALLOWED.length)
     expect(hits.every((h) => h.fn !== '(top level)')).toBe(true)

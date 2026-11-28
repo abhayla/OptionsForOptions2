@@ -189,7 +189,7 @@ describe('Round 2 F1: a per-leg Exit POST carries only its exit; acted, basket a
     await exit1(w, OPEN_IDS[0])
     expect(orderPosts()).toHaveLength(1)
     const body = orderPosts()[0].body
-    expect(Object.keys(body)).toEqual(['orders'])
+    expect(Object.keys(body).sort()).toEqual(['client_request_id', 'orders']) // Lane FB2: the request key
     expect(body.orders).toHaveLength(1)
     expect(body.orders[0].kind).toBe('exit')
     expect(router.currentRoute.value.query).toMatchObject({ acted: '7', basket: '4', approach: 'A-24' })

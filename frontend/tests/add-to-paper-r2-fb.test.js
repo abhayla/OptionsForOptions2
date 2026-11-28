@@ -101,6 +101,10 @@ describe('I-68: Add to Paper is one press, one order', () => {
     await t(w, 'paper-confirm-button').trigger('click')
     await flushPromises()
     expect(posts()).toHaveLength(2)
+    // Lane FB2: the page path sends one client_request_id per Confirm; the second Confirm is a new key
+    expect(posts()[0].body.client_request_id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(posts()[1].body.client_request_id).toMatch(/^[0-9a-f-]{36}$/)
+    expect(posts()[1].body.client_request_id).not.toBe(posts()[0].body.client_request_id)
     w.unmount()
   })
 })

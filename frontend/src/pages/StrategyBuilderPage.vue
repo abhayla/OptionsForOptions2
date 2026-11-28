@@ -30,7 +30,7 @@ import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
 import { useMonitoringState } from '@/lib/monitoringState'
 import AdjustSteps from '@/components/strategy/AdjustSteps.vue'
-import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, paperPostOutcome } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_PLACED_NOT_REFRESHED_TEXT, PAPER_STATE, addToPaper as postPaperOrders, newRequestId, paperPostOutcome } from '@/lib/tracking'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
@@ -649,6 +649,8 @@ const wholeTrade = computed(() => !!paperLeft.value && includeBooked.value)
 // UX-B25: while an exit's outcome is unknown for THIS book the tiles' book figures are the book before it: not shown (the screen legs' own outcome speaks)
 const bookOutcomeUnknown = computed(() => !!exitUnknown.value && String(exitUnknown.value.id) === String(paper.value?.id))
 const paperCharges = computed(() => (paper.value && includeBooked.value && !bookOutcomeUnknown.value ? paperChargesOf(paper.value.book) : null)) // D-13/D-14: the charges of the tiles beside it: switch ON = the paper tiles (paid + close); OFF = the open-legs tiles, the plan's round trip at entry prices (data.charges_breakdown)
+// UX-B25: the book's figures are not known to belong to the legs on screen (the trade changed elsewhere, an add or exit was stored but not re-read, or an exit's outcome is unknown)
+const tilesHeld = computed(() => !!paper.value && (bookOutcomeUnknown.value || paperStale.value || paperContractsChanged.value))
 const paperLeft = computed(() => { // GC-ICFIX u124: after-charges forms, labelled (lib/paperDrafts paperLeftOf)
   const b = bookOutcomeUnknown.value ? null : paper.value?.book
   return b ? paperLeftOf(b, withAsOf(typeof b.pause_reason_text === 'string' && b.pause_reason_text.trim() !== '' ? b.pause_reason_text.trim() : null, b.as_of)) : null
@@ -700,7 +702,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false) {
   }
   const check = { id, stops: stopsNow.filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
   try {
-    reply = own || waiting ? await postPaperOrders(api, id, orders) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true)
+    reply = own || waiting ? await postPaperOrders(api, id, orders, [], null, null, null, false, newRequestId()) : await postPaperOrders(api, id, orders, actedSuggestionIds.value, preparedBasketLegs.value, null, preparedApproachId.value, notLiveTicked === true, newRequestId())
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
@@ -1656,6 +1658,7 @@ const leaveGuard = useLeaveBuilder({
             v-model:flipped="ratioFlipped"
             class="mt-4"
             :left="paperLeft"
+            :holding="tilesHeld"
             :summary="data.summary"
             :max-profit="wholeTrade ? paper.book.max_profit_text ?? '-' : summaryFigure(data.summary, 'profit')"
             :max-loss="wholeTrade ? paper.book.max_loss_text ?? '-' : summaryFigure(data.summary, 'loss')"
@@ -1743,8 +1746,15 @@ const leaveGuard = useLeaveBuilder({
         </div>
         <!-- ADR-330 (57): a fully closed trade has no Plan watch (its plan line is in the book panel). P10 (ADR-330 (13)): the Plan watch under the live P&L column, whatever the numbers state is (it is its own server read); it re-reads on the page's own book read (paper.book is replaced by each good read) -->
         <MonitoringBadge v-if="planWatchId && !paperCompleted" :entry="monitoring.entryOf(planWatchId)" class="mt-4" />
-        <PlanWatch v-if="planWatchId && !paperCompleted" :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" class="mt-4" />
+        <!-- UX-C3: while the page's own "Working out the outcome..." is the one loading line, the box keeps its rows but not its own "Loading the rule check..." line (the style below) -->
+        <div v-if="planWatchId && !paperCompleted" class="plan-watch-host" data-testid="plan-watch-host" :data-outcome-loading="state === 'loading' && !showNumbers ? 'true' : 'false'">
+          <PlanWatch :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" class="mt-4" />
+        </div>
       </div>
     </div>
   </section>
 </template>
+
+<style>
+.plan-watch-host[data-outcome-loading='true'] [data-testid='plan-watch-loading'] { display: none; }
+</style>

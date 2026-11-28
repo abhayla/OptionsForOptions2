@@ -145,6 +145,8 @@ const strikeTitle = (l) => (isHedge(l) ? 'Hedge. Edit this leg' : 'Edit this leg
 // a leg without both a planned entry and its capture time keeps the not-connected label (REQ-077 AC-5)
 // I-50: a leg left out, refused by the reply (block) or whose typed price was refused (errorIndex) is not "working": it says its own thing
 const isWorking = (l, i) => props.working && l.included !== false && !l.block && !(props.errorParts && props.errorIndex === i)
+// Lane FB2 (I-49): a leg shown before its planned-entry reply says LEG_WORKING_TEXT (its own loading state), not "not connected"
+const capturing = (l) => l.capturing === true && l.planned_entry == null
 const unpriced = (l) => !(l.planned_entry != null && l.captured_at != null)
 // R-11: a paper fill (the book's average, still as loaded) is not a price the user typed; a typed price keeps its label and time
 const isPaperFill = (l) => props.paperFills.includes(paperFillKey(l))
@@ -327,7 +329,8 @@ function setMultiplier(index) {
             <span v-if="isPaperFill(leg)" class="mr-2" data-testid="leg-paper-average">{{ PAPER_AVERAGE_LABEL }}</span>
             <span v-else-if="leg.typed === true && isWorking(leg, i)" class="mr-2" data-testid="leg-working">{{ LEG_WORKING_TEXT }}</span>
             <span v-else-if="leg.typed === true && leg.planned_entry != null" class="mr-2" data-testid="leg-typed-line">{{ YOUR_PRICE_LABEL }}, {{ capturedText(leg) }}</span>
-            <template v-if="unpriced(leg)">
+            <span v-if="capturing(leg)" class="mr-2" data-testid="leg-working">{{ LEG_WORKING_TEXT }}</span>
+            <template v-else-if="unpriced(leg)">
               <span class="mr-2" data-testid="leg-unpriced">{{ NOT_CONNECTED_LABEL }}</span>
               <span v-if="leg.planned_entry == null && priceReasonText(leg.price_reason)" class="mr-2" data-testid="leg-price-reason">{{ priceReasonText(leg.price_reason) }}</span>
             </template>

@@ -6,6 +6,19 @@
      reopens a draft (GET /api/strategies/{id}) with the legs exactly as stored: a planned entry and its capture time are never
      re-captured here. Every refusal shows the API's catalogue message (an empty name: "Give the strategy a name.", from the API,
      not retyped); the draft on screen is never cleared by a failure. A name is shown as text, never as HTML. No number is computed. -->
+<script>
+// Opus review F5: the add-unknown lock outlives this component (leaving the page and coming back remounts the bar): a store for this tab,
+// kept in sessionStorage so a reload keeps it too. A read of the strategy's Paper book alone ends it (checkAddUnknown).
+import { reactive } from 'vue'
+const LOCK_KEY = 'ofo.addUnknown'
+function loadLocks() {
+  try { return JSON.parse(globalThis.sessionStorage?.getItem(LOCK_KEY) ?? '{}') || {} } catch { return {} }
+}
+export const addUnknownStore = reactive(loadLocks())
+export function saveAddUnknown() {
+  try { globalThis.sessionStorage?.setItem(LOCK_KEY, JSON.stringify(addUnknownStore)) } catch { /* private mode: the lock still holds in memory */ }
+}
+</script>
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useOutsideClose } from '@/composables/useOutsideClose'
@@ -21,14 +34,15 @@ import DraftDeleteStatus from '@/components/strategy/DraftDeleteStatus.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import AdjustPlanSheet from '@/components/strategy/AdjustPlanSheet.vue'
 import { contractName, istTime } from '@/lib/displayFormat'
+import { readPaperBook } from '@/lib/paperDrafts'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
-import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
+import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, newRequestId, paperPostOutcome } from '@/lib/tracking'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
-import { RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE } from '@/lib/sharedStateText'
+import { ADD_UNKNOWN_TEXT, RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE, UNKNOWN_EXIT_WINDOW_MS } from '@/lib/sharedStateText'
 import {
   STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, noMatchText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
@@ -352,7 +366,46 @@ const tickedLegs = computed(() => props.legs.filter((l) => l.included !== false)
 // re-reading the book. If that re-read fails the lock stays until another strategy is opened or the page is reloaded.
 const paperRecorded = ref(false)
 watch(() => props.current?.id, () => { paperRecorded.value = false })
-const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
+// Lane FB2 (ADR-016..019, Opus review F2 of Lane FB item 4): a per-strategy lock after an add of UNKNOWN outcome (no answer, 5xx, a cancelled post).
+// It is not reset by Cancel, by reopening the dialog or by another strategy: it names its strategy and ends only on a read of THAT strategy's
+// Paper book: orders there = the add was stored; no orders = not stored, believed only after the server's longest commit window.
+const addUnknown = addUnknownStore // strategy id -> { at, id } (ms when the client gave up); shared by every bar and kept for this tab (Opus review F5)
+let unknownTimer = null
+let checking = false
+const addLocked = computed(() => props.current?.id != null && !!addUnknown[props.current.id])
+async function checkAddUnknown() {
+  if (checking) return // one read at a time (Opus review F4)
+  checking = true
+  try {
+    for (const [id, u] of Object.entries(addUnknown)) {
+      const sentAt = Date.now() // the window is judged by when the read was SENT, not when its answer came (Opus review F3)
+      let read
+      try { read = await readPaperBook(api, id) } catch { continue } // a failed read decides nothing (the one door: paperDrafts.readPaperBook)
+      if (addUnknown[id] !== u) continue // the lock was replaced while the read was out: this answer is not about it
+      if (read?.kind === 'paper' || read?.kind === 'unpriced') { // orders in the book: stored, this plan never records again
+        dropAddUnknown(id)
+        if (String(props.current?.id) === id) { paperRecorded.value = true; emit('paper-added', u.id) }
+      } else if (read?.kind === 'plan' && sentAt - u.at > UNKNOWN_EXIT_WINDOW_MS + 10000) dropAddUnknown(id) // no orders in a read sent past the window (+10 s margin): not stored
+    }
+  } finally { checking = false }
+  if (Object.keys(addUnknown).length === 0) { clearInterval(unknownTimer); unknownTimer = null }
+}
+function dropAddUnknown(id) {
+  delete addUnknown[id]
+  saveAddUnknown()
+}
+function startUnknownTimer() { if (!unknownTimer && Object.keys(addUnknown).length) unknownTimer = setInterval(checkAddUnknown, 5000) }
+function lockAddUnknown(id) {
+  addUnknown[id] = { at: Date.now(), id }
+  saveAddUnknown()
+  startUnknownTimer()
+}
+onMounted(startUnknownTimer)
+onBeforeUnmount(() => { clearInterval(unknownTimer); unknownTimer = null })
+// REQ-163 / Opus review F4: the refused request is remembered per strategy, so Cancel and reopen still ask for an edit
+let refusedFor = null // { id, sig, edited, error }
+const rowSig = (rows) => JSON.stringify(rows.map((r) => [r.contract_id, r.side, String(r.lots)]))
+const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !addLocked.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
 // ADR-330 (19): an UNSAVED strategy asks for its name first (the name dialog, prefilled with the shape name); Confirm saves it under
 // that name and goes on to the paper confirm, Cancel adds nothing. A strategy already saved asks nothing: the code cannot tell a name
@@ -375,7 +428,10 @@ function openPaperDialog(id) {
     key: l.id ?? `leg-${i}`, contract_id: l.contract_id, side: l.action, text: contractName(l), lots: l.lots, lot_size: l.lot_size,
     kind: 'open', ...entryPriceFor(l, props.livePriceById), // the live price the page holds, else the planned entry (noted)
   }))
-  paperState.value = PAPER_STATE.READY
+  const same = refusedFor && refusedFor.id === id && !refusedFor.edited && refusedFor.sig === rowSig(paperOrders.value)
+  paperState.value = same ? PAPER_STATE.REFUSED : PAPER_STATE.READY // F4: the same refused request is not offered again without an edit
+  paperError.value = same ? refusedFor.error : ''
+  if (!same) refusedFor = null
   serverNotLive.value = false
   paperOpen.value = true
 }
@@ -388,20 +444,27 @@ const notLiveLine = computed(() => (!props.marketClosed && (!props.pricesLive ||
   ? notLiveEntryLine(oldestCapture(tickedLegs.value) ?? (props.priceAsOf || null)) : ''))
 async function confirmPaper(orders, held = null, notLiveTicked = false) {
   if (paperBusy.value) return
+  if (addUnknown[paperTarget.value]) return // Opus review F1: an add of unknown outcome is not sent again, whichever button asks
   paperBusy.value = true
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   try {
     // ADR-330 (28): the flag is the dialog's own tick state (line shown AND ticked), not the page's price state
-    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true)
+    await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true, newRequestId())
   } catch (e) {
     const outcome = paperPostOutcome(e)
     if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
     if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
+    if (outcome === PAPER_STATE.UNKNOWN) lockAddUnknown(paperTarget.value)
+    if (outcome === PAPER_STATE.REFUSED) {
+      const edited = orders.some((o, i) => { const p = paperOrders.value[i]; return !p || String(o.quantity) !== String(p.lots * p.lot_size) || String(o.price).trim() !== String(p.price ?? '').trim() })
+      refusedFor = { id: paperTarget.value, sig: rowSig(paperOrders.value), edited, error: paperError.value }
+    } else refusedFor = null
     paperBusy.value = false
     return
   }
+  refusedFor = null
   // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"
   paperRecorded.value = true
   try {
@@ -473,6 +536,7 @@ v-if="current" type="button" role="menuitem" data-testid="rename-open"
       <span v-if="savedId" data-testid="save-status" :data-saved-id="savedId">{{ strategyLabel({ name: savedName }, `Draft ${savedId}`) }} saved.</span>
       <span v-else data-testid="save-status" data-saved-id=""></span>
     </p>
+    <p v-if="addLocked" class="mt-1 text-sm text-red-700" role="status" data-testid="add-unknown-note">{{ ADD_UNKNOWN_TEXT }}</p>
     <slot name="after-actions" />
     <!-- GC-UI 6b D-C16 (S-116): the centred modal; Cancel + a primary Save; the 20-character limit and the counter are unchanged -->
     <Modal :open="!!asking" :title="NAME_TITLES[asking] ?? 'Save New Strategy'" fallback-focus="[data-testid='save-draft']" data-testid="name-modal" @close="cancelName">
@@ -488,7 +552,7 @@ id="strategy-name" ref="nameInput" v-model="nameText" data-testid="name-input" d
         <button type="submit" form="strategy-name-form" data-testid="name-confirm" class="h-10 rounded-lg bg-accent px-3 font-medium text-white disabled:opacity-50" :disabled="busy">Save</button>
       </template>
     </Modal>
-    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :error="paperError" :state="paperState" :not-live-line="notLiveLine" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
+    <PaperConfirmDialog first-basket :open="paperOpen" :orders="paperOrders" :busy="paperBusy" :locked="paperTarget !== null && !!addUnknown[paperTarget]" :error="paperError" :state="paperState" :not-live-line="notLiveLine" @confirm="confirmPaper" @cancel="paperOpen = false" @orderbook="openPaperOrderbook" />
     <AdjustPlanSheet :open="planFor !== null" :strategy-id="planFor" @close="planFor = null" />
     <!-- GC-TP step 3b2 (R-6): the toast is FIXED to the viewport (bottom centre), not inline under the action row. Inline it sat inside
          the left column's own scroll (sticky, overflow-y-auto at 1100 px and up; `contents` below), so after the save-first path

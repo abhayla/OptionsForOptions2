@@ -1,5 +1,6 @@
 // GC-TP step 3c (REQ-109 AC-9; Sensibull Add to Drafts 166-173 -> Drafts Mode 274-279): after Add to Paper confirms, the REAL page
 // re-reads the paper book and enters Drafts Mode, so a second press can never record the same opening orders twice.
+import { addUnknownStore } from '@/components/strategy/SaveDraftBar.vue'
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
 import { createMemoryHistory, createRouter } from 'vue-router'
@@ -30,6 +31,8 @@ const PLAN = () => netLegsFromBook(REAL, CONTRACTS).map((l, i) => ({ ...l, id: `
 const BOOK_70 = { ...REAL, strategy_id: 70, name: '"Iron"' }
 
 beforeEach(() => {
+  for (const k of Object.keys(addUnknownStore)) delete addUnknownStore[k] // Lane FB2: the add-unknown lock is kept per tab: each test starts without one
+  globalThis.sessionStorage?.clear()
   calls.length = 0
   answers = {
     'GET /strategies': { strategies: [] },
@@ -113,7 +116,9 @@ describe('Add to Paper ends in Drafts Mode', () => {
     await confirmList(w)
     await flushPromises()
     expect(t(w, 'paper-mode-label').exists()).toBe(false)
-    expect(t(w, 'add-to-paper').attributes('disabled')).toBeUndefined()
+    // Lane FB2 (ADR-017): a post with no answer may be stored; Add to Paper stays locked until the book has been read
+    expect(t(w, 'add-to-paper').attributes('disabled')).toBeDefined()
+    expect(t(w, 'add-unknown-note').exists()).toBe(true)
   })
 
   it('re-read fails: the failure is shown and Add to Paper stays disabled (no silent plan with a live button)', async () => {
