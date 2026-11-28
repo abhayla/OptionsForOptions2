@@ -189,7 +189,7 @@ import AfterChargesTap from '@/components/common/AfterChargesTap.vue'
 import PaperConfirmDialog from '@/components/strategy/PaperConfirmDialog.vue'
 import HeldNote from '@/components/strategy/HeldNote.vue'
 import { PRICE_GREYED_CLASS, pausedOnce, pausedText, priceScope } from '@/lib/priceState'
-import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
+import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGURE, PAPER_NOT_CONNECTED, PAPER_PAUSED, SHOW_CLOSED_LABEL, exitRowsFor, isOpenGroup, readPaperList, visibleGroups } from '@/lib/paperList'
 import { usePriceFreshness } from '@/lib/priceState'
 import { createExitRecords } from '@/lib/exitRecord'
 import { NOT_LIVE_EXIT } from '@/lib/priceState'
@@ -283,10 +283,15 @@ const { readOk } = usePriceFreshness({ readFailed: errorParts, held: items })
 const stale = computed(() => !readOk.value)
 // UX-A09 (ADR-330 (56), R2 FC2): when two or more open strategies are paused the PAGE says so once; no tile, figure or total repeats the
 // sentence. One paused strategy: its own tile carries the line (unchanged). A failed refresh (stale) keeps its own banner and rules.
-const scope = computed(() => priceScope(shown.value.filter((g) => g.readable && g.openCount > 0), (g) => g.state === 'PAUSED'))
+const scope = computed(() => priceScope(shown.value.filter((g) => g.readable && g.openCount > 0), (g) => g.state === 'PAUSED' || g.state === 'NOT_CONNECTED'))
 const many = computed(() => !stale.value && scope.value.scope === 'many')
-const quiet = (t) => many.value && typeof t === 'string' && t.includes(PAPER_PAUSED)
-const pageLine = computed(() => (many.value && !props.noticeUp ? pausedOnce(shown.value.filter((g) => scope.value.ids.has(g.id)).map((g) => g.stateText))[0] ?? PAPER_PAUSED : null))
+const quiet = (t) => many.value && typeof t === 'string' && (t.includes(PAPER_PAUSED) || t.includes(PAPER_NOT_CONNECTED))
+// FJ2-1 (TG D-TG-5): a strategy with no broker session (NOT_CONNECTED) counts too, and the server words its reasons "prices not live": the page prints the paused sentence once, with its time.
+const pageLine = computed(() => {
+  if (!many.value || props.noticeUp) return null
+  const lines = pausedOnce(shown.value.filter((g) => scope.value.ids.has(g.id)).flatMap((g) => [g.stateText, g.pauseReason]))
+  return lines.find((l) => l.includes(PAPER_PAUSED)) ?? lines[0] ?? PAPER_PAUSED
+})
 const greyOf = (g) => (many.value && scope.value.ids.has(g.id) ? PRICE_GREYED_CLASS : '')
 // Phase 4 (F2): the Exit gate of the page, the same one as the builder's book panel (no contracts-changed mark on this list)
 // Lane U hotfix 27 Nov (A-H #209): the open dialog's own legs are judged on the LATEST GOOD read too (exitLegsNotLive, the one rule), not only a failed read
@@ -309,10 +314,13 @@ function dialogNotLiveText() {
 }
 const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false, notLive: dialogLegsNotLive })
 const loading = ref(true)
+const lastGoodAt = ref(null)
+const pausedNow = computed(() => pausedText(lastGoodAt.value))
 const summary = computed(() => ({
   totalAfter: totals.value ? (quiet(totals.value.totalAfter.reason) ? { ...totals.value.totalAfter, reason: null } : totals.value.totalAfter) : null, // UX-A09: the page notice says it once
   closedNote: totals.value ? totals.value.closedNote : null,
   stale: stale.value || (!loading.value && !!errorParts.value), // a failed FIRST read (no list held) is paused too, with the same reason as the list (ADR-330 (10))
+  pausedLine: pausedNow.value, // FJ2-1: the paused sentence with the time of the last good prices, for the totals strip
   loaded: !loading.value && items.value !== null,
   affected: scope.value.count, // ADR-330 (56): the page's price notice decides by this count
 }))
@@ -386,9 +394,7 @@ const dialogError = computed(() => { const r = confirm.value ? exitRec.cur(confi
 const dialogState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's answer state (tracking.js PAPER_STATE)
 const router = useRouter()
 
-const lastGoodAt = ref(null)
 // O-1: the paused sentence of a failed read carries the time of the last good prices (the one formatter, priceState.pausedText); none known: the sentence alone
-const pausedNow = computed(() => pausedText(lastGoodAt.value))
 const lastGoodClock = computed(() => (lastGoodAt.value ? istClock(lastGoodAt.value) : null)) // never a load time: the answer's own
 function show({ data, token }) {
   const hadExit = !props.compact && router?.currentRoute.value.query.exit !== undefined
