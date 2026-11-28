@@ -1,4 +1,4 @@
-STATUS 19:52 | items 1, 4, 8 pushed (4ec19fdd6); 2, 3 (F7, F8), 9, 10 built, gate running | next: item 6 (migration), 7, market-open clock | blocker: none
+STATUS 20:25 | pushed 4ec19fdd6 (items 1, 4, 8); 2, 3 (F7, F8), 6, 9, 10 + Opus review fixes built, gate running | next: item 7, market-open clock | blocker: none
 
 # Lane RA2: the standing backend leftovers lane (base fix/r3-leftovers-1128 a5259db50)
 
@@ -16,6 +16,8 @@ non-superuser, one test file at a time, proxy variables unset. Ruff: the pinned 
 | 3 F7 | built | tests_app/test_exit_slot_cleanup_ra2_1128.py: 2 passed (red before: the fresh slot written between the read and the delete was lost). `monitoring_state.ExitsPublisher._remove_dead`: one Lua compare-and-delete when the client has `eval`, the bare doubles keep the two-step path. requirements-dev.txt pins `lupa==2.8` (fakeredis needs it for Lua). |
 | 3 F8 | built | tests_app/test_restored_pause_ra2_1128.py: 2 passed. `Publisher.forget_unlisted`, called in `Worker.rebuild` after the strategy list was read (a failed read raises first and drops nothing). |
 | 3 market-open clock | NOT done | see "Not done". |
+| 6 spot_at | built | migration 0063_basket_facts_spot_at (one head; upgrade, downgrade -1, upgrade run on a clean database; alembic guard test_alembic_migration_guard 5 passed); tests_app/test_basket_spot_at_ra2_1128.py 4 passed (core red before: spot_at None); test_entry_facts 30, test_basket_facts_unheld_index 5. `entry_facts_store.record_basket` writes spot_at and falls back to the six-column insert on a database not migrated yet. The app-role allow-list chain text moves block 34 from six to seven INSERT columns inside the migration (RuntimeError on a changed shape). Nothing reads spot_at back yet (no consumer). Deploy: run 0063 before or after the code; old code keeps working on the migrated database. |
+| Opus review (items 1, 2, 8) | REVISE, fixed | see "Opus review" below. |
 | 5 | nothing to do | tests_app/test_slow_price_source_live_day.py has no xfail marker on this head (grep: none). |
 | 9 | built except O-P-03 | tests_app/test_wording_ra2_1128.py: 4 passed; tests/errors 726 passed (pins moved with the strings, "pending owner read"). |
 | 10 F2, F5 | re-checked, pass | test_paper_orders_r2_fd2 4, test_order_request_key_durable_fd3 19, test_order_routes_fd4 2, test_exit_door_real_fd3 14, test_response_door 215. |
@@ -59,8 +61,17 @@ Oct, close Fri 9 Oct 15:29:58.
   true and not connected, `not_connected` says "Prices are not live" with the stored close's as-of (the same words as the paper
   book's `as_of` of item 1); the catalogue sentence is not written until the field exists (no dead sentence).
 
+## Opus review of items 1, 2, 8 (read-only, 52 tool calls)
+Verdict REVISE; Change 3 (item 8) production code: nothing wrong. Fixed in commit 2c91c5317:
+- F1 MAJOR: tests_app/test_review_fe3_1128.py::test_f3_... still pinned the removed guess (missed because it was not in my neighbour list): rewritten to the new rule; the whole file passes.
+- F3 MAJOR: the book day and the Today total followed the stored close's date (stale store: Thursday's): with no session they now follow the answer's date (`_day_snapshot`), pinned.
+- F5: the silence note ran between saving the gate state and queueing its events: now after the queue and inside a try (it can never lose an alert). F6: reasons `alert_answered` and `cooldown` are exact. F7: the silence memory is forgotten when a strategy's gate is reset.
+- F4 (partly priced book reads PAUSED, not NOT_CONNECTED): left as is; totals stay null and it is counted as left out, same as a connected session on a closed market.
+- F2 MAJOR (frontend, owner lane): see below.
+- Not covered by the issue 876 test, named by the reviewer: T-14 is only on if the system list has it on (the test does not assert it), the loss starts at 11:41 and not within 5 minutes of entry (so held_at_entry/seen_clear are not exercised near entry), the restart is before the loss, "whichever first" is not asserted per rule, and only 4 frames run (not 22 minutes at 2 to 3 checks a minute). So "not reproduced" holds for the shape built, not for the PC's exact timing near entry.
+
 ## For the owner lane
-- Frontend: a book whose state is LIVE with a non-null `as_of` and no session is a stored close: it should print "as of <time>"
+- Frontend (Opus review F2): PaperBookPanel.vue (lines 130 to 133) prints `as_of` only when the book is not live (PAUSED or NOT_CONNECTED); `pricesAsOf` reads `book.last_price_at`, which the paper book never sends; StrategyBuilderPage.vue (line 775) uses `as_of` only beside `pause_reason_text`; PaperStrategies.vue never reads it; the header's `totals_as_of` collects times only from paused books. So a LIVE book from a stored close shows no time on screen yet: print `as_of` for a LIVE book that has one (and on the header total when every priced book is a stored close). The same gap exists today for a connected session on a closed market. Original note: a book whose state is LIVE with a non-null `as_of` and no session is a stored close: it should print "as of <time>"
   beside the P&L (the field exists; the page shows `as_of` today only for PAUSED). Also the Home "left out" count now
   drops for such trades (server side, `totals.left_out_count`).
 
