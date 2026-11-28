@@ -36,7 +36,7 @@ import ExitButton from '@/components/strategy/ExitButton.vue'
 import LoadFailed from '@/components/common/LoadFailed.vue'
 import { ADD_UNKNOWN_TEXT, PAPER_REREAD_FAILED_TEXT, UNKNOWN_EXIT_READ_AFTER_MS, closedBannerFor } from '@/lib/sharedStateText'
 import {
-  DISCARD_LABEL, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
+  DISCARD_LABEL, PAPER_BOOK_UNMATCHED, PAPER_BOOK_UNREADABLE, PAPER_MODE_LABEL, PAPER_PENDING_UNREADABLE, PAPER_REREAD_DELAYS_MS, REVIEW_AND_ADD_LABEL, confirmRowsFor, paperOrdersFor, pendingText, readPaperBook,
   legsAfterExit, exitOnlyOrders, paperFillKey, paperLeftOf, paperChargesOf, stagedChangeIds, stagedExitIds,
 } from '@/lib/paperDrafts'
 import { withAsOf } from '@/lib/paperList'
@@ -507,7 +507,7 @@ const paperState = ref(PAPER_STATE.READY) // fix/paper-dialog-safe: the dialog's
 // re-offer what was just placed. Until a book is read again nothing is offered for review.
 const paperStale = ref(false)
 const showOrdersTick = ref(0) // bumped to switch the book panel to its Orderbook view
-const unreadableParts = (e) => ({ ...(e?.parts ?? NEUTRAL_PARTS), what_happened: PAPER_BOOK_UNREADABLE })
+const unreadableParts = (e) => e?.unmatched === true ? { ...PAPER_BOOK_UNMATCHED } : ({ ...(e?.parts ?? NEUTRAL_PARTS), what_happened: PAPER_BOOK_UNREADABLE })
 const copyLegs = (net) => net.map((l) => ({ ...l }))
 function enterDrafts(id, read) {
   if (String(id) !== String(rereadId)) cancelReread() // another strategy opens: a re-read of the old one ends here

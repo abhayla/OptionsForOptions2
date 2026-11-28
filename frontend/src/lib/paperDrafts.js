@@ -17,6 +17,15 @@ export const LAST_CLOSE_LABEL = 'last close'
 /** The paper book could not be read (network or unreadable answer): said plainly, never a silent fall-back to the plan. */
 export const PAPER_BOOK_UNREADABLE = 'This strategy\'s paper position could not be read, so it is not shown. Try again.'
 
+/** The book AND the catalogue both answered, but the book's open contracts are not in the catalogue's answer (or do not divide into
+ *  its lots): an answer that does not match, not a failed read. Never worded "could not be read" (no request failed). */
+export const PAPER_BOOK_UNMATCHED = Object.freeze({
+  what_happened: 'This strategy\'s paper position was read, but its contracts are not in the catalogue for today, so it is not shown.',
+  impact: 'The numbers on this page are not shown, so none of them can be mistaken for current values.',
+  what_is_blocked: 'Nothing was changed and no order was placed.',
+  next_action: 'Trying again will not help until the catalogue lists these contracts.',
+})
+
 const SIDES = new Set(['BUY', 'SELL'])
 const isCount = (v) => Number.isInteger(v) && v > 0
 // a count of units (an integer quantity, never money): its size and its side
@@ -185,13 +194,19 @@ export async function readPaperBook(client, id) {
   const contracts = []
   const expiries = [...new Set(book.positions.filter((p) => p?.net_quantity !== 0).map((p) => p?.expiry))]
   for (const expiry of expiries) {
-    contracts.push(...(await client.get(`/catalogue/${book.underlying}/contracts?expiry=${expiry}`)).data.contracts)
+    const rows = (await client.get(`/catalogue/${book.underlying}/contracts?expiry=${expiry}`)).data?.contracts
+    if (!Array.isArray(rows)) throw new Error('unreadable catalogue answer') // an answer that is not a contracts list: a failed read
+    contracts.push(...rows)
   }
   const net = netLegsFromBook(book, contracts)
   // D-40: an open leg on an expired contract is not in the catalogue; the server says so (expired_open) and why nothing is priced.
   // Any other unreadable book (catalogue, net mismatch, a leg that is not live but not expired) still throws below.
   if (!net && book.expired_open === true) return { kind: 'unpriced', book, sentAt }
-  if (!net) throw new Error('unreadable paper book')
+  if (!net) {
+    const err = new Error('paper book does not match the catalogue')
+    err.unmatched = book.positions.every((p) => Number.isInteger(p?.net_quantity)) // every quantity read, so the mismatch is the contracts', not a malformed answer
+    throw err
+  }
   return { kind: 'paper', book, net, sentAt }
 }
 
