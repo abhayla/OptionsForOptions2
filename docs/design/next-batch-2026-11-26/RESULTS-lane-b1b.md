@@ -1,4 +1,4 @@
-STATUS 23:50 | pushed 686b24ccd and 0f3f21974 (both prepush TOTAL PASS): items 4, 5, 6, RA2 1f8e0018c verified (F1 no hole, F2 hole fixed), W-34 heartbeat fix; items 1 to 3 dropped (RA2's); now: a trade's badge returns when its own first check ends + the start-up statement list for Lane B2, full check running | next push: after TOTAL PASS, before 01:45 | blocker: none
+STATUS 00:20 | pushed 686b24ccd, 0f3f21974, a9b2d38b4 (each prepush TOTAL PASS): items 4, 5, 6, RA2 1f8e0018c verified (F1 no hole, F2 hole fixed), W-34 heartbeat fix + per-trade first badge + start-up statement list; items 1 to 3 dropped (RA2's); 7 new findings under "Found, not assigned" | SAFE TO CLOSE | blocker: none
 
 # Lane B1b: worker, monitor, alerts, paper P&L (successor of Lane RA2; base origin/fix/r3-leftovers-2-1128 dc1aeebd8, integration/weekend-r3-1129 already merged there)
 
@@ -119,15 +119,28 @@ closed, 09:15:01 monitor: fires) and the close (15:29:59 worker open, 15:30:01 m
 ## New wording for the owner to read
 None from this lane (the worker-log lines are not shown to a user).
 
+## Found, not assigned (owner's order of 28 Nov 23:35 IST: recorded, not fixed, not handed on)
+1. Connected session on a day the calendar cannot answer: `display_price` serves a stale quote as LIVE. Evidence: `FeedState.market_closed` counts an unknown day as closed (`backend/ofo/marketdata/feed_health.py:149-152`) and `display_price` (`backend/ofo/tracking/paper.py:120-133`) then serves any sound STALE quote as LIVE with its own time and no stored-close label; Opus review of item 4, read only, not run.
+2. Per-cycle rule-state write: in a scenario whose clock does not move, after the first cycle the worker repeats, every cycle, the ownership `SELECT 1`, `set_config('ofo.rule_adjustment_no')` and `INSERT INTO adjustment_rule_state ... ON CONFLICT` for the same trade (statements 48 to 94 of the measured start-up run, 15 repeats in about 7 s; `playbook_store._PUT_STATE`). Not checked on a live worker; on a 134 ms link it would cost about 0.4 s per trade per cycle. The write should happen only when `held_at_entry` or `seen_clear` changed.
+3. Start-up writes: `UPDATE strategy_adjustment_plans SET stop_base` (the ADR-247 backfill, `playbook_store._BACKFILL_STOP_BASE`) runs at every worker start for every plan, even when `stop_base` is already set.
+4. Reader gap after item 6 (Opus review, minor): at 15:30 a trade reads watched until the worker's next cycle publishes (1 to 2 s, or one long cycle with more than 200 trades); smallest change: `read_states` demotes ACTIVE to paused `market_closed` when the snapshot's `market_open` is false or the reader's calendar says closed.
+5. Item 6 minor: a Redis read (2 s timeout) now runs before the queued ticks of each monitor pass and the snapshot key is read twice per pass (`read_market_open`, `read_readings`); several providers (not reachable today) would let one closed answer block every owner; pre-existing: a tick stamped 15:29:59.8 and drained after 15:30:00 is dropped (the gate uses drain time, `paper_monitor.on_quote`).
+6. Item 5 minor: `AdjustmentHistoryOut` carries no as-of time for a stored close; no test of the history with no session in market hours.
+7. Start-up cost per trade (W-34): the list of repeated statements for Lane B2 is in the W-34 section above (about 12 of 34 avoidable, ownership check repeated 8 times).
+
 ## To file as deferred issues
-- Pre-existing, connected session on a day the calendar cannot answer: `display_price` serves a stale quote as LIVE (`FeedState.market_closed` counts an unknown day as closed; `ofo/tracking/paper.py:120-133`, `feed_health.py:149-152`). Class: unknown calendar counts as closed for prices.
-- The reader-side gap and the minor review findings of item 6 above.
+- The same list as "Found, not assigned" (the coordinator records them on the board).
 
 ## Not done
-- Items 1 to 3: Lane RA2's (merge its head; run `b1b-backup-items-1-3`'s F1 and F2 tests against it, see above).
+- Items 1 to 3: Lane RA2's (verified on its head 1f8e0018c: F1 no hole, F2 hole fixed here).
 - Item 7: a new playbook version (owner lane). Plan-watch duplicates: Lane B3. O-P-03: needs a frontend field first.
+- Streaming the strategy list so a trade's first check starts before the whole list is read (changes `rebuild()` and `owner_lister`; no successor will be started).
+- The doubled "The market is closed." prefix is a wording choice listed under "Question for the owner" (the owner decides).
 
 | task | model | minutes |
 |---|---|---|
 | items 4, 5, 6, PC observation, 876 cases | Sonnet (this lane) | 70 |
 | Opus review of items 1, 2, 4 (71 tool calls) and of item 6 (44) | Opus | 20 |
+| W-34 measurement, heartbeat fix, per-trade first badge, statement list | Sonnet (this lane) | 60 |
+
+SAFE TO CLOSE (head a9b2d38b4 pushed with prepush TOTAL PASS 1366.7 s; this results file is the only later change; left: see "Not done" and "Found, not assigned")
