@@ -5,6 +5,7 @@ answer, fail closed)."""
 from __future__ import annotations
 
 import datetime
+import importlib
 import time
 from decimal import Decimal
 from http import HTTPStatus
@@ -111,3 +112,20 @@ def test_expiry_kind_unknown_trigger_reason_text() -> None:
 
     assert CATALOGUE["adjust_trigger_expiry_kind_unknown"].what_happened == (
         "Not checked: this trade's expiry type (weekly or monthly) is not known, so the percent stop has no value.")
+
+
+def test_a_fired_leg_stop_has_past_tense_sentences() -> None:
+    """UX-A03 (28 Nov): a stop that has fired says what fired, at which level and the figure at firing, then when the
+    check saw it (stop_fired_at); never "If this stop fires". Keys for Lane FE2: paper_leg_stop_fired*."""
+    r = importlib.import_module("ofo.errors.explanations").render_explanation
+    strike = r("strike_part", strike="25400")
+    leg = r("contract_display", underlying="NIFTY", day=1, month="Dec", strike=strike, instrument="PE")
+    loss = r("paper_leg_stop_fired", leg=leg, level=Decimal("124.50"), figure=Decimal("5300"))
+    assert loss == "Stop fired: NIFTY 1 Dec 25400 PE reached 124.50; max loss at that point Rs 5,300.00"
+    assert r("paper_leg_stop_fired_unlimited", leg=leg, level=Decimal("124.50")) == (
+        "Stop fired: NIFTY 1 Dec 25400 PE reached 124.50; there was no fixed maximum loss at that point")
+    assert r("paper_leg_stop_fired_unknown", leg=leg, level=Decimal("124.50")) == (
+        "Stop fired: NIFTY 1 Dec 25400 PE reached 124.50; the maximum loss at that point was not worked out")
+    seen = datetime.datetime(2026, 11, 27, 12, 58, tzinfo=IST)
+    assert r("stop_fired_at", line=loss, time=seen) == f"{loss}; seen by the check at 12:58 IST"
+    assert "If this stop fires" not in loss

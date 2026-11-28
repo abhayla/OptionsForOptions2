@@ -5286,5 +5286,17 @@
   "adjust_trigger_expiry_kind_unknown": {
     "sha256": "a62c13a4711c1bee319b976f1ee6d66b32c806a9edf21dede813e892af0c65b2",
     "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_fired": {
+    "sha256": "1e5dc5960b6562dff43a1067fcba86b4fd66e307997c3e07e5ca112434fcd425",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_fired_unlimited": {
+    "sha256": "80e6e2ba09ab9449804bf73a72cc6017ff2a48875f0390d333dffadbbdbe33f1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:paper_leg_stop_fired_unknown": {
+    "sha256": "0c958480648021df01dabc602333b0fbe3eb961723abf2d035d251df27acd9d8",
+    "reviewed": "pending owner read"
   }
 }

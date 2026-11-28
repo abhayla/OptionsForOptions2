@@ -2106,6 +2106,17 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
                         "After these orders, maximum loss: {before} before, {after} after.",
                         {"before": Explained, "after": Explained}),
     # ADR-330 (6): the Stops panel line before a leg stop is saved (figures are the loss sizes, no sign)
+    # UX-A03 (28 Nov 2026), pending owner read: a leg stop that HAS fired, in the past tense;
+    # wrap with stop_fired_at / stop_fired_on for "seen by the check at <time> IST"
+    ExplanationTemplate("paper_leg_stop_fired", "values_seen",
+                        "Stop fired: {leg} reached {level}; max loss at that point Rs {figure}",
+                        {"leg": Explained, "level": IndexLevel, "figure": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_fired_unlimited", "values_seen",
+                        "Stop fired: {leg} reached {level}; there was no fixed maximum loss at that point",
+                        {"leg": Explained, "level": IndexLevel}),
+    ExplanationTemplate("paper_leg_stop_fired_unknown", "values_seen",
+                        "Stop fired: {leg} reached {level}; the maximum loss at that point was not worked out",
+                        {"leg": Explained, "level": IndexLevel}),
     ExplanationTemplate("paper_leg_stop_widens_loss", "values_seen",
                         "If this stop fires, max loss becomes Rs {after} (now Rs {before}).",
                         {"before": IndexLevel, "after": IndexLevel}),

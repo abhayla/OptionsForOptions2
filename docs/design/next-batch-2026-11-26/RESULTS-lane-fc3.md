@@ -1,4 +1,4 @@
-STATUS 09:00 | all queue items except the host-file ones: Passed in cloud; pushed 400394cbc (gate TOTAL PASS): real exits read from GET /real/strategies/{id}/triggers, monitoring_why_expiry_kind_unknown; committed, gate running: trigger reason adjust_trigger_expiry_kind_unknown (templates.py, code 712) | 6: the opportunity page already reads now_value / now_as_of, the names FD2 serves | not done: F5, UX-A18, UX-A05 (page lane FJ), d36 (no PostgreSQL here), screenshots | blocker: none
+STATUS 09:40 | pushed 69d66fe03 (gate TOTAL PASS): all earlier items incl. real exits read and both expiry_kind_unknown sentences | UX-A03 done, committed, gate running: keys paper_leg_stop_fired, paper_leg_stop_fired_unlimited, paper_leg_stop_fired_unknown (wrap with stop_fired_at / stop_fired_on) for Lane FE2 | UX-A18: cause found, not my file (paper.py line 1625) | not done: F5, UX-A05 (lane FJ), d36 (no PostgreSQL), screenshots | blocker: none
 
 # Lane FC3 results
 
@@ -45,6 +45,8 @@ Waiting on FD2. One test already pins the `expiry_kind_unknown` entry through th
 Not a file of mine. The "Checked at 03:22:40 IST" beside the banner is printed by PaperBookPanel.vue (no lane's file). By ADR-088 "Checked at" is the server's answer time. The finding for the owner lane: the line must either carry the book's own price time (as the banner does) or say "Answered at" so it is not read as a price time; I did not confirm in that file which source it prints.
 
 ## For the owner lane
+- UX-A18 (the ISO date in the Exit dialog's sold-option warning): `backend/ofo_app/routes/paper.py` line about 1625 names the legs with `describe_contract` (ISO date, "contract_description"); use `display_contract` there, as line about 1673 already does ("NIFTY 1 Dec 25400 PE"). Nothing to change in explanations.py.
+- UX-A03: Lane FE2 stores the figure at firing and renders `paper_leg_stop_fired` (leg, level, figure), `paper_leg_stop_fired_unlimited` or `paper_leg_stop_fired_unknown` (leg, level), wrapped in `stop_fired_at` (line, time) or `stop_fired_on` (line, date, time) for "seen by the check at <time> IST".
 - StrategyBuilderPage.vue (FB2): pass `:trade-mode="'real'"` to TrackingPanel for a real trade (line about 1690), and `:closed="paperCompleted"` to PlanWatch (line about 1694) instead of hiding it, if the owner wants the closed sentence there.
 - PaperStrategies.vue (FC2): PlanWatch row for a settled trade may pass `closed` instead of `v-if="g.openCount"`. UX-A05: add a "Plan" door on the Live card that opens the plan sheet for that strategy (AdjustPlanSheet takes `strategyId`); the Live card file is not in my list.
 - Lane FE: the since time of the Monitoring paused badge resets when the worker restarts (the other half of #880).
@@ -60,6 +62,7 @@ Not a file of mine. The "Checked at 03:22:40 IST" beside the banner is printed b
 - "N rules not checked: <reason>" (N is 2 or more); a group with no reason text says "no reason was given".
 - The four "Not being watched: ..." sentences listed in the coordinator additions.
 - "Not checked: this trade's expiry type (weekly or monthly) is not known, so the percent stop has no value." (trigger reason, templates.py)
+- "Stop fired: <leg> reached <level>; max loss at that point Rs <figure>" (also "...; there was no fixed maximum loss at that point" and "...; the maximum loss at that point was not worked out"), followed by "; seen by the check at <time> IST".
 - "Every exit rule is not checked because whether this trade expires weekly or monthly is not known."
 - "This trade is closed; nothing is watched."
 - "The plan watch is paused while the feed has no live prices. It resumes with them."
