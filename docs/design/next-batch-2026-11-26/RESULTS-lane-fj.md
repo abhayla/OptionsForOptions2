@@ -37,7 +37,7 @@ A second Opus read of round 2 has not been done.
 
 ## New wording for the owner to read
 1. `The plan watch has not been read for this trade.`
-2. `Zerodha is not connected, so no real positions are shown.` (only when the server sends no reason; otherwise the server's `real_pnl.reason`)
+2. `No broker is connected, so no real positions are shown.` (only when the server sends no reason; otherwise the server's `real_pnl.reason`)
 3. `No price for <contract>` / `No price for <contract>, <contract>` (e.g. `No price for NIFTY 9 Nov 23500 CE`), as the Exit reason line and the dialog line.
 4. `The market is closed.` (entry dialog when `entries_sentence` is absent; otherwise the server's `entries_sentence`)
 5. `Prices as of <time>` and `Checked at <time>` (book panel, one as-of formatter).

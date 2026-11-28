@@ -100,7 +100,7 @@ describe('fd2: GET /positions with no Zerodha session (200, broker_connected fal
     answers['GET /positions'] = ok(NC({ real_pnl: { state: 'not_connected', pnl_text: null, reason: null, caption: null, excludes_note: null } }))
     answers['GET /paper/strategies'] = ok({ strategies: [], totals: null, answered_at: '2026-10-29T05:00:00Z' })
     const w = await show(PositionsPage)
-    expect(t(w, 'positions-not-connected').text()).toBe('Zerodha is not connected, so no real positions are shown.')
+    expect(t(w, 'positions-not-connected').text()).toBe('No broker is connected, so no real positions are shown.')
     expect(t(w, 'positions-empty').exists()).toBe(false)
   })
   it('connected (broker_connected true) and an empty list: the empty state stays', async () => {

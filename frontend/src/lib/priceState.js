@@ -175,3 +175,10 @@ export function priceAgeLine(rows, { nowMs = Date.now(), notLive = false } = {})
   if (notLive) return { state: 'not_live', text: `Prices are not live. Last price as of ${asOf}.` }
   return { state: secs < 0 ? 'ahead' : secs < 60 ? 'fresh' : 'stale', text: `Price as of ${asOf}.` }
 }
+
+/** The clock the price age is told against: the server's reading plus the time the browser has measured since that answer (`clock` = { serverMs, localMs }); the browser's own reading when there is none. */
+export function clockReadingMs(clock, browserMs) {
+  if (!clock) return browserMs
+  const since = browserMs - clock.localMs
+  return clock.serverMs + since
+}

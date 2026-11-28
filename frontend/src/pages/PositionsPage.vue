@@ -67,7 +67,7 @@ const realState = computed(() => {
 })
 // fd2: no Zerodha session is a 200 with broker_connected:false (real_pnl.state "not_connected" and its reason); only exactly false counts, so an old reply is unchanged
 const brokerOff = computed(() => result.value?.broker_connected === false)
-const NOT_CONNECTED_LINE = 'Zerodha is not connected, so no real positions are shown.' // new wording, pending owner read (28 Nov 2026): used only when the server sent no reason
+const NOT_CONNECTED_LINE = 'No broker is connected, so no real positions are shown.' // new wording, pending owner read (28 Nov 2026): used only when the server sent no reason
 const brokerOffLine = computed(() => { const r = result.value?.real_pnl?.reason; return typeof r === 'string' && r.trim() !== '' ? r : NOT_CONNECTED_LINE })
 // ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
 // shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.

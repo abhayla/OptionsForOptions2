@@ -100,7 +100,7 @@ import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 import api from '@/services/api'
 import { EXIT_PLACING_TEXT } from '@/lib/usePaperExit'
 import { isoMillis, istClock } from '@/lib/displayFormat'
-import { priceAgeLine } from '@/lib/priceState'
+import { clockReadingMs, priceAgeLine } from '@/lib/priceState'
 
 const props = defineProps({
   open: { type: Boolean, default: false },
@@ -145,7 +145,7 @@ function noteServerTime(data) {
   serverClock.value = { serverMs: ms, localMs: Date.now() }
   openedAtMs.value = Date.now()
 }
-const ageNowMs = computed(() => props.nowMs || (serverClock.value ? serverClock.value.serverMs + (openedAtMs.value - serverClock.value.localMs) : openedAtMs.value))
+const ageNowMs = computed(() => props.nowMs || clockReadingMs(serverClock.value, openedAtMs.value))
 const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: ageNowMs.value, notLive: !!props.notLiveLine }))
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
