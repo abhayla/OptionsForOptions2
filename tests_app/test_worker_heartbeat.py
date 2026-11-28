@@ -23,7 +23,9 @@ def _ago(seconds: int) -> str:
     (_ago(121).encode(), feed_bus.STALE), (None, feed_bus.UNREADABLE), ("", feed_bus.UNREADABLE),
     ("not a time", feed_bus.UNREADABLE), (b"\xff\xfe", feed_bus.UNREADABLE), (12345, feed_bus.UNREADABLE),
     ("2026-11-10T09:59:00", feed_bus.UNREADABLE),  # no time zone: cannot be compared, never read as fresh
-    (_ago(-120), feed_bus.FRESH), (_ago(-121), feed_bus.UNREADABLE),  # a time far AHEAD of now is not a live worker
+    (_ago(-3), feed_bus.FRESH), (_ago(-5), feed_bus.FRESH),  # #879: a few seconds of skew is allowed
+    (_ago(-6), feed_bus.UNREADABLE), (_ago(-100), feed_bus.UNREADABLE),  # a clock 100 s ahead is not a live worker
+    (_ago(-120), feed_bus.UNREADABLE), (_ago(-121), feed_bus.UNREADABLE),
 ])
 def test_judge_the_age(raw, state):
     assert feed_bus.judge_heartbeat(raw, NOW) == state
@@ -85,3 +87,8 @@ async def test_the_scenario_role_has_no_bus_client_so_it_never_writes_the_live_h
     worker = _worker(prov, _watched(scn), now, None)
     await worker.cycle()
     assert worker._cycles == 1
+
+
+def test_the_heartbeat_skew_is_the_snapshots_skew():
+    from ofo_app import monitoring_state  # noqa: PLC0415
+    assert feed_bus.HEARTBEAT_SKEW_S == monitoring_state.CLOCK_SKEW_S
