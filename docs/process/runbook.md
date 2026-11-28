@@ -136,6 +136,9 @@ background with a 2-hour limit and build the next item in another worktree meanw
 push; a guard that needs a person's edit (reply_inventory notes, ROUTE_ORDER_EDGES, an allow-list) goes to the owner the
 moment it is known, not after the gate. Counter: prepush runs per push (target 1). To run the repo scans by hand use `python -m pytest tests -m repo_scan -q` (a bare `pytest` cannot import `tests`).
 
+**Before every pre-push check (28 Nov; steps in `.claude/skills/lanes/SKILL.md`).** (1) Once per container `git fetch --unshallow origin; git fetch origin main`: a cloud clone is shallow with no origin/main, so the ci_checks and app_tests stages fail in under a second, after the other stages ran 10 to 25 minutes. (2) Cheap rules first (ruff on changed files, `python scripts/ruff_ratchet.py`, `python -m pytest tests -m repo_scan -q`, the select_app_tests and broker-name guards, the route tests when a route changed). (3) Background run with timeout 7200000 and `--jobs 2`; on a failure read only the failing stage's log.
+A manual full `tests_app` run on one shared database needs `GITHUB_ACTIONS=true` and `OFO_TEST_DB_PER_FILE=1` (Lane TE: without the per-file clone, failures start at the 11th test, then a leaked advisory lock stalls the run; Lane Z2: `OFO_TEST_DB_PER_FILE=1` or `GITHUB_ACTIONS=true`, a fresh template database, one run at a time). The written `db_run.py` test command tests an old test copy of the database at revision 0030 (PC, 28 Nov), so it cannot test a new migration such as 0059; the PC re-ran on a fresh test database.
+
 ## Merge
 - Only `python scripts/orchestrator/merge.py <pr> --reviewed-sha <full 40-char sha>` (or `land.py <worktree> --title T
   --body-file F --reviewed-sha <sha>`, which also pushes, opens the PR and updates a BEHIND branch). Never

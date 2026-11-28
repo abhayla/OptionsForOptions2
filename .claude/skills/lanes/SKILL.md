@@ -107,6 +107,13 @@ standing rules (more than 15 such lines). A passing example: `examples/brief-lan
 - Run `python -m pytest tests -m repo_scan -q` before the gate when the gate has not been adopted in a lane (a gate run
   is long; a failure found early costs minutes). A lane on the faster gate (`chore/gate-speed-1127`) needs no
   separate pre-check.
+- Create sessions with full history (`clone_depth` high in create_session, for example 100000). A problem seen twice gets its root cause read from the lane's own check output before any second nudge.
+
+## Before every pre-push check
+1. Once per container: `git fetch --unshallow origin; git fetch origin main` (a cloud clone is shallow; two stages fail late without it).
+2. Cheap rules first, with `PATH=/usr/local/bin:$PATH`: `ruff check <changed files>`; `python scripts/ruff_ratchet.py`; `python -m pytest tests -m repo_scan -q`; `python -m pytest tests/orchestrator/test_select_app_tests.py tests/test_no_broker_name_in_feature_code.py tests/test_scenario_one_reader.py -q`; for a changed route also `python -m pytest -c pytest-app.ini tests_app/test_reply_inventory.py tests_app/test_openapi_drift.py -q`. A new tests_app file is listed in PR241_SELECTION; a database test reading market data uses `scenario_on`.
+3. Run `prepush.py --jobs 2` in the background with timeout 7200000 (the default 30 minutes kills it).
+On a failure read only the failing stage's log.
 
 ## Files and branches
 - Split by files, not by bug: two bugs in one file go to one lane.
