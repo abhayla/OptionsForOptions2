@@ -216,3 +216,59 @@ async def test_the_record_store_refuses_a_leg_with_a_bad_quantity_or_side(db, qu
             legs=[real_action_store.Leg(ids[0], side, quantity, Decimal("30"))],
             stored_at=_dt.datetime(2026, 11, 27, 10, 0, tzinfo=_dt.UTC))
     assert await _records(db, stored.id) == []
+
+
+# ---- Lane R2's need: every row of GET /paper/strategies carries position_kind (never missing) ---------------
+
+async def _paper_list(app) -> dict:
+    async with _client(app) as c:
+        reply = await c.get("/paper/strategies")
+    assert reply.status_code == HTTPStatus.OK, reply.text[:300]
+    return {row["strategy_id"]: row for row in reply.json()["strategies"]}
+
+
+async def test_the_paper_list_names_the_kind_of_a_paper_row(db, notified):
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, _ids = await _open(db)
+    row = (await _paper_list(app))[stored.id]
+    assert (row["position_kind"], row["stored_not_sent"], row["record"]) == ("paper", None, None)
+
+
+async def test_the_paper_list_names_a_real_row_with_its_newest_record(db, notified):
+    import datetime as _dt  # noqa: PLC0415
+
+    from ofo.marketdata.kite_provider import IST  # noqa: PLC0415
+    from ofo_app import held_entry_store  # noqa: PLC0415
+    from test_paper_adjustment_limit import _book  # noqa: PLC0415
+    app, stored, ids = await _book(db, max_adjustments=None)
+    await held_entry_store.record(db, stored.id, _dt.datetime(2026, 11, 27, 10, 0, tzinfo=IST), "Zerodha")
+    first = (await _paper_list(app))[stored.id]
+    assert (first["position_kind"], first["stored_not_sent"], first["record"]) == ("real", True, None)
+    reply = await _post(app, stored.id, [_new(ids[0], "BUY", 65, "30", "exit")])
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    row = (await _paper_list(app))[stored.id]
+    assert row["position_kind"] == "real" and row["stored_not_sent"] is True
+    assert row["record"]["action"] == "exit" and row["record"]["text"]  # the page reads the stored exit from the row
+
+
+async def test_the_paper_list_reads_unknown_for_every_row_when_the_kinds_cannot_be_read(db, notified, monkeypatch):
+    from sqlalchemy.exc import SQLAlchemyError  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, _ids = await _open(db)
+
+    async def failing(_db, _sids):
+        raise SQLAlchemyError("kind read failed")
+    monkeypatch.setattr(strategy_store, "kinds_of", failing)
+    row = (await _paper_list(app))[stored.id]
+    assert row["position_kind"] == "unknown" and row["stored_not_sent"] is None  # never missing, never a 5xx
+
+
+async def test_the_paper_list_reads_unknown_for_a_row_whose_kind_is_unknown(db, notified, monkeypatch):
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, _ids = await _open(db)
+
+    async def unknown(_db, sids):
+        return dict.fromkeys(sids, "unknown")
+    monkeypatch.setattr(strategy_store, "kinds_of", unknown)
+    row = (await _paper_list(app))[stored.id]
+    assert row["position_kind"] == "unknown" and row["position_kind_text"]

@@ -490,6 +490,13 @@ class PaperStrategyOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeks
     held: HeldEntryOut | None = None  # GC-TRACK1 k07
     open_count: int  # GC-TP step 4a: positions with a non-zero net quantity ("N of M positions")
     position_count: int
+    # Lane R1 (ADR-330 (73)): the frozen field contract on EVERY list row (never missing): the stored tag, the row's one
+    # sentence, true for a REAL position (nothing is sent), and the newest stored record. An unreadable kind reads
+    # "unknown" (the page then locks Exit and Stops: fail closed).
+    position_kind: Literal["paper", "real", "unknown", "none"]
+    position_kind_text: CatalogueText | None = None
+    stored_not_sent: Literal[True] | None = None
+    record: RecordOut | None = None
 
 
 TotalsReason = paper.PauseReason | paper_decay.DecayReason
@@ -1148,6 +1155,8 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         for underlying, wanted in keys.items():
             snapshots[underlying] = await _snapshot(ctx, feed, underlying, wanted)  # type: ignore[arg-type]
     held_rows = await held_entry_store.read_many(db, [b.strategy_id for b in books])
+    kinds = await _list_kinds(db, [b.strategy_id for b in books])
+    newest = await _list_records(db, kinds)
     out, decays = [], []
     for b in sorted(books, key=_newest_first, reverse=True):
         snapshot = snapshots.get(b.underlying)
@@ -1162,7 +1171,11 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         out.append(figures | {"strategy_id": b.strategy_id, "name": sf.shown_name(b.name), "underlying": b.underlying,
                               "held": _held_out(held_rows.get(b.strategy_id)),
                               "status_word": _paper_word(b.status, figures["positions"]),
-                              "open_count": open_legs, "position_count": len(figures["positions"])})
+                              "open_count": open_legs, "position_count": len(figures["positions"]),
+                              "position_kind": kinds[b.strategy_id],
+                              "position_kind_text": position_kind.line_of(kinds[b.strategy_id]),
+                              "stored_not_sent": position_kind.takes_records(kinds[b.strategy_id]) or None,
+                              "record": real_action_store.record_out(newest.get(b.strategy_id))})
     live = [i for i, s in enumerate(out) if not _expired_open(s)]  # D-40: not expired
     kept = _priced(live, [out[i] for i in live], booked_alone=True)  # AC-R06 (ADR-324), ADR-330 (62)
     expired = len(out) - len(live)
@@ -1173,6 +1186,27 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in live], day)
     return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now(),
                                        "shown_date": shown_date})
+
+
+async def _list_kinds(db: Any, strategy_ids: Sequence[int]) -> dict[int, str]:
+    """Lane R1: the kind of every row of a list, one read; a read that fails answers "unknown" for EVERY row (never a
+    missing field, never a 5xx for a list the user only looks at): the page then offers no Exit and no Stops."""
+    try:
+        read = await store.kinds_of(db, list(strategy_ids))
+    except SQLAlchemyError:
+        _LOG.warning("position kinds of the paper list could not be read; every row reads unknown", exc_info=True)
+        read = {}
+    return {sid: read.get(sid, position_kind.UNKNOWN) for sid in strategy_ids}
+
+
+async def _list_records(db: Any, kinds: Mapping[int, str]) -> dict[int, Any]:
+    """The newest stored record of each REAL row (a failed read leaves the rows without their record line)."""
+    try:
+        return await real_action_store.latest_many(db, [sid for sid, k in kinds.items()
+                                                        if position_kind.takes_records(k)])
+    except SQLAlchemyError:
+        _LOG.warning("records of the paper list could not be read", exc_info=True)
+        return {}
 
 
 async def settle_line_after_close(db: Any, now: datetime.datetime, figures: Mapping[str, Any]) -> dict[str, Any]:
