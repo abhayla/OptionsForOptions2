@@ -1,4 +1,4 @@
-STATUS 20:25 | pushed 4ec19fdd6 (items 1, 4, 8); 2, 3 (F7, F8), 6, 9, 10 + Opus review fixes built, gate running | next: item 7, market-open clock | blocker: none
+STATUS 20:45 | items 1, 2, 3 (F7, F8), 4, 5, 6, 8, 9 (a, b, d, e), 10 pushed (88500c2a9, gate TOTAL PASS); 7, market-open clock, O-P-03 not done (designs below) | SAFE TO CLOSE | blocker: none
 
 # Lane RA2: the standing backend leftovers lane (base fix/r3-leftovers-1128 a5259db50)
 
@@ -82,7 +82,10 @@ Verdict REVISE; Change 3 (item 8) production code: nothing wrong. Fixed in commi
   it breaks `test_pr241_diff_selects_both_red_files_within_the_cap`, so no new file is registered there.
 
 ## Question for the owner
-(F3, F2 and W-28 from Lane RA stay open; real cases are in RESULTS-lane-ra.md "Question for the owner".)
+1. F3 (RA, open): an execution plan row prepared but never sent makes the strategy read as a real position, so paper orders are refused with the Kite sentence (Lane FD5's review). Fail closed (ADR-016 to ADR-019) against "an unsent form must not block practice". Recommendation: keep fail closed and add an "I did not send it" button that closes the open plan row.
+2. F2 (RA, open): a paper order placed first, then a real basket sent: reads as paper. Decide F3 first; then a strategy with both reads "unknown" until stated.
+3. W-28 (RA, open): "Plan loss stop" for a rupee stop and a percent stop alike, or apart ("Plan rupee stop")? Recommendation: the same word.
+4. Item 9 (a): the Add to Paper dialog can now show the exit line and the orders line, both starting "The market is closed." Should the page print the prefix once? (A page decision; the server sends both whole.)
 
 ## New wording for the owner to read
 (pending owner read; pins carry `reviewed: pending owner read`)
@@ -99,5 +102,15 @@ Verdict REVISE; Change 3 (item 8) production code: nothing wrong. Fixed in commi
   (it names `paper_monitor.py:68 read_snapshot()` by line number) moves with the file. It touches the fire path of the monitor, so it
   needs its own Opus review; left for a lane with the budget.
 - Item 6 (`spot_at` stored): see the section below.
-- Item 7 (plan-watch statements): not started.
-- Item 9 (c) O-P-03: see above.
+- Item 7 (plan-watch statements): not built. Measured (single row, warm, scenario ADJ-01, 27 statements): the same read runs more
+  than once inside ONE row: catalogue contract rows by id x3, `strategies.scenario_id` x2, catalogue token list x2, the plan row x2,
+  the strategy ownership check x2, entry facts x2, gate rows x2 (8 statements that a per-row fix would remove); reads that could be
+  one per request: `clock_timestamp()`, app settings, user preferences, `system_playbook_versions` min(saved_at). A generic
+  request-scoped cache on the session is NOT safe (a write inside the request would be served stale); each duplicate needs its own
+  call site fixed. The rig in tests_app/test_route_latency_budget.py cannot measure many rows: its ten `_seeded` strategies all
+  come back as id 1, so a batch of nine asks the same row nine times (a fixture fix is needed first). The ceilings are untouched.
+- Item 9 (c) O-P-03: see above (needs a frontend field first).
+- Item 11: RA's STATUS lists nothing else as handed to RA2; F3, F2 and W-28 stay open questions.
+
+
+SAFE TO CLOSE (head 88500c2a9 pushed; this results file is the only later change; left: item 7, the market-open clock, O-P-03, as written above)
