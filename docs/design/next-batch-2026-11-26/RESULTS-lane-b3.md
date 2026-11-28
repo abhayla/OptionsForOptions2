@@ -1,4 +1,4 @@
-STATUS 19:00 | item 1 (I-48): PARTLY fixed, committed 14d097334 (9 rows 219 -> 162 statements); item 2 (I-08): covered by item 1's tests; items 3 to 7: not started | next push 22:30 (batch 1) | blocker: send_message to @parent refused (elevated_session_untrusted_device), so this line is the report; the orders and traded-contracts reads per row sit in adjustment_readers.py (not mine), see "For the owner lane"
+STATUS 19:35 | BATCH 1 PUSHED (head 0b920315d, TOTAL PASS 1070 s): item 1 (I-48) partly fixed, 9 rows 219 -> 162 statements; item 2 (I-08) covered by item 1; items 3 to 7 not started | next push 01:30 (batch 2) | blocker: send_message to @parent refused (elevated_session_untrusted_device); this line is the report; per-row orders/contracts reads sit in adjustment_readers.py (not mine)
 
 # Lane B3 results (28 Nov 2026)
 
@@ -36,6 +36,16 @@ fails is `refused` with its catalogue sentence and status while the other 8 stay
 (`test_a_failed_shared_read_fails_no_row_and_a_failed_row_is_its_own_refusal`); a row the one time budget did not reach
 stays `not_read` (existing #859 tests, still green). No feed-frame recording was added: the batch route's rows
 come from the same `watch_of` the page already reads.
+
+## Opus review of items 1 and 2 (Tier A, read-only): PASS, no finding that can cost money
+Questions that held: no row shows another row's triggers, contracts, kind or expiry kind; another user's prefetched
+triggers never appear and never change a 404; every failure path fails closed; a real or unknown position still gets no
+paper stop line; removing the duplicate isolation read leaves no gap (`run_check` does it first). Minor, for batch 2:
+M1 triggers and kinds are as of the request start, not each row's own moment (display only, next poll corrects);
+M2 `release_connection` and the rollback in `prefetch` sit outside the per-row try, so a broken connection answers 500
+for the whole batch (fail closed, no figure shown); M3 the prefetch counts against the 15 s budget but is not under
+`wait_for`; M4 no DB test yet for a REAL position with armed triggers in a batch, another user's strategy with armed
+triggers (must stay 404), or a memo hit against the single route on a real-book row.
 
 ## For the owner lane
 - Whoever owns `backend/ofo_app/adjustment_readers.py` and `routes/adjustment_check.py`: give `read_tracked` an optional
