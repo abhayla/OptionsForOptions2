@@ -1491,6 +1491,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                              ) -> PaperBookOut:
     """The order door. With ``client_request_id`` the request is de-duplicated (ADR-017): the first request places; a
     repeat of the same key, strategy and orders answers the first result and stores nothing; see ``request_key``."""
+    entered = _monotonic()  # FD5 N5: the deadline counts from the request's entry (the page's 10 s clock started there)
     stored = await _load_strategy(db, user_ref, strategy_id)
     if any(o.kind == "exit" for o in body.orders):
         await _refuse_real_position(db, strategy_id)  # #877: before any key is claimed
@@ -1508,7 +1509,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                                cancelled=await _replayed_stops(
                                    db, stored, first.get("result", {}).get("cancelled_stops", [])))
     stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent,
-                             "deadline": _monotonic() + COMMIT_DEADLINE_S}
+                             "deadline": entered + COMMIT_DEADLINE_S}
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
             user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)

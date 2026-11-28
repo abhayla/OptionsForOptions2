@@ -255,6 +255,36 @@ async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(
     assert again.status_code == HTTPStatus.CREATED, again.text[:300]
 
 
+async def test_n5_the_deadline_counts_from_the_requests_entry_not_from_after_the_early_work(db, notified, keys,
+                                                                                            monkeypatch):
+    """FD5 N5: the 8 s deadline started after the key lookup and the Redis claim, so a request that spent 3 s there could
+    commit at 11 s, after the page's 10 s timeout. Now the clock starts at the entry: entered at 0, 3 s spent in the
+    early work, the commit check at 9 s is past 8 s from the entry (it would be 6 s from the old start)."""
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    now = {"t": 0.0}
+    real_lookup = request_key.lookup
+
+    async def slow_lookup(*a, **k):
+        now["t"] = 3.0  # the early work took 3 s
+        return await real_lookup(*a, **k)
+
+    from ofo_app import paper_limit  # noqa: PLC0415
+    real_place = paper_limit.place_checked
+
+    async def place_at_nine(*a, **k):
+        now["t"] = 9.0  # the work before the commit took 6 s more: the commit check reads 9 s after the entry
+        return await real_place(*a, **k)
+    monkeypatch.setattr(request_key, "lookup", slow_lookup)
+    monkeypatch.setattr(paper_limit, "place_checked", place_at_nine)
+    monkeypatch.setattr(route, "_monotonic", lambda: now["t"])
+    late = await _post(app, stored, _body(orders, uuid.uuid4()))
+    assert late.status_code == HTTPStatus.CONFLICT, late.text[:300]
+    assert await _count(db, stored) == 0
+
+
 async def test_f_a_failing_catalogue_read_keeps_the_claim_and_stores_orders_with_their_key(
         db, notified, keys, monkeypatch):
     """Class fix (``stored_kind``): on the production tracked-reader shape (the request's OWN session,
