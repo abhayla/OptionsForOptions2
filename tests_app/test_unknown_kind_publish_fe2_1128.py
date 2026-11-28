@@ -88,9 +88,11 @@ async def test_review_f1_a_fresh_read_does_not_undo_the_kind_pause_but_clears_an
     w = _worker(Prov(scn), _watched(scn), [scn.clock_at], Calls())
     w.status[FIRST_ID] = background.MonitoringStatus.PAUSED
     w.paused_reason[FIRST_ID] = background.PriceState.EXPIRY_KIND_UNKNOWN
+    w._owed[FIRST_ID] = background.PriceState.EXPIRY_KIND_UNKNOWN  # FE3 F1: the debt lives in ``_owed``
     w._fresh_read(FIRST_ID)
     assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
     assert w.paused_reason[FIRST_ID] is background.PriceState.EXPIRY_KIND_UNKNOWN
+    w._owed.pop(FIRST_ID)
     w.paused_reason[FIRST_ID] = background.PriceState.LEG_MISSING
     w._fresh_read(FIRST_ID)
     assert w.status[FIRST_ID] is background.MonitoringStatus.ACTIVE and FIRST_ID not in w.paused_reason
