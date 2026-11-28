@@ -1,4 +1,4 @@
-STATUS 23:25 IST LINK TEST: T: reply works (the send_message tool is refused with elevated_session_untrusted_device, so this line is the reply). Your items: alembic-free test fix DONE (5342dcb2c); CI frontend job DONE (5342dcb2c: 1956 Playwright tests vs 282, 75 fail twice, timeout 25 -> 40); flaky feed-control DONE and pushed d8cb91df1 (the fakeredis stand-in drops a ~30 KB XRANGE reply under load; read in pages; 12 of 12 green under load, was 5 of 8 red; TOTAL PASS 1046.4s); test_exit_door no_deadlock (before_claim, before_place): both PASS on origin build a1d704225 (paper_alerts exists; no migration on any origin branch touches it; CI runs the file, no marker hides it: the server job is -m "not full_chain" and these have none), I cannot reproduce: send me Lane R1's head commit; W-07 and W-35: not started, waiting for the commit you name after wave 1. Also closed: I-204 (5 passed on the build), I-168 (green on B3's branch ecf8e8f99). Nothing unpushed except this line; no check running.
+STATUS 23:50 IST CLOSED (owner's order of 23:35 read): all pushed, head b2ed3c8dc and the close-out commit after it. DONE: I-184, I-126, I-204, I-168 (on B3's branch), I-170, I-176, CI-1, CI-2, FLAKE-1. NOT DONE: walker rows W-07, W-35 and the TG2 hand-over list (no build commit after wave 1 was named; budget of 300 min ended), test_exit_door no_deadlock (cannot reproduce on a1d704225; needs Lane R1's head). SAFE TO CLOSE. send_message to the coordinator is refused (device trust): this line is the reply.
 
 # RESULTS: Lane T (test-only gaps and tooling)
 
@@ -85,12 +85,21 @@ None. No product code was at fault in any run.
 
 - Friction row for the coordinator (I1; this lane may not edit docs/process/friction-log.md): "Cloud test database `ofo_test` has no schema at session start: every DB test fails with `relation public.catalogue_contracts does not exist` until `db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head` is run; a 60 min foreground run of all tests_app was killed at 62 percent by the default background limit. Fix to recommend: cloud_services.sh migrates ofo_test, and the lane brief gives the 7200000 ms limit for a full tests_app run." Status: new.
 
+## Found, not assigned
+
+- `.github/workflows/app-tests.yml`, job `frontend`: the Playwright step has no own timeout, so a slow step cancels the whole job and leaves no log (CI-2 above; suggested `timeout-minutes: 15` on that step). Evidence: run 46155059897 (cancelled at 25:19, step ran 16:32).
+- `frontend/e2e/screen-*.spec.ts` (and 3 older specs): 75 tests fail on both attempts on the build (counts per file in CI-2); already sent to Lane F3 by the coordinator, listed here so the board has it.
+- `tests_app/conftest.py` per-file database clone: a test database behind the code head gives 18 files of a misleading SQL error (`function public.expire_order_request_keys() does not exist`); a one-line "database at <rev>, code head <rev>: run alembic upgrade head" would have saved about an hour (evidence: I-170 first pass above).
+- `tests_app/conftest.py` `redis_url`: with REDIS_URL unset the fakeredis `TcpFakeServer` drops a reply of about 30 KB when the machine is busy (FLAKE-1). Other tests read whole streams without a count (test_broker_disconnect:180, test_bus_socket:374, test_feed_process_boundary:311, test_feed_user_isolation:301, test_feed_control:454); they passed 12 of 12 under the same load, so not changed.
+
 ## Not done
 
-- Coordinator messages (send_message to the parent) are refused: "elevated_session_untrusted_device"; the remedy is an owner card (confirm_repository_trust) that also limits this session to trusted devices for good, so it was not raised unasked. Status goes through this file and the push line.
-- Nothing open in items 1 to 6 except re-running I-168 on the build once Lane B3 is merged (green on B3's branch already).
+- Walker rows W-07, W-35 and the TG2 hand-over list (D-TG-2 re-check, T1-20, T1-21, T2-06, T2-09, T3-15, T4-04, the W-30 monthly half, the W-15 builder box; T2-21 is Monday): no build commit after wave 1 was named to me, the origin build head is still a1d704225, and the 300-minute budget ended at 23:45 IST. No successor is started.
+- `tests_app/test_exit_door.py::test_monitor_and_tracking_exit_at_once_one_wins_no_deadlock[before_claim]` and `[before_place]` (Lane R1's report: they ALTER `paper_alerts`, which no longer exists): both pass on origin build a1d704225, where `paper_alerts` exists; no migration on any origin branch after 0062 touches it (0063 basket facts, 0064 order attempts only). CI runs them: the server job runs all of `tests_app` with `-m "not full_chain"` and these tests carry no marker. Not reproducible, so not changed; Lane R1's head commit is needed.
+- I-168 and I-204 re-run on the build after Lane B3's merge (green on B3's branch ecf8e8f99, on the build a1d704225 for I-204).
+- Coordinator messages (send_message to the parent) are refused all through the session ("elevated_session_untrusted_device"); the remedy is an owner card that limits this session to trusted devices for good, so it was not raised unasked. Status went through this file and the push lines.
 
-SAFE TO CLOSE: no (items 4 to 6 open)
+SAFE TO CLOSE: yes (items 1 to 6, CI-1, CI-2 and FLAKE-1 done and pushed; the open points above are listed, none is started)
 
 
 ---
