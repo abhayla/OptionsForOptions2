@@ -1,0 +1,18 @@
+// Lane W3 item 2: T2-09 bulk delete, result line 30 s hold, Dismiss; T3-15 Undo and history entries. ofo_tg 4173, build a1d704225
+const { chromium } = require('playwright'); const OUT = '/tmp/claude-0/sp'; const M = 'http://127.0.0.1:4173'
+;(async () => { const browser = await chromium.launch(); const page = await (await browser.newContext({ viewport: { width: 1366, height: 900 } })).newPage()
+  const T = async () => (await page.locator('body').innerText()).replace(/\n+/g, ' | ')
+  const sh = (n) => page.screenshot({ path: `${OUT}/${n}.jpg`, type: 'jpeg', quality: 55 })
+  await page.goto(M + '/strategies/my-strategies'); await page.waitForTimeout(8000)
+  const search = page.getByPlaceholder(/search/i).first(); await search.fill('UNDOTEST').catch((e) => console.log('search err', String(e).slice(0, 80))); await page.waitForTimeout(2000)
+  let t = await T(); console.log('rows after search:', (t.match(/UNDOTEST-\d/g) || []).join(','), '| buttons:', (await page.getByRole('button').allInnerTexts()).filter(b => /Delete|Undo|Dismiss/.test(b)))
+  const cbs = page.getByRole('checkbox'); console.log('checkboxes', await cbs.count(), await cbs.evaluateAll(x => x.map(e => e.getAttribute('aria-label')).slice(0, 8)))
+  for (const n of ['UNDOTEST-1', 'UNDOTEST-2', 'UNDOTEST-3']) await page.getByRole('checkbox', { name: new RegExp(n) }).check().catch(async () => { console.log('by-label check failed for', n) })
+  await page.waitForTimeout(1000); await sh('c3-1-ticked')
+  await page.getByRole('button', { name: /Delete selected/ }).first().click().catch((e) => console.log('Delete selected err', String(e).slice(0, 90))); await page.waitForTimeout(1500)
+  console.log('inline confirm:', ((await T()).match(/Delete \d+ strateg[^|]*\|[^|]*\|[^|]*/) || ['<none>'])[0])
+  await page.getByRole('button', { name: /^Delete$/ }).first().click(); await page.waitForTimeout(3000)
+  t = await T(); t = t; const line = (t.match(/[^|]*deleted[^|]*\|?[^|]*\|?[^|]*/i) || ['<no result line>'])[0]; console.log('T2-09 result line at 3 s:', line); await sh('c3-2-result-3s')
+  await page.waitForTimeout(28000); t = await T(); console.log('T2-09 result line at ~31 s:', (t.match(/[^|]*deleted[^|]*\|?[^|]*\|?[^|]*/i) || ['<GONE>'])[0]); await sh('c3-3-result-31s')
+  await page.getByRole('button', { name: /^Dismiss$/ }).first().click().catch((e) => console.log('Dismiss err', String(e).slice(0, 90))); await page.waitForTimeout(1500); t = await T(); console.log('after Dismiss line present:', /deleted/i.test(t))
+  await browser.close() })()

@@ -1,0 +1,11 @@
+const { chromium } = require('playwright'); const OUT = '/tmp/claude-0/sp'; const M = 'http://127.0.0.1:4173'
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+;(async () => { const browser = await chromium.launch(); const page = await (await browser.newContext({ viewport: { width: 1536, height: 864 } })).newPage()
+  await page.goto(M + '/positions/current-positions'); await sleep(9000); await page.getByRole('button', { name: /^Paper$/ }).first().click().catch(() => {}); await sleep(2500)
+  await page.getByRole('button', { name: /^Stops/ }).first().click(); await sleep(2500)
+  const lab = page.getByLabel(/^Above$/).first(); await lab.fill('26000').catch(async (e) => { console.log('label fill err; trying by role', String(e).slice(0, 60)); await page.getByRole('spinbutton').first().fill('26000') })
+  const y0 = await page.evaluate(() => window.scrollY); await page.getByRole('button', { name: /^Save$/ }).first().click(); await sleep(3000)
+  const row = page.locator('text=/above 26,?000/i').first(); const box = await row.boundingBox().catch(() => null); const vp = page.viewportSize()
+  console.log('scrollY before/after:', y0, await page.evaluate(() => window.scrollY), '| new row text:', await row.innerText().catch(() => '<no row>'), '| row box:', box && { y: Math.round(box.y), h: Math.round(box.height) }, '| viewport h', vp.height, '| in view:', box ? (box.y >= 0 && box.y + box.height <= vp.height) : 'n/a')
+  const t = (await page.locator('body').innerText()).replace(/\n+/g, ' | '); console.log('Stops on this strategy:', (t.match(/Stops on this strategy[^]{0,300}/) || ['<none>'])[0].slice(0, 300)); await page.screenshot({ path: `${OUT}/c8-after-save.jpg`, type: 'jpeg', quality: 55 })
+  await browser.close() })()

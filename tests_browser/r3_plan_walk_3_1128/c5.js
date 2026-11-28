@@ -1,0 +1,10 @@
+const { chromium } = require('playwright'); const OUT = '/tmp/claude-0/sp'; const M = 'http://127.0.0.1:4173'
+const sleep = (ms) => new Promise((r) => setTimeout(r, ms))
+;(async () => { const browser = await chromium.launch(); const page = await (await browser.newContext({ viewport: { width: 1366, height: 900 } })).newPage()
+  const T = async () => (await page.locator('body').innerText()).replace(/\n+/g, ' | ')
+  await page.goto(M + '/strategies/my-strategies'); await page.waitForTimeout(8000); await page.getByPlaceholder(/search/i).first().fill('UNDOTEST-9'); await sleep(1500)
+  await page.getByRole('button', { name: /^Delete$/ }).first().click(); await sleep(800); let t = await T(); console.log('confirm:', t.slice(t.indexOf('My Strategies | Select'), t.indexOf('My Strategies | Select') + 300))
+  console.log('buttons:', (await page.getByRole('button').allInnerTexts()).filter(x => x).slice(0, 12))
+  await page.getByRole('button', { name: /^Delete$/ }).last().click(); await sleep(2500); t = await T(); console.log('after confirm:', t.slice(t.indexOf('Strategies | My Strategies'), t.indexOf('Strategies | My Strategies') + 400)); await page.screenshot({ path: `${OUT}/c5-own-delete.jpg`, type: 'jpeg', quality: 55 })
+  await sleep(31000); t = await T(); console.log('own delete line at 34 s:', (t.match(/[^|]*deleted[^|]*\|[^|]*\|[^|]*/i) || ['<gone>'])[0]); await page.getByRole('button', { name: /^Dismiss$/ }).first().click().catch(() => console.log('no Dismiss')); await sleep(1000); t = await T(); console.log('after Dismiss:', (t.match(/[^|]*deleted[^|]*/i) || ['<no line>'])[0])
+  await browser.close() })()
