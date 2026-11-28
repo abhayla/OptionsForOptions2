@@ -1,4 +1,4 @@
-STATUS 22:30 | BATCH 2 pushed: item 6 done, 7 nothing, 8 done (read-only), outcome block hardened (waits for a running first request, cascade), migration renumbered 0064 after RA2's 0063; DB regression of the 69 order-door test files: 1890 passed, 1 failed (Lane B1's stale test_n7, pre-existing) | batch 1 was pushed 21:49 | blocker: send_message to @parent REFUSED (elevated_session_untrusted_device); this STATUS line is the report
+STATUS 23:50 | CLOSED: owner's order of 23:35 read and followed (no new tasks; new findings listed under 'Found, not assigned'); batch 1 b2e8e29c3, batch 2 9220b5cdf pushed, TOTAL PASS on both; NOT DONE: the start-up query-count item (coordinator 23:18), budget (300 min) ended at 23:45 | blocker: send_message to @parent REFUSED (elevated_session_untrusted_device); this STATUS line is the one-line report
 
 # Lane B2: the order-door and request-key backend lane (round 3, weekend)
 
@@ -76,7 +76,16 @@ Local database as CI builds it (`scripts/orchestrator/cloud_services.sh`), one t
 ## Existing tests changed
 - test_order_request_key_r2_fd2.py (3 tests: a Redis pending hint and a Redis outage no longer refuse); test_order_request_key_durable_fd3.py (1); test_execute_revision.py (the deadline test, a `tweak` hook, the DB-free apps stub the outcome guard); test_order_path_switch.py and test_browser_never_decides_eligibility.py (DB-free apps stub the guard).
 
+## Found, not assigned (owner's order of 23:35: listed, not fixed, not handed on)
+- The full check (`prepush.py --jobs 4`) SKIPS every database test (2413 skipped: the brief's command unsets `TEST_DATABASE_URL`), so TOTAL PASS does not prove a database test. Evidence: `tests_app/test_order_request_key_durable_fd3.py` held a stale expectation that the check never ran; I found it only by running the 69 order-door test files myself with `db_run.py`.
+- `tests_app/test_exit_door_real_fd3.py::test_n7_a_stop_stored_then_a_failed_kind_read_still_answers_success_with_the_line_unknown`: red on the base and on this head (`assert calls["n"] >= 2`, got 1); Lane B1's file.
+- The start-up route check `scenario_mode.misguarded_order_routes` runs only in scenario mode (main.py:216-223); in production the guarantee rests on a CI test, and it checks presence, not order (Opus review 2, F6).
+- The exit and trigger doors have no arrival deadline before commit (Opus review 2, F5); each statement is capped at 30 s by `statement_timeout`.
+- The Return door does not call `order_outcome.record_outcome`, so a real attempt with nothing stored blocks its strategy until evidence appears (see "Question for the owner").
+- Opus review 1 minors (1) to (4) (free only the record this request made; the "already prepared" answer for a racing repeat; an early refusal of a repeat; a two-keyed-requests race test through the real doors).
+
 ## Not done (batch 2)
+- The coordinator's start-up query-count item (23:18): the worker reads the strategy list in about 34 statements per trade (about 40 s for nine trades at the owner's 134 ms per query), about 12 per trade avoidable repeats in the stores (the ownership check eight times, the plan row, the playbook, the entry facts, the gate rows twice); the exact list is in RESULTS-lane-b1b.md on origin/fix/r3-backend-b1b-1128. Not started: my 300-minute budget ended at 23:45 and my two pushes were used. Design: read each once per start-up or once for all ids; a statement-count test with nine trades that fails if the count grows per trade. The stores are mostly outside my edit list.
 - The review minors (1) to (4) of Opus review 1 and the exit and trigger doors' arrival deadline (Opus review 2, F5).
 
 ## Models and minutes
@@ -85,3 +94,5 @@ Local database as CI builds it (`scripts/orchestrator/cloud_services.sh`), one t
 | build and tests | Sonnet (this session) | about 150 |
 | Opus review 1 (items 1 to 3) | Opus (reviewer, read-only) | 8 |
 | Opus review 2 (outcome block) | Opus (reviewer, read-only) | 12 |
+
+SAFE TO CLOSE (head: the commit this file is pushed in; what is left: the 'Not done' item above, the 'Found, not assigned' list, and the Return door call to record_outcome)
