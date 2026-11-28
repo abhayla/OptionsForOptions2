@@ -127,6 +127,10 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
     paper = [o.as_paper() for o in orders]  # refuses a bad side, kind, quantity or price before any write
     async with conn.begin_nested():
         await store.lock_strategy(conn, user_ref, strategy_id)  # NOT_FOUND for a missing or another user's strategy
+        # Lane R1: the position tag is written ONCE, here at the first order (never updated): a draft's first paper
+        # order makes it 'paper'; a basket-sent or held strategy already derives 'real' (``claim_tag``)
+        from ofo_app import strategy_store as _tags  # noqa: PLC0415 - it reaches the order modules
+        await _tags.claim_tag(conn, strategy_id, "paper")
         if any(o.kind not in REDUCING_KINDS for o in paper) and (
                 await conn.execute(_STATUS, {"id": strategy_id})).scalar_one() == "closed":
             raise StrategyRefused("paper_strategy_closed", Failure.CONFLICT)  # a closed strategy never reopens

@@ -510,7 +510,7 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order, "has_order": r.has_order,
              "held_at_broker": r.held_at_broker,
-             "position_kind": (kind := position_kind.kind_of(r.has_order, r.has_paper_order, r.held_at_broker)),
+             "position_kind": (kind := position_kind.kind_of(r.has_order, r.position_tag, r.held_at_broker)),
              "position_kind_text": position_kind.line_of(kind),
              "open_opportunities": None if opened is None else opened.get(r.id, 0),
              "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0)),

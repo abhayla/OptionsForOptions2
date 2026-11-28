@@ -23,14 +23,18 @@ NONE: Final = "none"
 UNKNOWN: Final = "unknown"
 
 
-def kind_of(has_order: bool | None, has_paper_order: bool | None, held_at_broker: bool | None) -> PositionKind:
-    if has_order is None or has_paper_order is None or held_at_broker is None:
+def kind_of(has_order: bool | None, position_tag: str | None, held_at_broker: bool | None) -> PositionKind:
+    """Lane R1: the kind is the STORED tag (``strategy_position_tags``, written once, never updated). A held entry
+    (ADR-292) is a real position whatever else is stored (it is stored in the transaction of the first paper basket,
+    after the tag is first written). No order -> none (a draft); an order and no stored tag, or any fact that could not
+    be read, or a tag that is neither paper nor real -> unknown (fail closed)."""
+    if has_order is None or held_at_broker is None:
         return UNKNOWN
     if held_at_broker:
         return REAL
-    if not has_order:
-        return NONE
-    return PAPER if has_paper_order else REAL
+    if position_tag in (PAPER, REAL):
+        return position_tag  # type: ignore[return-value]
+    return NONE if position_tag is None and not has_order else UNKNOWN
 
 
 def line_of(kind: str) -> ExplanationText | None:

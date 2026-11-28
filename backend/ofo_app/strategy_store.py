@@ -86,6 +86,7 @@ class StrategySummary:
     has_paper_order: bool = False  # ADR-271: picks the refusal wording ("paper orders were placed")
     has_order: bool = False  # ADR-299: any placed order, practice or real (the status word's one input)
     held_at_broker: bool = False  # ADR-292 / ADR-330 (8): a held entry exists; Delete shows the held sentence
+    position_tag: str | None = None  # Lane R1: the STORED tag ('paper' | 'real'), written once; None = none stored
     revision: int = 0  # N-30: saved revision (0 = not read)
 
 
@@ -152,9 +153,33 @@ def status_word(status: str | None, has_order: bool) -> StatusWord:
     return "Unknown"
 
 
+#: Lane R1: the stored tag (insert-only table, migration 0062); no row = no tag stored yet
+_TAG_SQL = "(SELECT t.tag FROM public.strategy_position_tags t WHERE t.strategy_id = s.id)"
 _KINDS = text(
-    f"SELECT s.id AS id, {_HAS_ORDER_SQL} AS has_order, {_HAS_PAPER_SQL} AS has_paper_order, {_HELD_SQL} AS held "  # noqa: S608
+    f"SELECT s.id AS id, {_HAS_ORDER_SQL} AS has_order, {_TAG_SQL} AS tag, {_HELD_SQL} AS held "  # noqa: S608
     "FROM public.strategies AS s WHERE s.id = ANY(:ids)")
+#: The ONE write of the tag, first write wins (ON CONFLICT DO NOTHING; the table is insert-only). The value is the one
+#: today's derivation gives (held entry -> real; a paper order -> paper; an execution plan -> real), else ``:fallback``
+#: (NULL = no tag yet: a draft has none). Run under the strategy row lock by ``paper_store.place`` at the first paper
+#: order, and by ``kinds_of`` for a strategy that has an order and no tag yet (a basket sent by Execute).
+_CLAIM_TAG = text(
+    "INSERT INTO public.strategy_position_tags (strategy_id, tag) "
+    "SELECT d.id, d.tag FROM (SELECT s.id AS id, CASE "
+    "WHEN EXISTS (SELECT 1 FROM public.strategy_held_entries h WHERE h.strategy_id = s.id) THEN 'real' "
+    "WHEN EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = s.id) THEN 'paper' "
+    "WHEN EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = s.id) THEN 'real' "
+    "ELSE CAST(:fallback AS TEXT) END AS tag FROM public.strategies s WHERE s.id = :id) d "
+    "WHERE d.tag IS NOT NULL ON CONFLICT (strategy_id) DO NOTHING")
+_READ_TAG = text("SELECT tag FROM public.strategy_position_tags WHERE strategy_id = :id")
+
+
+async def claim_tag(conn: Any, strategy_id: int, fallback: str | None = None) -> str | None:
+    """Lane R1: write the strategy's position tag once (first write wins, never updated) and return the stored tag, or
+    None when nothing is stored (a draft). ``fallback`` ('paper') is what the caller's own first order makes it when no
+    held entry, paper order or execution plan says otherwise. A write or read that fails PROPAGATES (fail closed)."""
+    async with conn.begin_nested():
+        await conn.execute(_CLAIM_TAG, {"id": strategy_id, "fallback": fallback})
+        return (await conn.execute(_READ_TAG, {"id": strategy_id})).scalar()
 
 
 async def kinds_of(conn: Any, strategy_ids: list[int]) -> dict[int, str]:
@@ -168,7 +193,10 @@ async def kinds_of(conn: Any, strategy_ids: list[int]) -> dict[int, str]:
         return {}
     out = dict.fromkeys(ids, position_kind.UNKNOWN)
     for r in (await conn.execute(_KINDS, {"ids": ids})).all():
-        out[int(r.id)] = position_kind.kind_of(r.has_order, r.has_paper_order, r.held)
+        tag = r.tag
+        if tag is None and r.has_order is True and r.held is False:
+            tag = await claim_tag(conn, int(r.id))  # a basket sent by Execute: the first read stores its tag, once
+        out[int(r.id)] = position_kind.kind_of(r.has_order, tag, r.held)
     return out
 
 
@@ -209,7 +237,7 @@ _SELECT_FOR_UPDATE = text(
 _LIST = text(
     "SELECT s.id, s.underlying, s.status, s.created_at, s.updated_at, s.name, s.scenario_id, s.revision, "
     f"{_DELETABLE_SQL} AS can_delete, {_HAS_PAPER_SQL} AS has_paper_order, "
-    f"{_HAS_ORDER_SQL} AS has_order, {_HELD_SQL} AS held_at_broker, "
+    f"{_HAS_ORDER_SQL} AS has_order, {_HELD_SQL} AS held_at_broker, {_TAG_SQL} AS position_tag, "
     "d.definition -> 'legs' AS legs "
     "FROM public.strategies AS s "
     "CROSS JOIN LATERAL (SELECT coalesce((SELECT v.definition FROM public.strategy_versions AS v "
@@ -828,7 +856,14 @@ async def list_strategies(conn: Any, user_ref: str) -> list[StrategySummary]:
     return [StrategySummary(int(r.id), r.underlying, r.status, r.created_at, r.updated_at, r.name,
                             len(r.legs), _first_leg(r.legs), r.can_delete is True, r.scenario_id,
                             r.has_paper_order is True, r.has_order is True, r.held_at_broker is True,
-                            int(r.revision)) for r in rows]
+                            await _tag_of_row(conn, r), int(r.revision)) for r in rows]
+
+
+async def _tag_of_row(conn: Any, r: Any) -> str | None:
+    """The stored tag of a list row; a strategy with an order, no tag and no held entry stores it now (``claim_tag``)."""
+    if r.position_tag is None and r.has_order is True and r.held_at_broker is False:
+        return await claim_tag(conn, int(r.id))
+    return r.position_tag
 
 
 def _first_leg(legs: Sequence[Mapping[str, Any]]) -> FirstLeg:

@@ -9,12 +9,14 @@ from ofo_app.routes import alerts as route
 REAL_LINE = "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."
 
 
-@pytest.mark.parametrize(("order", "paper", "held", "kind"), [
-    (True, True, False, "paper"), (True, True, True, "real"),  # ADR-292: held at the broker = a real position
-    (True, False, False, "real"), (False, False, False, "none"),
-    (None, True, False, "unknown"), (True, None, False, "unknown"), (True, True, None, "unknown")])
-def test_the_kind_is_the_stored_fact(order, paper, held, kind):
-    assert pk.kind_of(order, paper, held) == kind
+@pytest.mark.parametrize(("order", "tag", "held", "kind"), [
+    (True, "paper", False, "paper"), (True, "paper", True, "real"),  # ADR-292: held at the broker = a real position
+    (True, "real", False, "real"), (False, None, False, "none"),
+    (True, None, False, "unknown"),  # Lane R1: an order and no stored tag fails closed
+    (True, "bogus", False, "unknown"), (False, "bogus", False, "unknown"),
+    (None, "paper", False, "unknown"), (True, "paper", None, "unknown")])
+def test_the_kind_is_the_stored_fact(order, tag, held, kind):
+    assert pk.kind_of(order, tag, held) == kind
 
 
 def test_only_real_and_unknown_carry_a_line():
