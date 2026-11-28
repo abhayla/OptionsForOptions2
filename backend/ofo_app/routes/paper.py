@@ -33,6 +33,7 @@ from types import SimpleNamespace
 from typing import Annotated, Any, Literal, get_args
 
 from fastapi import APIRouter, Depends, Query, Request
+from ofo import market_calendar
 from ofo.adjustment.approaches import EntryFacts
 from ofo.charges import ChargeRates
 from ofo.charges.paper_charges import PaperFill, charges_sum, paper_charges
@@ -613,14 +614,17 @@ async def _stored_close_snapshot(ctx: MarketContext | None, underlying: str, ids
     a stored figure), else None. Display only: stops, exits and fills read ``leg_price`` and never see this."""
     if ctx is None or not ids:
         return None
+    if market_calendar.market_status(ctx.clock()) is market_calendar.MarketStatus.NO_CALENDAR:
+        return None  # Lane B1b item 4: unknown counts as closed for ORDERS, never as a stored close shown LIVE
     snapshot = await _snapshot(ctx, None, underlying, ids)
     return snapshot if snapshot.market_closed else None
 
 
 def _served(connected: bool, snapshot: Any, prices: dict[int, paper.Price]) -> bool:
     """The books read as served when a session is connected, or when no session is but the stored close prices at
-    least one open contract (the figures then carry the close's own time); else NOT_CONNECTED, as before."""
-    return connected or (snapshot is not None and any(paper.is_live(p) for p in prices.values()))
+    least one open contract WITH a quote time (the figures then carry the close's own time; Lane B1b item 4 backstop: a
+    LIVE book with no session never has an empty ``as_of``); else NOT_CONNECTED, as before."""
+    return connected or (snapshot is not None and any(paper.is_live(p) and p.at is not None for p in prices.values()))
 
 
 def _paper(orders: Sequence[paper_store.StoredOrder]) -> list[PaperOrder]:
