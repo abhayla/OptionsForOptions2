@@ -1,4 +1,4 @@
-STATUS (28 Nov, IST): push 1 at 45f2cad06 (TOTAL PASS). CI-1 DONE. I-184, I-126 closed. I-170/I-176: 511 tests_app files run one by one; first pass 18 files / 28 tests failed, all named, cause = test database behind the code (migration 0062) and load; re-run of those 18 files alone: 0 failed. I-168: both files green on this build alone; B3's I-48 not on origin, re-run when it lands. I-204: proven on the fix branch, build re-run after wave 0. T free for the third-walker work. Messages to the coordinator are refused (device trust); read this line.
+STATUS (28 Nov, IST): pushed df1f89764 earlier; CI-2 (frontend job cancelled at 25 min) FOUND, see section CI-2: not a hang; 1956 Playwright tests (was 282) of which 75 fail twice (screen-* specs, not in frontend lane's reach from here) ate about 10 of the 16.5 min; timeout line raised 25 -> 40 in app-tests.yml (frontend job only), not yet pushed. CI-1, I-184, I-126, I-170, I-176 done; I-168 green alone; I-204 build re-run waits for wave 0. Messages to the coordinator are refused (device trust); read this line.
 
 # RESULTS: Lane T (test-only gaps and tooling)
 
@@ -34,6 +34,28 @@ below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables 
 ## Same class search (CI-1)
 
 `grep -rln "alembic" tests/ | xargs grep -ln "exec_module\|import_module\|from alembic\|import alembic"` hits: test_prepush.py (105 passed), test_door_names_private.py (301 passed), test_history_not_shown.py (56 passed), test_alert_writers_one_caller.py (13 passed), test_alert_kinds.py (fixed). All run in /tmp/ci-like (only pyyaml, jsonschema, pytest, mypy). Wider search for tests naming `alembic/versions`: 8 more files, 129 passed, 1 skipped in the same environment. No other test needs a fix. The fix reads KINDS and ANSWERS by `ast.literal_eval` of the module-level assignments; no importorskip.
+
+## CI-2: the "frontend" job of app-tests.yml cancelled at 25 minutes (pull 881, commit a1d70422, run 46155059897)
+
+Measured from the job's own step times (gh api actions runs and jobs) and its log, compared with two green runs of the same job:
+
+| Step | cancelled run a1d70422 | green run a0e6fee1 | green run cf31e8d4 |
+|---|---|---|---|
+| migrations | 1:55 | 0:38 | 0:58 |
+| lint and unit tests | 5:22 (398 files, 4265 tests: local count) | 1:48 (222 files, 2605 tests) | 2:48 |
+| build to server start | 0:35 | 0:35 | 0:35 |
+| Playwright | cancelled after 16:32, 980 of 1956 tests done | 2:45, 282 tests | 3:59, 282 tests |
+| whole job | 25:19 (limit 25) | 6:54 | 9:20 |
+
+Findings:
+1. **Not a hang, not a watch mode.** The step was still finishing tests (about 60 per minute) when the 25-minute limit cancelled the job.
+2. **The Playwright suite grew 7 times.** The 26 Nov screen suite (8 `screen-*.spec.ts` files, from the push-5 tree) is on the round 3 build and not on main (main has 33 files in frontend/e2e, the build 44): `npx playwright test --list` on the build prints `Total: 1956 tests in 34 files`. The job was sized for 282.
+3. **75 tests fail on both attempts** (CI retries once; none passed on the retry): screen-alerts 20, screen-live-strategies 20, screen-home 13, screen-builder-legs 7, screen-positions 6, screen-my-strategies 5, positions 2, index-view 1, my-strategies 1. A failing attempt costs about 7.9 s (the 5 s expect timeout plus page work) against 0.69 s for a passing one: the 156 failed attempts used 1226 s of the 1792 s of measured test time (68 percent). Reproduced locally on the build: `CI=1 npx playwright test e2e/screen-alerts.spec.ts` with a preview on 4175: 40 failed attempts-lines, 70 passed, 4.2 min; the first failures read `getByTestId('alerts-empty')` / `alerts-attention` / `alerts-earlier-heading` not found, so the spec's expectations drifted from the Alerts page after 26 Nov (a test-side drift, not a hang).
+4. **With every test passing** the same rate gives about 11 to 12 minutes for Playwright, so about 21 minutes for the job on a healthy runner. The cancelled runner was also 2 to 3 times slower in the other steps, so 25 minutes was too thin even then.
+
+Decided: only the frontend job's `timeout-minutes` line in .github/workflows/app-tests.yml, 25 to 40 (the coordinator allowed this line, ci.yml untouched). The raise alone would not make the job green: the 75 failing screen-suite tests must be fixed or re-pinned by the lane that owns frontend/e2e (outside my edit list; screen-alerts first, 20 tests). Measured, not guessed: ~21 min healthy, ~42 min if the failures stay.
+
+Suggested (not done): a `timeout-minutes: 15` on the Playwright step itself so a slow step ends red with its log instead of a cancelled job with none.
 
 ## For Lane Z3
 
