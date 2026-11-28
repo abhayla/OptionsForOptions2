@@ -84,7 +84,7 @@ onMounted(async () => { marketAnswer.value = await readAnswer(false) })
 const REREAD_MS = 30_000
 const STALE_AFTER_MS = 90_000
 const CHECK_MS = 10_000
-const OLD_FIGURE_TEXT = 'The Zerodha figure is more than 90 seconds old and is hidden until the next read.' // pending owner read
+const OLD_FIGURE_TEXT = 'The real P&L figure is more than 90 seconds old and is hidden until the next read.' // pending owner read
 const figureOld = ref(false)
 let lastGoodAt = 0
 let seq = 0

@@ -59,7 +59,7 @@ Browser checks (preinstalled Chromium against `vite preview` of a fresh build, `
   - "Reading the planned entry prices of N contracts. This can take up to 20 seconds." (1 contract: "1 contract")
   - "Pricing N strategies: D of N done. This can take up to 20 seconds." (1: "1 strategy")
   The "20 seconds" is the longest wait the PC walk of 28 Nov saw, stated as a limit.
-- Positions, hidden Real figure (D-13): "The Zerodha figure is more than 90 seconds old and is hidden until the next read."
+- Positions, hidden Real figure (D-13): "The real P&L figure is more than 90 seconds old and is hidden until the next read." (reworded: Positions code may not name the broker, tests/test_no_broker_name_in_feature_code.py)
 - Positions, the page-level paused notice (UX-A09) is the existing sentence, not new: "Paper P&L paused - prices not live, as of <time>".
 - D-6, D-7, D-8, D-11, History loading: no new sentence (existing words, once; "Loading..." already existed on Active).
 
