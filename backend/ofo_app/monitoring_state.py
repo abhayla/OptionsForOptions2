@@ -34,6 +34,7 @@ from __future__ import annotations
 import datetime
 import json
 import logging
+import uuid
 from collections.abc import Callable, Iterable, Mapping
 from dataclasses import dataclass
 from decimal import Decimal, InvalidOperation
@@ -311,55 +312,102 @@ async def read_readings(client: Any, now: datetime.datetime) -> Readings | None:
     return Readings(items)
 
 
+OWNER_KEEP_S: Final = 3600  # a monitor's slot that stopped reporting this long ago is dropped by the next writer
+EXITS_KEY_TTL_S: Final = 86400  # the report key itself (a deployment with no monitor for a day has nothing to say)
+
+
 def encode_exits(not_run: Mapping[int, str], at: datetime.datetime) -> str:
+    """One monitor's slot of the report (``watching`` is added by ``ExitsPublisher``)."""
     return json.dumps({"at": _aware(at).isoformat(), "not_run": {str(k): v for k, v in sorted(not_run.items())}},
                       sort_keys=True)
 
 
+def _slots(body: Any) -> dict[str, dict[str, Any]] | None:
+    """The monitors' slots of a stored report (FE2 item 1: one slot per monitor, never one shared answer), or None
+    when it is not our shape."""
+    owners = body.get("owners") if isinstance(body, dict) else None
+    if not isinstance(owners, dict):
+        return None
+    out: dict[str, dict[str, Any]] = {}
+    for owner, slot in owners.items():
+        at = _time(slot.get("at")) if isinstance(slot, dict) else None
+        if at is None or not isinstance(slot.get("not_run"), dict) or not isinstance(slot.get("watching"), list):
+            return None
+        out[str(owner)] = {"at": at, "not_run": slot["not_run"], "watching": slot["watching"]}
+    return out
+
+
 def decode_exits(raw: Any, now: datetime.datetime) -> dict[int, str] | None:
-    """strategy -> why, from the monitor's report; a report older than ``SNAPSHOT_STALE_S`` (the monitor stopped) lists
-    ``INDEX_EXITS_NOT_RUN`` for EVERY strategy it knew of (``not_run`` and ``watching``); None = not our shape (the
-    caller fails closed: ``state_unreadable``)."""
+    """strategy -> why, merged over every monitor's slot; None = not our shape (the caller fails closed:
+    ``state_unreadable``). A strategy is judged (absent from the answer) when at least one FRESH monitor lists it as
+    being evaluated; otherwise the why of a fresh monitor that lists it as not run; with no fresh monitor at all (every
+    one stopped: older than ``SNAPSHOT_STALE_S``) every strategy any of them listed is ``INDEX_EXITS_NOT_RUN``. A
+    stopped monitor's slot is ignored while a fresh monitor exists (a restart is a new monitor)."""
     text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
     try:
         body = json.loads(text) if isinstance(text, str) else None
-        at = _time(body.get("at")) if isinstance(body, dict) else None
-        listed = body.get("not_run") if isinstance(body, dict) else None
-        watching = body.get("watching", []) if isinstance(body, dict) else None
-        if at is None or not isinstance(listed, dict) or not isinstance(watching, list):
+        slots = _slots(body)
+        if slots is None:
             return None
-        stale = abs((now - at).total_seconds()) > SNAPSHOT_STALE_S
-        known = {int(k) for k in listed} | {int(i) for i in watching}
-        if stale:
-            return dict.fromkeys(known, INDEX_EXITS_NOT_RUN)
-        return {int(k): str(v) for k, v in listed.items()}
+        fresh = {o: sl for o, sl in slots.items() if abs((now - sl["at"]).total_seconds()) <= SNAPSHOT_STALE_S}
+        if not fresh:
+            return dict.fromkeys({int(k) for sl in slots.values() for k in (*sl["not_run"], *sl["watching"])},
+                                 INDEX_EXITS_NOT_RUN)
+        covered = {int(i) for sl in fresh.values() for i in sl["watching"]}
+        out: dict[int, str] = {}
+        for owner in sorted(fresh):
+            for k, why in fresh[owner]["not_run"].items():
+                if int(k) not in covered:
+                    out.setdefault(int(k), str(why))
+        return out
     except (ValueError, TypeError, AttributeError):
         return None
 
 
 class ExitsPublisher:
     """The paper monitor's one write path of the index-exit report: which strategies have an armed index exit being
-    evaluated (``watching``) and which do not (``not_run``, with the why). Never raises. Rewritten when it changes and
-    at least every ``REFRESH_S`` so a stopped monitor ages out."""
+    evaluated (``watching``) and which do not (``not_run``, with the why). Every monitor (every API worker process)
+    owns ONE slot of the report, read-merged-written, so one monitor's report never replaces another's (FE2 item 1;
+    a lost update of a simultaneous write is repaired by the next rewrite, at most ``REFRESH_S`` later). Never raises.
+    Rewritten when it changes and at least every ``REFRESH_S`` so a stopped monitor ages out."""
 
-    def __init__(self, client: Any) -> None:
+    def __init__(self, client: Any, owner: str | None = None) -> None:
         self._client = client
+        self.owner = owner or uuid.uuid4().hex
         self._written: str | None = None
         self._written_at: datetime.datetime | None = None
 
     async def publish(self, watching: Iterable[int], not_run: Mapping[int, str], now: datetime.datetime) -> bool:
         if self._client is None:
             return False
-        body = json.loads(encode_exits(not_run, now))
-        body["watching"] = sorted(set(watching) - set(not_run))
-        fingerprint = json.dumps([body["not_run"], body["watching"]])
+        slot = json.loads(encode_exits(not_run, now))
+        slot["watching"] = sorted(set(watching) - set(not_run))
+        fingerprint = json.dumps([slot["not_run"], slot["watching"]])
         due = self._written_at is None or (now - self._written_at).total_seconds() >= REFRESH_S
         if fingerprint == self._written and not due:
             return False
         try:
-            await self._client.set(exits_key(), json.dumps(body, sort_keys=True))
+            owners = await self._others(now)
+            owners[self.owner] = slot
+            await self._client.set(exits_key(), json.dumps({"at": slot["at"], "owners": owners}, sort_keys=True),
+                                   ex=EXITS_KEY_TTL_S)
         except Exception as exc:  # noqa: BLE001 - never stops the monitor; the report then ages out (= not run)
             log.warning("paper monitor: writing the index-exit report failed: %s", type(exc).__name__)
             return False
         self._written, self._written_at = fingerprint, now
         return True
+
+    async def _others(self, now: datetime.datetime) -> dict[str, Any]:
+        """The other monitors' slots as stored (those that stopped over ``OWNER_KEEP_S`` ago are dropped). A stored
+        value that is not our shape is replaced; a store that cannot answer raises (nothing is written blind)."""
+        raw = await self._client.get(exits_key())
+        if raw is None:
+            return {}
+        text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+        try:
+            slots = _slots(json.loads(text) if isinstance(text, str) else None)
+        except ValueError:
+            slots = None
+        return {o: {"at": sl["at"].isoformat(), "not_run": sl["not_run"], "watching": sl["watching"]}
+                for o, sl in (slots or {}).items()
+                if o != self.owner and abs((now - sl["at"]).total_seconds()) <= OWNER_KEEP_S}
