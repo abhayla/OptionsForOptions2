@@ -45,7 +45,7 @@ import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBook
 import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
 import { exitEndText, exitLegsNotLive, legsNoPrice, refusalText, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
-import { addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock } from '@/lib/unknownLocks'
+import { keySigOf, addBeforeOf, addLockFor, addsOf, adoptedAddLock, sameLock, adoptedExitLock, bookOfNet, decideLock, dropAddLock, dropExitLock, dropOrderKey, exitLockFor, exitUnitsOf, expectedKeyOf, onAddLocksChanged, onExitLocksChanged, orderKeyFor, saveAddLock, saveExitLock } from '@/lib/unknownLocks'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import { STOP_OFFER_LABEL, legStopsGone, triggerListOf, triggersPath } from '@/lib/paperTriggers'
@@ -843,7 +843,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
   const check = { id, stops: stopsNow.filter((x) => x.kind === 'leg_stop' && x.state === 'armed'), net: paper.value.net.map((l) => l.contract_id) }
   const sendsExit = orders.some((o) => o?.kind === 'exit')
   // F1 second path (Opus review F1): the lock is written BEFORE the post, so a page left or reloaded while the post is still out is covered; a definite answer removes it
-  const key = orderKeyFor(id, JSON.stringify(orders), dialogKey, sendsExit ? 'exit' : 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
+  const key = orderKeyFor(id, keySigOf(orders), dialogKey, sendsExit ? 'exit' : 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
   const book = bookOfNet(paper.value.net) // the WHOLE book the orders go against: the one key every page reads (lib/unknownLocks.js), the exited legs' units, the book they should leave
   const lockBase = { before: book?.key ?? null, units: sendsExit ? exitUnitsOf(orders, book) : null, expected: expectedKeyOf(orders, book), names, key, sig: JSON.stringify(orders), waiting: waiting ? { legs: waiting.legs, names: waiting.names } : null, move: sendsExit && orders.some((o) => o?.kind !== 'exit'), seen: book ? null : Date.now() } // `seen`: a lock whose book could not be read counts from the post
   const outAt = Date.now() // R5 N5: the identity of this page's own write: a definite answer drops that lock, never another tab's
@@ -1723,7 +1723,7 @@ const leaveGuard = useLeaveBuilder({
         <PaperBookPanel v-if="paper" :book="paper.book" :net="paper.net" :changed-ids="stagedChangeIds(paper.net, legs)" :read-failed="paperBookFailed" :contracts-changed="paperContractsChanged" :exit-unresolved="!!exitUnknown" :show-orders="showOrdersTick" @exit="exitPaper" @exit-all="exitAllPaper" />
         </div>
         <PaperConfirmDialog :open="paperDialog" :orders="paperRows" :strategy-id="route.query.strategy" :busy="paperBusy" :blocked="exitBlocked" :note="exitAllWaiting ? DISCARD_WARNING(exitAllWaiting.names) : ''" :locked="!!exitUnknown" :locked-at-ms="exitUnknown ? exitUnknown.at : 0" :cancelled-stops="cancelledStops" :stops-reply-unreadable="stopsReplyUnreadable" :error="paperError || paperNotLiveLine" :state="paperState" :not-live-line="paperEntryNotLiveLine" @confirm="confirmPending" @cancel="userCancelPaperDialog" @orderbook="openPaperOrderbook" />
-        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :live-price-by-id="livePriceById" :prices-live="pricesLive" :market-closed="pricesNow.kind === 'last_close'" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
+        <SaveDraftBar v-show="!(opening && !legs.length)" ref="barRef" :legs="legs" :rules-ref="String(route.query.rules_ref || '')" :current="openStrategy" :shown-name="shapeName ?? ''" :paper-mode="paper !== null" :real-trade="tradeMode === 'real'" :live-price-by-id="livePriceById" :prices-live="pricesLive" :market-closed="pricesNow.kind === 'last_close'" :price-as-of="pricesNow.at ?? ''" class="max-[1099px]:contents" @open="openFromBar" @saved="onSaved" @paper-added="onPaperAdded" @renamed="onRenamed" @deleted="onDeleted">
           <template #add-edit>
             <button v-if="!paperCompleted" type="button" class="h-10 flex-1 basis-0 rounded-lg border border-line font-medium" aria-haspopup="dialog" :aria-expanded="pickerOpen ? 'true' : 'false'" data-testid="add-edit" :disabled="exitBlocked" :title="exitBlocked ? exitGate.reason.value : undefined" @click="pickerOpen = !pickerOpen">Add/Edit</button>
           </template>

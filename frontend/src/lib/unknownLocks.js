@@ -32,11 +32,13 @@ const monoNow = () => { try { const n = globalThis.performance?.now?.(); return 
 const stamps = new Map() // `${store}|${id}|${at}` -> monotonic stamp of this page instance (never stored: it means nothing in another page)
 const stampKey = (name, id, at) => `${name}|${id}|${at ?? ''}`
 /** A stamp that makes the lock look `wallAgeMs` old now (the wall age is trusted ONCE, clamped to 0..window + 1 s, at first sight or write; never again). */
-const stampFor = (wallAgeMs) => {
+const EPOCH_MS_FLOOR = 1e12 // 9 Sep 2001 in epoch ms: a stored time below it (0, a negative, a count of seconds) is not a time this app wrote
+const stampFor = (wallAgeMs, at = null) => {
   const m = monoNow()
   if (m === null) return null
   const cap = UNKNOWN_EXIT_READ_AFTER_MS + 1000
-  const age = !Number.isFinite(wallAgeMs) || wallAgeMs < 0 ? 0 : wallAgeMs > cap ? cap : wallAgeMs
+  // FJ2 F-D (Opus review): a stored `at` that is not a credible time (0, -1, seconds) is never read as "long ago": the lock counts from first sight, then only the monotonic source
+  const age = !Number.isFinite(wallAgeMs) || wallAgeMs < 0 || (at !== null && !(at >= EPOCH_MS_FLOOR)) ? 0 : wallAgeMs > cap ? cap : wallAgeMs
   return m - age
 }
 /** Monotonic ms the lock has aged when the read was sent: null when no stamp or no source (then the wall rule counts). A read whose wall `sentAt` is ahead of now counts as sent now; one behind
@@ -222,12 +224,12 @@ function makeLocks(name, kind) {
     const out = { ...l }
     if (l.at !== null) {
       const k = atKey(id, l.at)
-      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.at))
+      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.at, l.at))
       out.mono = stamps.get(k)
     }
     if (l.seen !== null) {
       const k = seenKey(id, l.seen)
-      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.seen))
+      if (!stamps.has(k)) stamps.set(k, stampFor(now - l.seen, l.seen))
       out.seenMono = stamps.get(k)
     }
     return out
@@ -262,8 +264,8 @@ function makeLocks(name, kind) {
     const all = entriesOf(name)
     all[String(id)] = { at: rec.at ?? null, before: rec.before ?? null, expected: rec.expected ?? null, names: rec.names ?? [], units: rec.units ?? null, key: rec.key ?? null, sig: rec.sig ?? null, waiting: rec.waiting ?? null, out: rec.out === true, seen: rec.seen ?? null, move: rec.move === true, adds: rec.adds ?? null }
     writeAll(name, all)
-    if (Number.isFinite(rec.at) && !stamps.has(atKey(id, rec.at))) stamps.set(atKey(id, rec.at), stampFor(Date.now() - rec.at)) // a lock written here: the wall age counts once, then only the monotonic time
-    if (Number.isFinite(rec.seen) && !stamps.has(seenKey(id, rec.seen))) stamps.set(seenKey(id, rec.seen), stampFor(Date.now() - rec.seen))
+    if (Number.isFinite(rec.at) && !stamps.has(atKey(id, rec.at))) stamps.set(atKey(id, rec.at), stampFor(Date.now() - rec.at, rec.at)) // a lock written here: the wall age counts once, then only the monotonic time
+    if (Number.isFinite(rec.seen) && !stamps.has(seenKey(id, rec.seen))) stamps.set(seenKey(id, rec.seen), stampFor(Date.now() - rec.seen, rec.seen))
   }
   return {
     save: writeLock,
@@ -349,6 +351,9 @@ export function orderKeyFor(id, ordersText, dialogKey, action = 'exit') {
   writeAll(KEYS_KEY, all)
   return dialogKey
 }
+/** FJ2 F-B (Opus review): the text a request key is held for. An entry row's price is left out (it moves with every price tick, so a resend of the same add would get a new key the
+ *  server cannot de-duplicate); a resend whose body differs under the held key meets the server's 581, which the page treats as unknown (lock and key stay). Exit rows are unchanged. */
+export const keySigOf = (orders) => JSON.stringify((Array.isArray(orders) ? orders : []).map((o) => (o && typeof o === 'object' && o.kind !== 'exit' ? { ...o, price: '' } : o)))
 export function dropOrderKey(id, action = 'exit') {
   const slot = keySlot(id, action)
   const all = entriesOf(KEYS_KEY)

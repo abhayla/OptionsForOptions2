@@ -31,7 +31,7 @@ import { contractName, istTime } from '@/lib/displayFormat'
 import { readPaperBook } from '@/lib/paperDrafts'
 import { notLiveEntryLine, oldestCapture } from '@/lib/priceState'
 import { ADD_TO_PAPER_LABEL, PAPER_ADDED_TEXT, PAPER_STATE, addToPaper, entryPriceFor, paperPostOutcome } from '@/lib/tracking'
-import { addLockFor, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, onAddLocksChanged, orderKeyFor, saveAddLock } from '@/lib/unknownLocks'
+import { addLockFor, addLockIds, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, keySigOf, onAddLocksChanged, orderKeyFor, saveAddLock } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { CLEAR_UNDO_SECONDS_KEY } from '@/lib/legEdit'
 import { useSettingsValues } from '@/stores/settingsValues'
@@ -46,6 +46,8 @@ import {
 const props = defineProps({
   legs: { type: Array, default: () => [] },
   rulesRef: { type: String, default: '' },
+  // FJ2 (Opus review, ADR-330 (64)): the open strategy is a REAL trade (Running, no paper book). The server refuses only paper EXIT rows on a real position, so an add stored on its id would make it read as paper and then offer Exit: no Add to Paper here
+  realTrade: { type: Boolean, default: false },
   // the saved strategy this screen is editing ({ id, revision, name } as the page loaded or saved it), or null for a never-saved one
   current: { type: Object, default: null },
   // the name the builder shows for an unsaved strategy (its shape name); an unsaved strategy is saved under it before Add to Paper
@@ -407,7 +409,7 @@ onBeforeUnmount(() => { clearInterval(unknownTimer); unknownTimer = null; offLoc
 const refusedLists = new Map() // FJ r3 (FB2 F6): `${id}|${sig}` -> the refusal sentence, for EVERY refused list that was sent unedited (not only the last one)
 const refusalKey = (id, rows) => `${id}|${rowSig(rows)}`
 const rowSig = (rows) => JSON.stringify(rows.map((r) => [r.contract_id, r.side, String(r.lots)]))
-const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !addLocked.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
+const canAddToPaper = computed(() => !props.paperMode && !props.realTrade && !paperRecorded.value && !addLocked.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
 // ADR-330 (19): an UNSAVED strategy asks for its name first (the name dialog, prefilled with the shape name); Confirm saves it under
 // that name and goes on to the paper confirm, Cancel adds nothing. A strategy already saved asks nothing: the code cannot tell a name
@@ -451,7 +453,7 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
   paperError.value = ''
   paperState.value = PAPER_STATE.READY
   const sig = JSON.stringify(orders)
-  const key = orderKeyFor(target, sig, dialogKey, 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
+  const key = orderKeyFor(target, keySigOf(orders), dialogKey, 'add') // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
   const outAt = Date.now() // R5 N5: this write's own identity: a definite answer drops this lock, never another tab's
   saveAddLock(target, { at: outAt, out: true, before: '', key, sig }) // F3: written BEFORE the post goes out; a definite answer removes it (`out`: at = when it went out)
   inflightAdds.add(String(target))
