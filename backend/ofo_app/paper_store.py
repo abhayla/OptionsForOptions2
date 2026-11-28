@@ -142,7 +142,7 @@ async def _refuse_off_paper(conn: Any, strategy_id: int, paper: Sequence[Any]) -
             raise StrategyRefused(position_kind.EXIT_REFUSED, Failure.CONFLICT)
 
 
-async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,  # noqa: C901, PLR0913
+async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,  # noqa: PLR0913
                 entry: EntryFacts | None = None, swept: list[int] | None = None) -> tuple[StoredOrder, ...]:
     """Stores ``orders`` as given on an empty book, buys first otherwise (D-02; module docstring) and returns the
     whole book as stored; at the strategy's FIRST fill (the book empty before this call) also its entry facts

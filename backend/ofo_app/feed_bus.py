@@ -187,7 +187,8 @@ def heartbeat_key() -> str:
 
 
 async def write_heartbeat(client: Any, at: datetime.datetime) -> None:
-    await client.set(heartbeat_key(), at.isoformat())
+    # RA: a store-side expiry (the stale window) closes the case of a dead writer whose clock ran ahead (Opus F1, #879)
+    await client.set(heartbeat_key(), at.isoformat(), ex=HEARTBEAT_STALE_S)
 
 
 def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:

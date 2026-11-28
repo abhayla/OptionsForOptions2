@@ -65,10 +65,10 @@ async def test_each_cycle_writes_the_cycle_time(scn):  # noqa: F811
 
 async def test_a_failed_heartbeat_write_is_logged_by_type_and_never_stops_the_cycle(scn, caplog):  # noqa: F811
     class Down(FakeRedis):
-        async def set(self, key, value, px=None):
+        async def set(self, key, value, px=None, ex=None):
             if key == feed_bus.heartbeat_key():
                 raise RedisConnectionError("secret-host")
-            await super().set(key, value, px)
+            await super().set(key, value, px, ex)
 
     prov, now, client = IndexedProv(scn), [scn.clock_at], Down()
     prov.closed = True
@@ -122,3 +122,18 @@ def test_fd5_the_monitoring_skew_equals_the_feed_bus_skew():
     FE3 makes the first the second, and until then this holds them equal."""
     from ofo_app import monitoring_state  # noqa: PLC0415
     assert monitoring_state.CLOCK_SKEW_S == feed_bus.HEARTBEAT_SKEW_S
+
+
+async def test_ra_the_heartbeat_carries_a_store_side_expiry_of_the_stale_window():
+    """Lane RA (FE3 "Not done", Opus F1 #879): a writer whose clock runs ahead and then dies must not read fresh: the
+    key itself expires after the stale window (HEARTBEAT_STALE_S, 120 s) in the store, whatever the stamp says."""
+    seen: dict = {}
+
+    class Recorder:
+        async def set(self, key, value, **kw):
+            seen.update(key=key, value=value, **kw)
+
+    at = datetime.datetime(2026, 11, 27, 11, 0, tzinfo=datetime.UTC)
+    await feed_bus.write_heartbeat(Recorder(), at)
+    assert seen == {"key": feed_bus.heartbeat_key(), "value": at.isoformat(), "ex": feed_bus.HEARTBEAT_STALE_S}
+    assert feed_bus.HEARTBEAT_STALE_S == 120  # noqa: PLR2004 - REQ-115 AC-6
