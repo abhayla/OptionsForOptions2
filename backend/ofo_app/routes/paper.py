@@ -616,18 +616,18 @@ async def _armed_leg_stops(db: Any, strategy_id: int) -> list[Any]:
 
 
 async def _cancel_leaving_stops(db: Any, strategy_id: int, book: Sequence[paper_store.StoredOrder],
-                                before: Sequence[Any]) -> list[Any]:
+                                before: Sequence[Any], swept: Sequence[int] = ()) -> list[Any]:
     """#774 (ADR-330 (48)): cancel every armed leg stop whose contract the book no longer holds open (the same function,
     ``paper_leg_stops.leaving``, gives the confirm list its lines). Returns the leg stops that were armed ``before`` and
-    are cancelled now, read back in THIS transaction (the store cancels the stale ones inside the fill, this cancels the
-    rest), so the order reply names exactly what the request cancelled (FD2 item 1, F3). A stop the monitor fired
-    first, or one cancelled by someone else, is not named."""
+    were cancelled by THIS request: the ids the stale-stop sweep inside the fill returned (``swept``, from ``place``)
+    and the ids ``paper_trigger_store.cancel`` returned here, each from its own ``UPDATE ... RETURNING`` (FD5 2a), so
+    the order reply names exactly what the request cancelled. A stop the monitor fired first, or one cancelled by
+    someone else, is in neither list and is not named."""
     armed = [r.trigger for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"]
+    cancelled = set(swept)
     for gone in paper_leg_stops.leaving(armed, _open_ids(book)):
-        await paper_trigger_store.cancel(db, strategy_id, gone.id)
-    was = {t.id: t for t in before}
-    return [was[r.trigger.id] for r in await paper_trigger_store.list_for(db, strategy_id)
-            if r.trigger.id in was and r.cancelled_at is not None and r.fired_at is None]
+        cancelled.update(await paper_trigger_store.cancel(db, strategy_id, gone.id))
+    return [t for t in before if t.id in cancelled]
 
 
 def _open_ids(orders: Sequence[paper_store.StoredOrder]) -> list[int]:
@@ -1583,16 +1583,17 @@ async def _place_orders(  # noqa: C901, PLR0912, PLR0913, PLR0915
     if stage.get("key") is not None:  # FD3 item 2: the durable claim, in THIS transaction (commits with the orders)
         await request_key.claim_in_transaction(db, user_ref, stage["key"], strategy_id, stage["sent"], "paper")
     armed_before = await _armed_leg_stops(db, strategy_id)  # F3: the stops this request may cancel
+    swept: list[int] = []  # FD5 2a: the ids the stale-stop sweep inside the fill cancels
     try:
         book = await paper_limit.place_checked(
             db, user_ref, strategy_id, [
                 paper_store.NewOrder(o.contract_id, o.side, o.quantity, exit_prices.get(i, o.price), o.kind, placed_at)
                 for i, o in enumerate(body.orders)],
             entry=entry, ctx=ctx, at=placed_at, reader=tracked_reader, rates=rates,
-            settings=settings)  # ADR-243: entry only if first fill; the size check is the door's (Lane K)
+            settings=settings, swept=swept)  # ADR-243: entry only if first fill; the size check is the door's (Lane K)
         # #774: a leg stop whose contract this basket closes (a move: exit A + add A') goes now, in this transaction,
         # exactly as the confirm list said; nothing is re-pointed (its premium level means another thing on A')
-        cancelled = await _cancel_leaving_stops(db, strategy_id, book, armed_before)
+        cancelled = await _cancel_leaving_stops(db, strategy_id, book, armed_before, swept)
         new_ids = [o.id for o in book][-len(body.orders):]  # place inserts in order under the strategy's row lock
         for suggestion_id in dict.fromkeys(body.suggestion_ids):  # REQ-163 AC-1: same transaction, or nothing
             await playbook_store.link_orders(db, user_ref, strategy_id, suggestion_id, new_ids,

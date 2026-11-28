@@ -117,11 +117,12 @@ async def reconcile_triggers(conn: Any, strategy_id: int, book: Sequence[PaperOr
     return [int(r.id) for r in (await conn.execute(_STALE_IDS if dry_run else _STALE_CANCEL, params)).all()]
 
 
-async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,
-                entry: EntryFacts | None = None) -> tuple[StoredOrder, ...]:
+async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[NewOrder], *,  # noqa: C901, PLR0913
+                entry: EntryFacts | None = None, swept: list[int] | None = None) -> tuple[StoredOrder, ...]:
     """Stores ``orders`` as given on an empty book, buys first otherwise (D-02; module docstring) and returns the
     whole book as stored; at the strategy's FIRST fill (the book empty before this call) also its entry facts
-    ``entry`` when known (ADR-243), same transaction."""
+    ``entry`` when known (ADR-243), same transaction. ``swept`` (FD5 2a): when given, the ids of the armed triggers
+    this call's stale-stop sweep cancelled are appended to it (what ``UPDATE ... RETURNING id`` returned)."""
     if not orders:
         raise ValueError("place needs at least one order")
     paper = [o.as_paper() for o in orders]  # refuses a bad side, kind, quantity or price before any write
@@ -153,7 +154,9 @@ async def place(conn: Any, user_ref: str, strategy_id: int, orders: Sequence[New
         if any(o.kind in REDUCING_KINDS for o in paper) and not any(
                 p.net_quantity for p in net_positions(book, {}).positions):
             await conn.execute(_CLOSE, {"id": strategy_id})  # GC-ICGUIDE g23: last open leg went
-        await reconcile_triggers(conn, strategy_id, book)  # ADR-317 (4): every leg change passes here
+        gone = await reconcile_triggers(conn, strategy_id, book)  # ADR-317 (4): every leg change passes here
+        if swept is not None:
+            swept.extend(gone)
         if first_fill and entry is not None:  # written once; a later fill never reaches here (ADR-243)
             await entry_facts_store.record_first(conn, strategy_id, entry)
     return await load(conn, strategy_id)
