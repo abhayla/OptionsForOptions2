@@ -20,9 +20,9 @@ import { buildDraft } from '@/lib/legPicker'
 import { matchesLegs } from '@/lib/liveMatch'
 import { fetchSavedDraft, plainName } from '@/lib/saveDraft'
 import { createNewestWins, isSuperseded } from '@/lib/newestWins'
-import { LIVE_WAIT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
+import { EXECUTE_UNKNOWN_TEXT, LIVE_WAIT_MS, NOT_LIVE_PARTS, basketFields, isLiveOutcome } from '@/lib/execute'
 import { PAPER_STATE, paperPostOutcome } from '@/lib/tracking'
-import { dropOrderKey, newRequestKey, orderKeyFor } from '@/lib/unknownLocks'
+import { addLockFor, adoptedAddLock, bookOfRead, decideLock, dropAddLock, dropOrderKey, newRequestKey, onAddLocksChanged, orderKeyFor, saveAddLock } from '@/lib/unknownLocks'
 
 const props = defineProps({ waitMs: { type: Number, default: LIVE_WAIT_MS } })
 
@@ -114,8 +114,40 @@ async function rereadAfterConflict() {
   }
 }
 
+// I-182 (ADR-016 to ADR-019): the ONE lock rule (lib/unknownLocks.js) for a request of unknown outcome. The lock is kept per strategy for this browser (a reload and
+// a second tab hold it too) and ends only by a good read of the saved strategy sent after the server's commit window (decideLock). The server refuses a repeat as well:
+// this is the second line. Fail closed: a lock that cannot be read blocks.
+const lockId = computed(() => `execute:${strategyId.value}`)
+const lockTick = ref(0) // the lock store is not reactive: every write and every storage event of another tab bumps this
+const locked = computed(() => { lockTick.value; return strategyId.value !== null && !!addLockFor(lockId.value) })
+let lockOut = false // this page's own request is in flight: only its answer ends the lock
+let lockTimer = null
+let lockChecking = false
+async function checkLock() {
+  if (lockChecking || lockOut || strategyId.value === null) return
+  lockChecking = true
+  try {
+    const id = lockId.value
+    if (!addLockFor(id) || !adoptedAddLock(id, Date.now())) return // no lock, or none this page can age yet
+    const sentAt = Date.now() // the window is judged by when the read was SENT
+    try { await fetchSavedDraft(api, strategyId.value) } catch { return } // a failed read decides nothing
+    const now = addLockFor(id) && adoptedAddLock(id, Date.now()) // the lock that is stored NOW (another tab may have replaced it)
+    if (!now || lockOut) return
+    const d = decideLock(now, bookOfRead({ kind: 'plan' }), sentAt) // an Execute request leaves no order in a book this page can read: a read past the window = not stored
+    if (d.verdict === 'not_stored' || d.verdict === 'changed') { dropAddLock(id, now); lockTick.value++ } // the request key stays: a repeat press is the same request
+  } finally { lockChecking = false }
+}
+const startLockTimer = () => { if (!lockTimer) lockTimer = setInterval(() => { if (!locked.value) { clearInterval(lockTimer); lockTimer = null } else checkLock() }, 5000) }
+let offLocks = null
+onMounted(() => {
+  offLocks = onAddLocksChanged(() => { lockTick.value++; if (locked.value) startLockTimer() })
+  if (locked.value) { startLockTimer(); checkLock() }
+})
+onBeforeUnmount(() => { clearInterval(lockTimer); lockTimer = null; offLocks?.() })
+
 async function prepare(action) {
   if (phase.value !== 'live' || !liveNow.value) return // the live socket must hold every leg first
+  if (locked.value || lockOut) return // an earlier request of unknown outcome: nothing is sent (I-182)
   phase.value = 'executing'
   errorParts.value = null
   const mine = guard.next('execute')
@@ -123,14 +155,23 @@ async function prepare(action) {
   // a decided answer (a reply, or a 4xx refusal) frees it, so the next press is a new action with a new key. Same rule as every order page (lib/unknownLocks.js orderKeyFor).
   const keyId = `execute:${strategyId.value}`
   const key = orderKeyFor(keyId, JSON.stringify({ action, revision }), newRequestKey())
+  const outAt = Date.now()
+  const sig = JSON.stringify({ action, revision })
+  lockOut = true
+  saveAddLock(lockId.value, { at: outAt, out: true, before: '', key: key ?? '', sig }) // written BEFORE the request goes out (a closed tab leaves it)
+  lockTick.value++
   try {
     const data = (await api.post(`/strategies/${strategyId.value}/execute`, { action, revision, seq: mine.seq, ...(key ? { client_request_id: key } : {}) }, { signal: mine.signal })).data
     dropOrderKey(keyId) // the server answered: the action is over
+    dropAddLock(lockId.value, { key: key ?? '', at: outAt }) // an answer: the lock ends with it
     if (!guard.claim('execute', data, mine)) return // an older reply is dropped and logged, never shown
     if (!basketFields(data)) throw new Error('unreadable basket') // fail closed: no form for a reply we cannot read
     reply.value = data
     phase.value = 'prepared'
   } catch (e) {
+    if (!isSuperseded(e) && paperPostOutcome(e) === PAPER_STATE.REFUSED) dropAddLock(lockId.value, { key: key ?? '', at: outAt }) // a definite refusal: nothing stored, the lock ends with the answer
+    else saveAddLock(lockId.value, { at: Date.now(), out: false, before: '', key: key ?? '', sig }) // unknown (no answer, 5xx, cancelled): `at` is now when the client gave up
+    startLockTimer()
     if (!isSuperseded(e) && paperPostOutcome(e) === PAPER_STATE.REFUSED) dropOrderKey(keyId) // a 4xx the server itself answered (a cancelled or lost request keeps its key: it may have been prepared)
     if (isSuperseded(e) || !guard.isNewest('execute', mine)) return // cancelled or older: no error text, no state change
     reply.value = null // a refusal (e.g. 409 "Your plan changed") keeps no plan on screen
@@ -138,6 +179,8 @@ async function prepare(action) {
     phase.value = liveNow.value ? 'live' : 'not-live' // the socket may have dropped while Execute was answering
     if (e?.status === 409) await rereadAfterConflict()
   } finally {
+    lockOut = false
+    lockTick.value++
     guard.settle('execute', mine)
   }
 }
@@ -149,12 +192,13 @@ async function prepare(action) {
     <p v-if="live.reconnecting.value" class="mt-2 text-sm font-medium" data-testid="live-reconnecting">{{ live.reconnectingText.value }}</p>
     <p v-if="phase === 'loading' || phase === 'waiting-live'" data-testid="execute-waiting">Waiting for live prices for every leg...</p>
     <ErrorMessage v-if="errorParts" class="mt-2" :parts="errorParts" prefix="execute-error" />
+    <p v-if="locked" class="mt-2 text-sm text-red-700" role="status" data-testid="execute-unknown-note">{{ EXECUTE_UNKNOWN_TEXT }}</p>
 
     <div v-if="!reply && (phase === 'live' || phase === 'executing' || (phase === 'not-live' && everLive))" class="mt-2 flex gap-2" data-testid="execute-actions">
-      <button type="button" data-testid="prepare-entry" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live'" @click="prepare('ENTRY')">
+      <button type="button" data-testid="prepare-entry" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live' || locked" @click="prepare('ENTRY')">
         Prepare entry orders
       </button>
-      <button type="button" data-testid="prepare-exit" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live'" @click="prepare('EXIT')">
+      <button type="button" data-testid="prepare-exit" class="rounded border border-line px-3 py-1" :disabled="phase !== 'live' || locked" @click="prepare('EXIT')">
         Prepare exit orders
       </button>
     </div>
