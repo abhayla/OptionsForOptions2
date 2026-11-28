@@ -338,10 +338,8 @@ def _tree_and_refs_hash(repo: Repo) -> str:
     h = hashlib.sha256()
     h.update(repo._git(repo.w, "for-each-ref", "--format=%(refname) %(objectname)").encode())
     h.update(repo._git(repo.w, "status", "--porcelain=v1", "-uall").encode())
-    for p in sorted(repo.w.rglob("*")):
-        if ".git" in p.parts or not p.is_file():
-            continue
-        h.update(str(p.relative_to(repo.w)).encode() + p.read_bytes())
+    for rel in sorted(repo._git(repo.w, "ls-files", "-co", "--exclude-standard").splitlines()):
+        h.update(rel.encode() + (repo.w / rel).read_bytes())
     return h.hexdigest()
 
 
