@@ -124,7 +124,7 @@ _CLEAN_FRAMEWORK = frozenset({"RequestValidationError", "HTTPException"})
 
 
 def _is_clean(error: BaseException) -> bool:
-    return isinstance(error, _CLEAN) or bool({c.__name__ for c in type(error).__mro__} & _CLEAN_FRAMEWORK)
+    return isinstance(error, _CLEAN) or type(error).__name__ in _CLEAN_FRAMEWORK
 
 
 async def close_attempt(db: Any, attempt_id: int, error: BaseException | None) -> None:
