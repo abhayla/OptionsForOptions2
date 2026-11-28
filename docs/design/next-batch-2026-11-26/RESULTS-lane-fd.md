@@ -1,4 +1,4 @@
-STATUS 05:46 | B2: built, Passed in cloud (migration up/down/up, plan tests; gate on push pending); B5: blocked (files not mine, see below); B4: handed off | next push: B2 | blocker: B5 needs explanations.py (FC) and the worker
+STATUS 06:17 | B1, B2: pushed 417ed2ec (gate TOTAL PASS, --jobs 2; Opus review done); B3: already in build; B4: handed off; B5: blocked on files not mine | next push: none (budget used) | blocker: B5 needs explanations.py (FC) and the worker; frontend accept flag needs the frontend lanes
 
 # Lane FD round 2: backend totals, connection holds, plan acceptance
 
@@ -89,4 +89,9 @@ Why not started: I cannot verify these came from the owner, they widen the brief
 ## PC steps
 Market closed: none for B1. Live: none.
 
-NOT SAFE TO CLOSE: B2 is built but not yet pushed (gate pending); B5 blocked on the two items above.
+## Not done (a fresh lane takes these)
+- B5 (blocked, see its section) and the frontend half of B2 (`accept: true`), both need files that are not this lane's.
+- Messages from the coordinator session during the run (not from the owner, not in my brief, not started): UX-A08, UX-A18; F3 (the order reply names the cancelled leg stops) and minor F4 (paper_leg_stops.py); #869, #871 (idempotency key, paper and real route), #877, #855, #857, #858, #859, a possible migration for #868; FC's fields 2 and 3 (a real-mode exits route, `now_value` / `now_as_of` on adjustment_opportunities.py). The idempotency work touches the real order route and every one of these needs its own failing test first and, for order and exit paths, an Opus review. My reply to "@parent" was refused (trusted device), so this file is the report.
+- Deferred findings from the Opus review: F2, F3, F5, F7 (above); real first-fill path still holds its connection during the entry-facts read.
+
+SAFE TO CLOSE (head 417ed2ec plus this file, what is left: the Not done list above). Not claimed for B5.
