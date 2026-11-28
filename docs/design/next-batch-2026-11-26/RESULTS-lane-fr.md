@@ -1,4 +1,4 @@
-STATUS 08:55 | items 1-6: Fixed, not tested live (tests green; Opus review done, gate pending) | next push: after the review | blocker: none
+STATUS 11:20 | 1 #863 screen: passed (test_screen_expiry_fr_1128, 1) | 2 #864 reader: passed (test_reader_kinds_fr_1128, 6) | 3 #860: passed (2 tests in test_playbook_eval) | 4 #861/#866: passed (2 + 1 tests) | 5 #879: passed (test_worker_heartbeat, 23) | 6 K2 F1: passed (test_index_one_rule, 8) | pre-push TOTAL PASS on 2a96107b (jobs 1) | pushed | blocker: none
 
 # Lane FR: readers and evaluators the worker depends on (28 Nov 2026)
 
@@ -12,6 +12,16 @@ Compare test `tests_app/test_screen_expiry_fr_1128.py`, a calendar trade listed 
 - Red on the base: `WORKER expiry [datetime.date(2026, 11, 9)] SCREEN expiry [datetime.date(2026, 12, 28)]`
 - Green after the fix: the screen's first chain read is 9 Nov, 28 Dec is never asked, and the screen's `vol` and
   `expiry_kind` equal the worker's. (The screen also reads the A-04 later-expiry rows, 17 Nov, by design.)
+
+## Pre-push gate
+
+`PREPUSH_JOBS=1 python scripts/orchestrator/prepush.py --jobs 1` on head 2a96107b: TOTAL PASS (6029+ app tests, domain
+tests, frontend unit, ruff ratchet, preflight, ci_checks). Six runs were needed: a docstring E501, the price-read door
+guard's stale exemption (item 6 moved the read), a shallow clone with no `origin/main` (ci_checks and app_tests failed
+in 0.2 s), and my item 1 test failing ONLY in the full suite: `read_market` reached the live regime read (needs
+`DATABASE_URL`) because the test did not use the `scenario_on` fixture the other `read_market` tests use. The fix to
+item 1 was right; the test now uses `scenario_on`. I did not find the earlier test file whose state made it fail
+(alone it passed either way); the fixture removes the dependency, and the full run on 2a96107b is green.
 
 ## Items
 
@@ -123,5 +133,6 @@ entry facts are stored with the held index value.
 |---|---|---|
 | items 1 to 6, tests, RESULTS | Sonnet (this lane) | about 60 |
 | review of the whole diff | Opus | about 6 |
+| six pre-push runs (about 45 min each, mostly waiting) | none (shell) | about 4 h wall-clock |
 
-SAFE TO CLOSE: not yet (review and gate pending)
+SAFE TO CLOSE (head 2a96107b plus this docs-only commit; left: the owner-lane items 1 to 7 above, F3 nit, no item parked)
