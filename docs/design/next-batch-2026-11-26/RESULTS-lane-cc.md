@@ -1,4 +1,4 @@
-STATUS 00:10 | push 1 on origin (acef70796, TOTAL PASS 835.9s jobs 4); design built; push 2 (design + this file) next | next push 00:40 | blocker: send_message to @parent refused (device trust); coordinator's 23:35 order read: no new tasks, close after push 2
+STATUS 00:05 | CLOSED: push 1 acef70796 and push 2 3d795c092 on origin, both TOTAL PASS | next push none | blocker: none (send_message to @parent refused: device trust)
 
 # Lane CC results: the coordinator's core
 
@@ -170,10 +170,11 @@ All from the first real run (23:40 IST view of origin); the coordinator has them
 | Push | Head | Result |
 |---|---|---|
 | 1 | acef70796 | `TOTAL PASS 835.9s (steps sum 2110.4s, jobs 4)`; the first attempt stopped at "TOOLS MISSING" (pinned ruff 0.15.12, requirements, `npm ci` were not installed: installed, then re-run) |
+| 2 | 3d795c092 | `TOTAL PASS 387.1s (steps sum 800.4s, jobs 4)` |
 
 ## Not done
 
 - Item 4 (design document), review of the design, item 5.
 - Mutation review of the tests (second helper, 78 mutants): see the section below.
 
-SAFE TO CLOSE: not yet.
+SAFE TO CLOSE (head 3d795c092 plus the commit that adds this line; left: the 12 debt rows of LESSONS-TO-CHECKS.md, the fault ledger file, and the check_brief.py / SKILL.md changes proposed in section 9 of the design, all for the owner lane)
