@@ -91,6 +91,7 @@ async function stub(page: Page, o: Opts = {}): Promise<Stub> {
     const p = u.pathname
     const get = req.method() === 'GET'
     S.calls.push(`${req.method()} ${p}${u.search}`)
+    if (get && p === '/api/market/exit-state') return route.fulfill({ json: { closed: false } }) // ADR-330 (60): the Exit dialog asks the market state; open here
     if (p === '/api/strategies/outcome') {
       const body = req.postDataJSON()
       S.outcomes.push(body)
@@ -957,7 +958,7 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
     await page.getByTestId('paper-review').click()
     await page.getByTestId('paper-confirm-button').click()
     await expect.poll(() => S.orders.length).toBe(1)
-    expect(S.orders[0]).toEqual({ orders: [{ contract_id: 5572, side: 'SELL', quantity: 65, price: '0', kind: 'exit' }] })
+    expect(S.orders[0]).toEqual({ client_request_id: expect.any(String), orders: [{ contract_id: 5572, side: 'SELL', quantity: 65, price: '0', kind: 'exit' }] }) // the order's idempotency key (ADR-017) is part of the body
   })
 
   test('PP-8 after Confirm the position is read again; when that read fails the list says "Placed on paper..." and nothing is offered twice', async ({ page }) => {
@@ -977,11 +978,12 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
   test('PP-9 a refused order (422) shows the server\'s sentence in the list, keeps Confirm, and nothing is placed', async ({ page }) => {
     // Spec basis: REQ-109 AC-5; ADR-327 (neutral parts); ADR-016 (no silent substitution)
     const SENT = 'This exit is larger than the open quantity.'
+    const REST = 'The numbers are not shown. Nothing was changed. Try again shortly.' // F6 (FJ r3): every part of the server's refusal is printed, as sent (REQ-065)
     await stub(page, { orders: (route) => route.fulfill({ status: 422, json: catalogue(SENT) }) }); await openPaper(page)
     await rows(page).nth(0).getByTestId('remove-leg').click()
     await page.getByTestId('paper-review').click()
     await page.getByTestId('paper-confirm-button').click()
-    await expect(page.getByTestId('paper-error')).toHaveText(SENT)
+    await expect(page.getByTestId('paper-error')).toHaveText(`${SENT} ${REST}`)
     await expect(page.getByTestId('paper-confirm')).toBeVisible() // the list stays open; the book is unchanged (no exit row was consumed)
     await expect(page.getByTestId('paper-order')).toHaveCount(1)
   })
@@ -989,14 +991,15 @@ test.describe('Builder running paper trade: edits, Review and add, Exit (REQ-109
   test('PP-10 N-01 the refusal line in the list does not vanish by itself', async ({ page }) => {
     // Spec basis: owner N-01 (a refusal must stay until the user acts); ADR-327
     const SENT = 'This exit is larger than the open quantity.'
+    const REST = 'The numbers are not shown. Nothing was changed. Try again shortly.' // F6 (FJ r3): every part of the server's refusal is printed, as sent (REQ-065)
     await page.clock.install()
     await stub(page, { orders: (route) => route.fulfill({ status: 422, json: catalogue(SENT) }) }); await openPaper(page)
     await rows(page).nth(0).getByTestId('remove-leg').click()
     await page.getByTestId('paper-review').click()
     await page.getByTestId('paper-confirm-button').click()
-    await expect(page.getByTestId('paper-error')).toHaveText(SENT)
+    await expect(page.getByTestId('paper-error')).toHaveText(`${SENT} ${REST}`)
     await page.clock.fastForward(60000)
-    await expect(page.getByTestId('paper-error')).toHaveText(SENT)
+    await expect(page.getByTestId('paper-error')).toHaveText(`${SENT} ${REST}`)
   })
 
   test('PP-11 an answer that does not arrive in a state we know (5xx): "We could not confirm the order. Check Orderbook before trying again." and Open Orderbook', async ({ page }) => {

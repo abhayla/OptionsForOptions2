@@ -125,10 +125,8 @@ test.describe('Live Strategies page (REQ-049 AC-4..AC-6, REQ-044 AC-2, ADR-299)'
     // Spec basis: REQ-065 / services/api.js NEUTRAL_PARTS
     await world(page, [R172], { strategies: { status: 500, json: { detail: 'Traceback: secret stack' } } })
     await openLive(page, 'error')
-    await expect(page.getByTestId('error-what')).toHaveText(NEUTRAL.what)
-    await expect(page.getByTestId('error-impact')).toHaveText(NEUTRAL.impact)
-    await expect(page.getByTestId('error-blocked')).toHaveText(NEUTRAL.blocked)
-    await expect(page.getByTestId('error-next')).toHaveText(NEUTRAL.next)
+    await expect(page.getByTestId('live-list-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('live-list-retry')).toBeVisible()
     await expect(page.getByTestId('live-strategies')).not.toContainText('Traceback')
   })
 
@@ -136,7 +134,8 @@ test.describe('Live Strategies page (REQ-049 AC-4..AC-6, REQ-044 AC-2, ADR-299)'
     // Spec basis: REQ-065; REQ-049 AC-4 (an unread list is not an empty list)
     await world(page, [R172], { strategies: { abort: true } })
     await openLive(page, 'error')
-    await expect(page.getByTestId('error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('live-list-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('live-list-retry')).toBeVisible()
     await expect(page.getByTestId('live-empty')).toHaveCount(0)
     await expect(cards(page)).toHaveCount(0)
   })
@@ -145,7 +144,8 @@ test.describe('Live Strategies page (REQ-049 AC-4..AC-6, REQ-044 AC-2, ADR-299)'
     // Spec basis: REQ-065
     await world(page, [R172], { strategies: { status: 404, json: { detail: 'Not Found' } } })
     await openLive(page, 'error')
-    await expect(page.getByTestId('error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('live-list-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('live-list-retry')).toBeVisible()
     await expect(page.getByTestId('live-empty')).toHaveCount(0)
   })
 
@@ -154,7 +154,8 @@ test.describe('Live Strategies page (REQ-049 AC-4..AC-6, REQ-044 AC-2, ADR-299)'
     await world(page, [R172], { strategies: { text: '<html>gateway says hello</html>' } })
     await page.goto(LIVE)
     await expect(page.getByTestId('live-strategies')).toHaveAttribute('data-state', 'error')
-    await expect(page.getByTestId('error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('live-list-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('live-list-retry')).toBeVisible()
   })
 
   test('FAIL-6 unreadable body (200 with a JSON object that has no strategies list): the neutral message', async ({ page }) => {
@@ -162,7 +163,8 @@ test.describe('Live Strategies page (REQ-049 AC-4..AC-6, REQ-044 AC-2, ADR-299)'
     await world(page, [R172], { strategies: ok({ unexpected: true }) })
     await page.goto(LIVE)
     await expect(page.getByTestId('live-strategies')).toHaveAttribute('data-state', 'error')
-    await expect(page.getByTestId('error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('live-list-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('live-list-retry')).toBeVisible()
   })
 
   test('GROUPS-1 Running first, Draft second, newest first inside each; a Completed trade is not shown (ADR-259, ADR-299)', async ({ page }) => {
@@ -917,7 +919,8 @@ test.describe('Adjustment opportunities inbox (REQ-162 AC-1..AC-3, REQ-112, ADR-
     // Spec basis: REQ-065 / NEUTRAL_PARTS
     await world(page, [], { opps: { status: 500, json: { detail: 'Traceback' } } })
     await page.goto(OPPS)
-    await expect(page.getByTestId('opp-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('opp-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('opp-error-retry')).toBeVisible()
     await expect(page.getByTestId('opportunities-page')).not.toContainText('Traceback')
   })
 
@@ -925,7 +928,8 @@ test.describe('Adjustment opportunities inbox (REQ-162 AC-1..AC-3, REQ-112, ADR-
     // Spec basis: REQ-065
     await world(page, [], { opps: { abort: true } })
     await page.goto(OPPS)
-    await expect(page.getByTestId('opp-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('opp-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('opp-error-retry')).toBeVisible()
     await expect(page.getByTestId('opp-empty')).toHaveCount(0)
   })
 
@@ -934,7 +938,8 @@ test.describe('Adjustment opportunities inbox (REQ-162 AC-1..AC-3, REQ-112, ADR-
     await world(page, [], { opps: { text: '<html>gateway</html>' } })
     await page.goto(OPPS)
     await shot(page, 'NEW-T31')
-    await expect(page.getByTestId('opp-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('opp-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('opp-error-retry')).toBeVisible()
   })
 
   test('OPP-16 25 rows fit one page: "Showing 1-25 of 25 rows" and no Previous / Next (ADOPP-04/05)', async ({ page }) => {

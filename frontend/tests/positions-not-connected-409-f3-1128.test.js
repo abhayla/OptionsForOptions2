@@ -49,11 +49,13 @@ describe('I-207 no broker session, 409 answer', () => {
     expect(count(w.text(), LINE)).toBe(1)
     expect(w.find('[data-testid="positions-error-retry"]').exists()).toBe(true)
   })
-  it('the server\'s own clean sentence is kept, once', async () => {
+  it('the server\'s own clean four-part message is kept (REQ-065) with a Retry, once', async () => {
     const parts = { what_happened: 'Connect your Zerodha account to continue.', impact: 'i', what_is_blocked: 'b', next_action: 'n' }
     answers['GET /positions'] = () => Promise.reject({ status: 409, parts })
     const w = await page()
     expect(count(w.text(), 'Connect your Zerodha account to continue.')).toBe(1)
+    expect(w.find('[data-testid="positions-error-next"]').exists()).toBe(true)
+    expect(w.find('[data-testid="positions-error-retry"]').exists()).toBe(true)
   })
   it('Retry reads again and a connected answer replaces the sentence', async () => {
     let n = 0

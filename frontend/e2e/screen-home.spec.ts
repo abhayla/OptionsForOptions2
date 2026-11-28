@@ -53,6 +53,7 @@ const catalogue = {
   what_happened: 'Saved strategies could not be read.', impact: 'The list is missing.',
   what_is_blocked: 'Nothing else is blocked.', next_action: 'Try again shortly.',
 }
+const LIST_FAILED = 'Could not load this list. Nothing was changed.' // D-TD-2 / I-86 (FC2): no server message = ONE sentence and a Retry; pending owner read
 const NEUTRAL = {
   what: 'The page could not get an answer from the server.',
   impact: 'The numbers on this page are not shown, so none of them can be mistaken for current values.',
@@ -459,10 +460,8 @@ test.describe('Home: the strategy list fails (fail closed, REQ-065 four-part mes
     // Spec basis: REQ-065 / services/api.js NEUTRAL_PARTS (a framework "detail" is never shown)
     await stubApi(page, { strategies: { status: 500, json: { detail: 'Traceback: secret stack' } } })
     await openHome(page, 'error')
-    await expect(page.getByTestId('home-error-what')).toHaveText(NEUTRAL.what)
-    await expect(page.getByTestId('home-error-impact')).toHaveText(NEUTRAL.impact)
-    await expect(page.getByTestId('home-error-blocked')).toHaveText(NEUTRAL.blocked)
-    await expect(page.getByTestId('home-error-next')).toHaveText(NEUTRAL.next)
+    await expect(page.getByTestId('home-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('home-error-retry')).toBeVisible()
     await expect(home(page)).not.toContainText('Traceback')
     await NO_STATE_GUESSED(page)
   })
@@ -471,7 +470,8 @@ test.describe('Home: the strategy list fails (fail closed, REQ-065 four-part mes
     // Spec basis: REQ-065; REQ-008 AC-2 (state follows the list; an unread list is not "no strategies")
     await stubApi(page, { strategies: { status: 404, json: { detail: 'Not Found' } } })
     await openHome(page, 'error')
-    await expect(page.getByTestId('home-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('home-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('home-error-retry')).toBeVisible()
     await NO_STATE_GUESSED(page)
   })
 
@@ -479,8 +479,8 @@ test.describe('Home: the strategy list fails (fail closed, REQ-065 four-part mes
     // Spec basis: REQ-065; CLAUDE.md fail closed (an unread list is never shown as "no strategies")
     await stubApi(page, { strategies: { abort: true } })
     await openHome(page, 'error')
-    await expect(page.getByTestId('home-error-what')).toHaveText(NEUTRAL.what)
-    await expect(page.getByTestId('home-error-next')).toHaveText(NEUTRAL.next)
+    await expect(page.getByTestId('home-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('home-error-retry')).toBeVisible()
     await expect(page.getByRole('link', { name: 'Create Strategy' })).toHaveCount(0)
     await NO_STATE_GUESSED(page)
   })
@@ -489,7 +489,8 @@ test.describe('Home: the strategy list fails (fail closed, REQ-065 four-part mes
     // Spec basis: REQ-065; HomeOverviewPage.vue "unreadable answer" (fail closed: no state is guessed)
     await stubApi(page, { strategies: ok({ strategies: 'oops' }) })
     await openHome(page, 'error')
-    await expect(page.getByTestId('home-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('home-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('home-error-retry')).toBeVisible()
     await NO_STATE_GUESSED(page)
   })
 })

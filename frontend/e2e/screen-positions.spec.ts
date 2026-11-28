@@ -20,6 +20,7 @@ const T_NOW = '2026-11-26T10:00:00+05:30'
 const NOW_TEXT = '26 Nov 2026, 10:00:00 IST'
 const PAUSED = 'Paper P&L paused - prices not live'
 const NO_FIGURE = '—'
+const LIST_FAILED = 'Could not load this list. Nothing was changed.' // D-TD-2 / I-86 (FC2): no server message = ONE sentence and a Retry; pending owner read
 const NEUTRAL = {
   what: 'The page could not get an answer from the server.',
   impact: 'The numbers on this page are not shown, so none of them can be mistaken for current values.',
@@ -119,6 +120,7 @@ async function stubApi(page: Page, over: Partial<Stub> = {}): Promise<Stub> {
     if (method === 'GET' && p === '/features') return serve(route, pick('features', S.features))
     if (method === 'GET' && p === '/paper/strategies') return serve(route, pick('paper', S.paper))
     if (method === 'GET' && p === '/market/indices') return serve(route, pick('indices', S.indices))
+    if (method === 'GET' && p === '/market/exit-state') return route.fulfill({ json: { closed: false } }) // ADR-330 (60): the Exit dialog asks the market state; open here (a closed case asserts the sentence)
     if (method === 'GET' && p === '/paper/alerts') return route.fulfill({ json: { unread: 0, alerts: [] } })
     if (method === 'GET' && /\/exit-risk$/.test(p)) return serve(route, pick('exitRisk', S.exitRisk))
     if (method === 'GET' && /\/armed-exits$/.test(p)) return serve(route, pick('armed', S.armed))
@@ -422,7 +424,7 @@ test.describe('Current positions: the two totals (ADR-330 (10), ADR-263, ADR-008
     await page.clock.runFor(5000)
     await expect(page.getByTestId('paper-error-what')).toHaveText('Paper strategies could not be read.')
     await expect(page.getByTestId('totals-paper')).toHaveText(NO_FIGURE)
-    await expect(page.getByTestId('totals-paper-reason')).toHaveText(PAUSED)
+    await expect(page.getByTestId('totals-paper-reason')).toHaveText(`${PAUSED}, as of ${NOW_TEXT}`) // FJ2-1: the paused sentence carries its time
     await expect(groups(page)).toHaveCount(2)
     await expect(page.getByTestId('paper-total').first()).toHaveText(NO_FIGURE)
     await expect(page.getByTestId('paper-ltp').first()).toContainText(NO_FIGURE)
@@ -562,10 +564,8 @@ test.describe('Current positions: the real section, read from Zerodha (REQ-044 A
     await stubApi(page, { positions: { abort: true }, broker: { abort: true } })
     await openPositions(page)
     await expect(real(page)).toHaveAttribute('data-state', 'read_failed')
-    await expect(page.getByTestId('positions-error-what')).toHaveText(NEUTRAL.what)
-    await expect(page.getByTestId('positions-error-impact')).toHaveText(NEUTRAL.impact)
-    await expect(page.getByTestId('positions-error-blocked')).toHaveText(NEUTRAL.blocked)
-    await expect(page.getByTestId('positions-error-next')).toHaveText(NEUTRAL.next)
+    await expect(page.getByTestId('positions-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('positions-error-retry')).toBeVisible()
     await expect(page.getByTestId('empty-state')).toHaveCount(0)
   })
 
@@ -573,7 +573,8 @@ test.describe('Current positions: the real section, read from Zerodha (REQ-044 A
     // Spec basis: REQ-015 AC-10 (answer states: absent, not an object, any other value -> not connected is only said for a stated answer)
     await stubApi(page, { positions: { status: 500, json: {} }, broker: { status: 200, text: 'not json' } })
     await openPositions(page)
-    await expect(page.getByTestId('positions-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('positions-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('positions-error-retry')).toBeVisible()
     await shot(page, 'NEW-T24')
     await expect(real(page)).toHaveAttribute('data-state', 'read_failed')
   })
@@ -584,14 +585,15 @@ test.describe('Current positions: the real section, read from Zerodha (REQ-044 A
     await openPositions(page, '', 'none')
     await expect(page.getByTestId('positions-page')).toBeVisible()
     await shot(page, 'NEW-T20')
-    await expect(page.getByTestId('positions-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('positions-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('positions-error-retry')).toBeVisible()
   })
 
   test('REAL-15 the real section has no order button of any kind (every action routes back to the strategy; no real exit, ADR-281)', async ({ page }) => {
     // Spec basis: ADR-330 (10) "Exit stays the existing paper exit (no real exit is built here, ADR-281)"; ADR-002
     await stubApi(page)
     await openPositions(page)
-    await expect(real(page).getByRole('button')).toHaveCount(0)
+    await expect(real(page).getByRole('button').filter({ hasNotText: /^Plan/ })).toHaveCount(0) // ADR-330 (54): the Plan button of a running real trade is the one button; it places no order
     await expect(real(page)).not.toContainText(/exit|sell|buy|place order/i)
   })
 
@@ -680,10 +682,8 @@ test.describe('Current positions: the paper list states (REQ-109 AC-2, AC-5, ADR
     // Spec basis: ADR-008 (no guessed number); REQ-109 AC-5
     await stubApi(page, { paper: { abort: true } })
     await openPositions(page)
-    await expect(page.getByTestId('paper-error-what')).toHaveText(NEUTRAL.what)
-    await expect(page.getByTestId('paper-error-impact')).toHaveText(NEUTRAL.impact)
-    await expect(page.getByTestId('paper-error-blocked')).toHaveText(NEUTRAL.blocked)
-    await expect(page.getByTestId('paper-error-next')).toHaveText(NEUTRAL.next)
+    await expect(page.getByTestId('paper-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('paper-error-retry')).toBeVisible()
     await expect(groups(page)).toHaveCount(0)
     await expect(page.getByTestId('totals-paper')).toHaveText(NO_FIGURE)
   })
@@ -692,7 +692,8 @@ test.describe('Current positions: the paper list states (REQ-109 AC-2, AC-5, ADR
     // Spec basis: ADR-008 (fail closed on an answer that does not read); REQ-109 AC-5
     await stubApi(page, { paper: ok({ answered_at: T_NOW }) })
     await openPositions(page)
-    await expect(page.getByTestId('paper-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('paper-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('paper-error-retry')).toBeVisible()
     await expect(groups(page)).toHaveCount(0)
   })
 
@@ -717,7 +718,7 @@ test.describe('Current positions: the paper list states (REQ-109 AC-2, AC-5, ADR
     await expect(first.getByTestId('paper-qty')).toHaveText('1 lot')
     await expect(first.getByTestId('paper-avg')).toHaveText('161.50')
     await expect(first.getByTestId('paper-ltp')).toContainText('150.00')
-    await expect(first.getByTestId('paper-ltp-at')).toHaveText('10:00:00')
+    await expect(first.getByTestId('paper-ltp-at')).toHaveText(NOW_TEXT) // a time that is not today shows its date (istStamp, F3 MUST 28 Nov)
     await expect(first.getByTestId('paper-leg-unbooked')).toHaveText('+747.50')
     await expect(first.getByTestId('paper-leg-pnl')).toHaveText('+747.50')
   })
@@ -871,7 +872,8 @@ test.describe('Current positions: the paper list states (REQ-109 AC-2, AC-5, ADR
     await openPositions(page)
     await expect(groups(page).first().getByTestId('paper-total')).toContainText('+400.00')
     await page.clock.runFor(5000)
-    await expect(page.getByTestId('paper-error-what')).toHaveText(NEUTRAL.what)
+    await expect(page.getByTestId('paper-error-error')).toHaveText(LIST_FAILED)
+    await expect(page.getByTestId('paper-error-retry')).toBeVisible()
     await expect(groups(page)).toHaveCount(2)
     await expect(groups(page).first().getByTestId('paper-total')).toHaveText(NO_FIGURE)
     await expect(groups(page).first().getByTestId('paper-leg-unbooked').first()).toHaveText(NO_FIGURE)
@@ -1068,7 +1070,7 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await openExit(page)
     await page.getByTestId('paper-confirm-button').click()
     await expect(dialog(page)).toHaveCount(0)
-    expect(S.bodies('POST', '/api/paper/strategies/171/orders')).toEqual([{ orders: [{ contract_id: 1001, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] }])
+    expect(S.bodies('POST', '/api/paper/strategies/171/orders')).toEqual([{ client_request_id: expect.any(String), orders: [{ contract_id: 1001, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] }]) // the order's idempotency key (ADR-017) is part of the body
     await expect(groups(page).first().getByTestId('paper-leg')).toHaveCount(1) // the list was read again at once
     await expect(exitBtn(page, 171)).toHaveText('Exit (0)')
   })
@@ -1083,7 +1085,7 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await page.getByTestId('paper-lots').fill('1')
     await page.getByTestId('paper-confirm-button').click()
     await expect(dialog(page)).toHaveCount(0)
-    expect(S.bodies('POST', /\/orders$/)).toEqual([{ orders: [{ contract_id: 1001, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] }])
+    expect(S.bodies('POST', /\/orders$/)).toEqual([{ client_request_id: expect.any(String), orders: [{ contract_id: 1001, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] }]) // the order's idempotency key (ADR-017) is part of the body
   })
 
   for (const [bad, why] of [['0', 'zero'], ['', 'blank'], ['1.5', 'a fraction'], ['abc', 'letters'], ['-1', 'negative']]) {
@@ -1179,17 +1181,17 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await expect(page).toHaveURL(/\/strategy\/builder\?strategy=171$/)
   })
 
-  test('EXIT-17c after the 5 second hold on an unknown outcome Confirm unlocks (the user has had time to check)', async ({ page }) => {
-    // Spec basis: ADR-017 (no auto retry; a second attempt is the user's own act); PAPER_UNKNOWN_HOLD_MS
+  test('EXIT-17c after an unknown outcome Confirm does NOT unlock by itself with time: it waits for the page\'s re-read (Lane U r1, ADR-016/017/019: never a timer)', async ({ page }) => {
+    // Spec basis: ADR-017 (no auto retry; no second exit until the first one's outcome is known); the 5 s hold of the earlier spec was replaced by the re-read decision
     await stubApi(page, { orders: { status: 500, json: {} } })
     await frozenClock(page)
     await openPositions(page)
     await openExit(page)
     await page.getByTestId('paper-confirm-button').click()
-    await expect(page.getByTestId('paper-unknown')).toBeVisible() // the 5 s hold timer starts when the 500 is answered (PaperConfirmDialog watch on state); run the fake clock only after that, or a slow answer arrives after the clock has run
+    await expect(page.getByTestId('paper-unknown')).toBeVisible()
     await expect(page.getByTestId('paper-confirm-button')).toBeDisabled()
     await page.clock.runFor(5100)
-    await expect(page.getByTestId('paper-confirm-button')).toBeEnabled()
+    await expect(page.getByTestId('paper-confirm-button')).toBeDisabled()
   })
 
   test('EXIT-18 a stored exit followed by a failed re-read: the dialog closes, an error banner shows, the figures pause', async ({ page }) => {
@@ -1204,28 +1206,33 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await expect(exitBtn(page, 171)).toBeDisabled() // no new exit from old prices
   })
 
-  test('EXIT-19 while the last read failed, Exit is disabled with "Prices are not live; try again when they update" (REQ-109 AC-5, D-05)', async ({ page }) => {
-    // Spec basis: REQ-109 AC-5; ADR-328 (4) (disabled with the reason); owner A05
+  test('EXIT-19 while the last read failed, Exit stays enabled: it opens the dialog, which says "Prices are not live; try again when they update" with Confirm off (ADR-330 (60); FJ group B; REQ-109 AC-5, D-05)', async ({ page }) => {
+    // Spec basis: ADR-330 (60) ("Not chosen: grey the Exit button itself": the control opens its dialog and the dialog gives the reason); REQ-109 AC-5 (no exit from old prices: Confirm stays off); owner order on PC O-A-12
     await stubApi(page, { paper: (n) => (n === 1 ? ok(paperOk()) : { status: 500, json: {} }) })
     await frozenClock(page)
     await openPositions(page)
     await tick(page, 171, 1001).check()
     await expect(exitBtn(page, 171)).toBeEnabled()
     await page.clock.runFor(5000)
-    await expect(page.getByTestId('paper-error-what')).toBeVisible()
-    await expect(exitBtn(page, 171)).toBeDisabled()
+    await expect(page.getByTestId('paper-error-error')).toBeVisible()
+    await expect(page.getByTestId('paper-error-retry')).toBeVisible()
+    await expect(exitBtn(page, 171)).toBeEnabled()
     await expect(groups(page).first().getByTestId('paper-exit-reason')).toHaveText('Prices are not live; try again when they update')
+    await exitBtn(page, 171).click()
+    await expect(dialog(page)).toHaveCount(1)
+    await expect(page.getByTestId('paper-confirm-button')).toBeDisabled()
+    await expect(page.getByTestId('paper-error')).toContainText('Prices are not live; try again when they update')
   })
 
-  test('EXIT-20 a disabled (blocked) Exit button looks disabled, not like a usable one (owner N-05)', async ({ page }) => {
-    // Spec basis: owner N-05 ("Review and add still blue though blocked": a blocked action must look disabled); ADR-328 (4) (disabled with the reason)
-    await stubApi(page, { paper: (n) => (n === 1 ? ok(paperOk()) : { status: 500, json: {} }) })
+  test('EXIT-20 a disabled Exit button looks disabled, not like a usable one (owner N-05): with no leg ticked it is disabled and looks it', async ({ page }) => {
+    // Spec basis: owner N-05 ("Review and add still blue though blocked": a blocked action must look disabled); the read-failure no longer greys Exit (ADR-330 (60)), the tick rule still does
+    await stubApi(page, { paper: ok(paperOk()) })
     await frozenClock(page)
     await openPositions(page)
     await tick(page, 171, 1001).check()
     const look = () => exitBtn(page, 171).evaluate((el) => { const s = getComputedStyle(el); return `${s.opacity}|${s.color}|${s.backgroundColor}|${s.borderColor}` })
     const enabled = await look()
-    await page.clock.runFor(5000)
+    await tick(page, 171, 1001).uncheck()
     await expect(exitBtn(page, 171)).toBeDisabled()
     await shot(page, 'NEW-T21')
     expect(await look()).not.toBe(enabled)
@@ -1298,7 +1305,7 @@ test.describe('Current positions: Exit (n) and the confirm dialog (REQ-109 AC-4,
     await stubApi(page, { paper: (n) => (n === 1 ? { status: 500, json: {} } : ok(paperOk())) })
     await frozenClock(page)
     await openPositions(page, '?exit=171')
-    await expect(page.getByTestId('paper-error-what')).toBeVisible()
+    await expect(page.getByTestId('paper-error-error')).toBeVisible()
     await expect(dialog(page)).toHaveCount(0)
     await page.clock.runFor(5000)
     await expect(groups(page)).toHaveCount(2)
@@ -1391,7 +1398,7 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await page.getByTestId('ce-above').fill('25700')
     await expect(page.getByTestId('ce-save')).toBeEnabled()
     await page.getByTestId('ce-save').click()
-    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit above 25700')
+    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit above 25,700.00')
     expect(S.bodies('POST', '/api/paper/strategies/171/triggers')).toEqual([{ kind: 'conditional_exit', above: '25700' }])
     await expect(page.getByTestId('ce-above')).toHaveValue('')
     await expect(page.getByTestId('trigger-row')).toHaveCount(1)
@@ -1408,11 +1415,11 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await openStops(page)
     await page.getByTestId('ce-below').fill('25400.05')
     await page.getByTestId('ce-save').click()
-    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit below 25400.05')
+    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit below 25,400.05')
     await page.getByTestId('ce-above').fill('25800')
     await page.getByTestId('ce-below').fill('25300')
     await page.getByTestId('ce-save').click()
-    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit above 25800 and below 25300')
+    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit above 25,800.00 and below 25,300.00')
     expect(S.bodies('POST', /triggers$/)).toEqual([{ kind: 'conditional_exit', below: '25400.05' }, { kind: 'conditional_exit', above: '25800', below: '25300' }])
   })
 
@@ -1424,7 +1431,7 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await openStops(page)
     await page.getByTestId('ce-above').fill('25700')
     await page.getByTestId('ce-save').click()
-    await expect(page.getByTestId('stops-saved')).toHaveText('Already set: exit above 25700')
+    await expect(page.getByTestId('stops-saved')).toHaveText('Already set: exit above 25,700.00')
     await expect(page.getByTestId('trigger-row')).toHaveCount(1)
   })
 
@@ -1477,7 +1484,7 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await page.getByTestId('ce-save').click()
     await expect(page.getByTestId('stops-error')).toContainText('Not saved: could not get an answer from the server.')
     await page.getByTestId('ce-save').click()
-    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit above 25700')
+    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit above 25,700.00')
     expect(S.count('POST', /triggers$/)).toBe(2)
   })
 
@@ -1582,13 +1589,14 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await stubApi(page)
     await openPositions(page)
     await openStops(page)
-    const before = await page.getByTestId('stop-level-1002').boundingBox()
+    // measured inside the panel: filling a box scrolls the page by a few pixels (viewport coordinates move), the layout does not
+    const rel = async () => { const a = await page.getByTestId('stop-level-1002').boundingBox(); const b = await page.getByTestId('paper-stops').boundingBox(); return a!.y - b!.y }
+    const before = await rel()
     await page.getByTestId('stop-level-1001').fill('151.00')
     await expect(page.getByTestId('stop-level-1002')).toHaveValue('')
     await page.getByTestId('stop-level-1001').fill('151.03') // the reason line appears in its reserved slot
     await expect(page.getByTestId('stop-reason-1001')).toBeVisible()
-    const after = await page.getByTestId('stop-level-1002').boundingBox()
-    expect(after!.y).toBe(before!.y)
+    expect(await rel()).toBe(before)
   })
 
   test('STOP-23 the list shows each stop with direction, level and state; only an armed one has Cancel', async ({ page }) => {
@@ -1716,7 +1724,7 @@ test.describe('Current positions: the Stops panel (REQ-109 AC-8, ADR-207 (4), AD
     await page.keyboard.press('Tab')
     await expect(page.getByTestId('ce-save')).toBeFocused()
     await page.keyboard.press('Enter')
-    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit above 25700')
+    await expect(page.getByTestId('stops-saved')).toHaveText('Saved: exit above 25,700.00')
   })
 })
 
