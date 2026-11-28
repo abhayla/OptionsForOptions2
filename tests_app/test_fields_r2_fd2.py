@@ -226,3 +226,26 @@ def test_lane_fes_four_why_codes_are_served_with_a_plain_sentence_never_blank():
         assert out.reason == code and out.watch_state == "paused"
         assert str(out.badge_text) == "Monitoring paused"
         assert str(out.reason_text).strip()  # the catalogue's sentence, or the generic one
+
+
+async def test_877_an_unknown_position_kind_is_refused_too_fail_closed(db, notified, monkeypatch):
+    """Coordinator 28 Nov 07:30 (ADR-330 (64), ADR-016 to ADR-019): a kind that could not be read blocks the paper exit
+    and the paper stop; it is never read as "paper"."""
+    from test_paper_armed_exits import _order as _body_of  # noqa: PLC0415
+    from test_paper_routes import _new  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+    app, stored, ids = await _open(db)
+
+    async def unknown(_db, sids):
+        return dict.fromkeys(sids, "unknown")
+
+    monkeypatch.setattr("ofo_app.routes.paper.store.kinds_of", unknown)
+    before = await _orders(db, stored)
+    async with _client(app) as c:
+        out = await c.post(f"/paper/strategies/{stored.id}/orders",
+                           json={"orders": [_body_of(_new(ids[0], "BUY", 65, "30", "exit"))]})
+        stop = await c.post(f"/paper/strategies/{stored.id}/triggers",
+                            json={"kind": "conditional_exit", "above": "23100"})
+    assert out.status_code == HTTPStatus.CONFLICT, out.text[:120]
+    assert stop.status_code == HTTPStatus.CONFLICT, stop.text[:120]
+    assert await _orders(db, stored) == before
