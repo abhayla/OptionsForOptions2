@@ -186,9 +186,9 @@ async def refuse_real_position(db: Any, strategy_id: int, orders: Sequence[Any])
     here and never refused. A kind read that fails raises (never read as paper)."""
     if all(o.kind in SERVER_KINDS for o in orders):
         return
-    from ofo_app import strategy_store  # noqa: PLC0415
+    from ofo_app import position_kind, strategy_store  # noqa: PLC0415
     if await strategy_store.paper_order_refused(db, strategy_id, [o.kind for o in orders]):
-        raise StrategyRefused("real_position_exit_refused", Failure.CONFLICT)
+        raise StrategyRefused(position_kind.refusal_code(o.kind for o in orders), Failure.CONFLICT)
 
 
 refuse_real_exit = refuse_real_position  # the I-158 name (tracking exit, tests)
@@ -196,7 +196,7 @@ refuse_real_exit = refuse_real_position  # the I-158 name (tracking exit, tests)
 
 async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequence[Any], *,  # noqa: PLR0913
                         entry: Any, ctx: Any, at: Any, reader: Any, rates: Any,
-                        settings: Mapping[str, Decimal]) -> tuple[Any, ...]:
+                        settings: Mapping[str, Decimal], swept: list[int] | None = None) -> tuple[Any, ...]:
     """The ONE write both user save paths use (ADR-212, ADR-255): every fill outside market hours at ``at`` is refused
     (``gate_market_closed``; no market context fails closed by the calendar), then ``paper_store.place``, then the
     adjustment limit on the stored book. The caller commits, or rolls back on any raise. Returns the whole book."""
@@ -205,7 +205,7 @@ async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequen
     may_act.refuse_unless_allowed(ctx, "place", at)  # ADR-212
     await refuse_real_position(db, strategy_id, orders)
     reader = await _read_before(reader, strategy_id, rates)
-    book = await paper_store.place(db, user_ref, strategy_id, orders, entry=entry)
+    book = await paper_store.place(db, user_ref, strategy_id, orders, entry=entry, swept=swept)
     # ADR-330 (50)-(52): the size of every order and the total of every leg, on the stored book
     await check_order_size(db, book[:-len(orders)], [o.order for o in book[-len(orders):]], settings)
     await check_adjustment_limit(db, user_ref, strategy_id, book[:-len(orders)], [o.order for o in book[-len(orders):]],

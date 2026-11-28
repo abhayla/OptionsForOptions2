@@ -546,10 +546,12 @@ async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913
     lock (paper_exit, closes="locked"): each named leg closes its whole locked net, a leg already flat is refused, so a
     leg exits once even when two exits race and a leg that grew since the read closes whole."""
     stored = await _load(db, user_ref, strategy_id)
+    # I-158 (64) / F5: a real or unknown position is refused FIRST, before any book read: a strategy with only execution
+    # plans (a real position, no paper order) has no paper book and would otherwise answer the 404 of an empty book
+    await paper_limit.refuse_real_exit(db, strategy_id, [SimpleNamespace(kind="exit")])
     bk = await _load_book(db, strategy_id)
     if bk is None:
         raise StrategyRefused("user_input_request_not_available", Failure.NOT_FOUND)
-    await paper_limit.refuse_real_exit(db, strategy_id, [SimpleNamespace(kind="exit")])  # I-158 (64): before any read
     answered = now()
     may_act.refuse_unless_allowed(ctx, "exit", answered)  # ADR-212: no fill outside market hours, before any price read
     if len(set(body.legs)) != len(body.legs) or any(i >= len(bk.legs) for i in body.legs):

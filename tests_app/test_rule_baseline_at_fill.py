@@ -177,7 +177,7 @@ def test_worker_and_screen_give_the_same_answer_after_an_adjustment(monkeypatch)
     w = types.SimpleNamespace(strategy_id=7, tracked=types.SimpleNamespace(position=position), entry_facts=None,
                               body=body, basket_facts={1: facts})
     stub = types.SimpleNamespace(_gate_load={}, _memory={}, _written={}, _pending={},
-                                 _write_wake=asyncio.Event(), _count_outcomes=lambda ev: None)
+                                 _write_wake=asyncio.Event(), _count_outcomes=lambda ev, sid: None)
     worker = asyncio.run(bg.Worker._evaluate_and_write(stub, w, state, types.SimpleNamespace(gap_until="09:30")))
     assert [(r.rule_id, type(r).__name__) for r in worker.results] == \
         [(r.rule_id, type(r).__name__) for r in screen.results]
@@ -194,3 +194,18 @@ def test_already_true_after_adjustment_n_reads_the_adr258_wording():
     assert "Already true after adjustment 2." == result_out(held, None)["wording"].what_happened
     entry = dataclasses.replace(held, after=0)
     assert "Already true when tracking started." == result_out(entry, None)["wording"].what_happened
+
+
+def test_fr_f3_an_unknown_kind_with_every_t10b_stage_blank_is_not_checked_never_a_flag():
+    """FR F3 nit: with a time exit in the plan and the expiry kind unknown (no days left), a copy whose T-10b has no
+    value in any stage answered a Flag; it answers "not checked" (the trigger has no values), as a known kind does."""
+    _scn, _position, now, body = _adj02()
+    body = _with_time_exit(body)
+    body["guards"] = {**body.get("guards", {}), "time_exit": "14:30"}
+    for kind in ("weekly", "monthly"):
+        body["triggers"]["T-10b"][kind] = [""] * len(body["triggers"]["T-10b"][kind])
+    expiry = datetime.date(2026, 11, 6)
+    check_at = dataclasses.replace(_after_basket(now), hhmm="14:31", today=expiry, expiry=expiry, days_left=None)
+    ev = pe.evaluate(body, check_at, {}, None, gap_until="09:30")
+    mine = next(r for r in ev.results if r.rule_id == "T-10b")
+    assert isinstance(mine, pe.NotChecked) and mine.code == "adjust_trigger_no_expiry_values", mine

@@ -84,7 +84,7 @@ def _stored(monkeypatch, *, futures_on, options_on=()):
         return seen["tracked"]
     monkeypatch.setattr(route, "_own_strategy", spy)
 
-    async def load(db):
+    async def load(db, _name=None):
         t = seen["tracked"]
         leg = t.position.legs[0].expiry
         rows = [_Row(t.position.underlying, leg + datetime.timedelta(days=d), True) for d in futures_on]

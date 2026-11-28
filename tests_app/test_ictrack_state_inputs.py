@@ -89,3 +89,18 @@ def test_t11_evaluates_on_a_live_mode_state_from_the_stored_entry_iv():
     without = state(market=live, facts=EntryFacts(D("23400"), D("300"), D("300")))
     got = answers(switched_on(SC, "T-11"), without, "T-11")["T-11"]
     assert isinstance(got, pe.NotChecked) and got.code.endswith("missing_entry_atm_iv"), got
+
+
+def test_fr36_an_unknown_expiry_kind_still_gets_the_kind_free_credit_stop_and_no_days_left():
+    """FR 3.6: ``stops`` was left None for an unknown kind, so an iron condor's 2x-credit stop (independent of the
+    kind) got no result. Now ``stops_of`` runs for kind "" too; the state still carries no stage (days_left None)."""
+    tracked, m, spot = s.inputs(SC)
+    m = dataclasses.replace(m, expiry_kind="")
+    tracked = dataclasses.replace(tracked, position=dataclasses.replace(tracked.position, expiry_kind=""))
+    body = s.body_of(SC)
+    resolved = check.Resolved("active", body, None, None, False, saved_before_adr247=False)
+    st = check.state_of(tracked, m, SpotAnswer(spot, "feed", m.now), None, s.RATES, True, body,
+                        config=s.PREFS.approach, user_values=None, strategy_layer=None, entry_facts=None,
+                        resolved=resolved)
+    assert st.days_left is None
+    assert st.stops is not None and {x.kind for x in st.stops.lines} >= {"credit_multiple"}
