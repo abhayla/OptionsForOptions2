@@ -25,6 +25,7 @@ import { PAPER_NO_FIGURE as NO_FIGURE } from '@/lib/paperList'
 import { KITE_POSITIONS_URL } from '@/lib/execute'
 import { useOrderPath } from '@/lib/orderPath'
 import { brokerIsConnected } from '@/lib/brokerConnected'
+import { RETRY_LABEL } from '@/lib/sharedStateText'
 
 const route = useRoute()
 // ADR-330 (10) replaces ADR-201 (2): ONE list for real and paper trades, filtered All / Real / Paper (default All). The old
@@ -69,11 +70,15 @@ const realState = computed(() => {
 const brokerOff = computed(() => result.value?.broker_connected === false)
 const NOT_CONNECTED_LINE = 'No broker is connected, so no real positions are shown.' // new wording, pending owner read (28 Nov 2026): used only when the server sent no reason
 const brokerOffLine = computed(() => { const r = result.value?.real_pnl?.reason; return typeof r === 'string' && r.trim() !== '' ? r : NOT_CONNECTED_LINE })
+// I-207 (F3, TG D-TG-3): a refused read while the connection read says not connected is ONE plain sentence: the server's own sentence when it
+// reads as a sentence (never JSON or a class code), else the not-connected line. Printed once, in the Real block; the totals card says only the dash.
+const looksRaw = (t) => typeof t !== 'string' || t.trim() === '' || /[{}]|error_class|[A-Z]+_[A-Z]+/.test(t)
+const refusedLine = computed(() => { const w = errorParts.value?.what_happened; return errorParts.value === NEUTRAL_PARTS || looksRaw(w) ? NOT_CONNECTED_LINE : w.trim() })
 // ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
 // shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.
 const realTotals = computed(() => {
   if (figureOld.value && !errorParts.value) return { text: null, reason: OLD_FIGURE_TEXT, caption: null, note: null }
-  if (errorParts.value) return { text: null, reason: errorParts.value.what_happened ?? null, caption: null, note: null }
+  if (errorParts.value) return { text: null, reason: notConnected.value ? null : (looksRaw(errorParts.value.what_happened) ? null : errorParts.value.what_happened), caption: null, note: null }
   // I-113 (F3, TC walk AF-07 / D-13): a read that says no broker is connected never prints a figure, even if the reply still carries one
   if (brokerOff.value) { const r0 = result.value?.real_pnl; return { text: null, reason: typeof r0?.reason === 'string' && r0.reason.trim() !== '' ? r0.reason : NOT_CONNECTED_LINE, caption: null, note: null } }
   const r = result.value?.real_pnl
@@ -151,6 +156,10 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="filter !== 'paper'" :data-state="realState" data-testid="real-state">
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
+    <div v-else-if="errorParts && notConnected" data-testid="positions-not-connected">
+      <p class="text-sm text-ink-muted" data-testid="positions-error-what">{{ refusedLine }}</p>
+      <button type="button" class="mt-2 rounded border border-line bg-surface px-2 py-1 text-xs font-medium text-ink" data-testid="positions-error-retry" @click="loadReal">{{ RETRY_LABEL }}</button>
+    </div>
     <ListLoadFailed v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" @retry="loadReal" />
     <p v-else-if="brokerOff" class="text-sm text-ink-muted" data-testid="positions-not-connected">{{ brokerOffLine }}</p>
     <div v-else-if="result" class="grid gap-4 text-sm">
