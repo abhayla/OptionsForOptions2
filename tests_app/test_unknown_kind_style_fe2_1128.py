@@ -3,7 +3,8 @@ pinned by a test. Spec basis: ADR-330 (44), (47); REQ-115 AC-4; Lane J3 item 1 (
 intraday, not a guessed weekly or monthly row").
 
 Behaviour stated: a trade whose expiry kind is not known (no days to expiry) and that has NO pin is gated with the
-INTRADAY style (the fastest: candle 1 minute) and stays watched; its rules that need the kind answer "not checked".
+INTRADAY style (the fastest: candle 1 minute); with no exit rule that can run it is published paused
+(expiry_kind_unknown); its rules that need the kind answer "not checked".
 A pin is never replaced by that fallback (``test_a_refused_pin_is_never_replaced_by_the_unknown_kind_fallback``).
 A trade whose kind IS known keeps its own style.
 """
@@ -26,7 +27,8 @@ async def test_an_unknown_expiry_kind_without_a_pin_is_gated_with_the_intraday_s
     print("STYLE", w._style.get(FIRST_ID), "STATUS", w.status.get(FIRST_ID))
     assert background.UNKNOWN_KIND_TIMING_STYLE == INTRADAY
     assert w._style[FIRST_ID] == INTRADAY
-    assert w.status[FIRST_ID] is background.MonitoringStatus.ACTIVE
+    # hand-over 2: the trade is gated (intraday) and, with no exit rule that can run, published paused
+    assert w.paused_reason[FIRST_ID] is background.PriceState.EXPIRY_KIND_UNKNOWN
 
 
 async def test_a_known_expiry_kind_keeps_its_own_style_not_the_fallback(scn):  # noqa: F811

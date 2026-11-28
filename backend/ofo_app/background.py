@@ -191,6 +191,7 @@ class PriceState(enum.Enum):
     LEG_MISSING = "leg_missing"
     MARKET_CLOSED = "market_closed"
     CHECK_FAILED = "check_failed"
+    EXPIRY_KIND_UNKNOWN = "expiry_kind_unknown"  # FE2: kind not known and no exit rule can be checked (REQ-115)
     USER_PAUSED = "user_paused"  # A-38: the user paused adjustment checks until a time (module docstring, step 6)
 
 
@@ -1030,6 +1031,9 @@ class Worker:
         self._signature: dict[int, tuple] = {}
         self._last_check: dict[int, datetime.datetime] = {}
         self._checked_body: dict[int, Any] = {}  # J3: the plan body each strategy's last check ran with
+        #: FE2 (FD2 hand-over): strategy -> rule id -> value of each rule its last check evaluated (``rule_readings``)
+        self._rule_values: dict[int, dict[str, Decimal]] = {}
+        self._rule_values_sent: tuple[Any, datetime.datetime | None] = ((), None)
         #: FE2 item 7 (#864): the expiry kind of each (underlying, nearest expiry) the checks use; the lister gives it
         #: the reader (``reader_kinds_kwargs``) so the catalogue is not read per strategy on every re-read
         self.kinds: dict[tuple[str, datetime.date], Any] = {} if kinds is None else kinds
@@ -1185,6 +1189,8 @@ class Worker:
         unread = getattr(monitors, "unread", frozenset())  # a failed read is not a strategy leaving (r6 review)
         for sid in [k for k in self._checked_body if k not in body and k not in unread]:  # FE2 #867: no entry for ever
             del self._checked_body[sid]
+        for sid in [k for k in self._rule_values if k not in body and k not in unread]:
+            del self._rule_values[sid]
         for sid in [k for k in self.status if k not in body and k not in unread]:
             # FE2 #878: a strategy that left the list is not watched: no ACTIVE entry stays published for it
             for kept in (self.status, self.paused_reason, self.paused_why, self.user_paused_until):
@@ -1493,6 +1499,15 @@ class Worker:
         """A check ran for ``sid``: forget its last skip reason, so the next skip is logged."""
         self._last_skip.pop(sid, None)
 
+    def _fresh_read(self, sid: int) -> None:
+        """A fresh price read makes a trade watched again, except one paused for its unknown expiry kind: only a check
+        that finds an exit that can run clears that pause (second review F1)."""
+        if self.paused_reason.get(sid) is PriceState.EXPIRY_KIND_UNKNOWN:
+            return
+        self.status[sid] = MonitoringStatus.ACTIVE
+        self.paused_reason.pop(sid, None)
+        self.paused_why.pop(sid, None)
+
     def _record_kind(self, w: Watched, market: MarketInputs) -> None:
         """FE2 item 7: the kind this check uses (``state_of``'s rule) is kept for the lister; a kind that is not known
         ("") is never recorded (the reader then reads the catalogue)."""
@@ -1528,9 +1543,7 @@ class Worker:
             self._pause(sid, read.state, now)
             self.paused_why[sid] = read.why  # the REST stand-in's reason (set after _pause, which clears it)
             return self._skipped(sid, f"prices_{read.state.name.lower()}")  # never silent: one line with the reason
-        self.status[sid] = MonitoringStatus.ACTIVE
-        self.paused_reason.pop(sid, None)
-        self.paused_why.pop(sid, None)
+        self._fresh_read(sid)
         self._leg_ids[sid] = (w.tracked.position.legs,
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
@@ -1758,8 +1771,47 @@ class Worker:
         # the check travels with each rule's sample: the event it confirms takes its words from it (#709 item 7)
         sampled = {rid: (dataclasses.replace(spec, sample=ctx), v)
                    for rid, (spec, v) in gate_readings.readings(ev, stops=sl.plan_exit_rule_ids(w.body)).items()}
+        self._note_rules(w, state, sampled)
         await self._gate_step(w, now, preset, sampled)
         return True
+
+    def _note_rules(self, w: Watched, state: pe.StrategyState,
+                    sampled: Mapping[str, Any]) -> None:
+        """FE2 (FD2 hand-over): keep this check's rule values for ``rule_readings``; and when the expiry kind is not
+        known and NO exit rule of the plan could be checked (every one answers "not checked"), the trade is published
+        paused with ``expiry_kind_unknown``: never shown as watched with no exit that can run (REQ-115 AC-4)."""
+        sid = w.strategy_id
+        self._rule_values[sid] = {rid: v for rid, (_spec, v) in sampled.items()
+                                  if isinstance(v, Decimal) and v.is_finite()}
+        checked = {rid for rid, (_spec, v) in sampled.items() if v is not None}
+        if state.days_left is None and not checked & sl.plan_exit_rule_ids(w.body):
+            self.status[sid] = MonitoringStatus.PAUSED
+            self.paused_reason[sid] = PriceState.EXPIRY_KIND_UNKNOWN
+            self.paused_why.pop(sid, None)
+        elif self.paused_reason.get(sid) is PriceState.EXPIRY_KIND_UNKNOWN:  # this check found an exit that can run
+            self.status[sid] = MonitoringStatus.ACTIVE
+            self.paused_reason.pop(sid, None)
+
+    async def _publish_rule_values(self) -> None:
+        """Once per cycle (FD2 item 4): every monitored strategy's rule values, when they changed or 10 s have passed
+        (the store expires them after an hour); never raises."""
+        if self._want_client is None:
+            return
+        from ofo_app import rule_readings  # noqa: PLC0415 - the bus is optional
+        now = self._clock()
+        monitored = {w.strategy_id for w in self.monitors}
+        values = {(sid, rid): v for sid, d in self._rule_values.items()  # a trade not watched has no current value
+                  if sid in monitored and self.status.get(sid) is MonitoringStatus.ACTIVE for rid, v in d.items()}
+        shown = tuple(sorted((k, str(v)) for k, v in values.items()))
+        last, sent_at = self._rule_values_sent
+        if shown == last and sent_at is not None and (now - sent_at).total_seconds() < monitoring_state.REFRESH_S:
+            return
+        try:
+            await rule_readings.publish(self._want_client, values, now)
+        except Exception as exc:  # noqa: BLE001 - never stops a cycle; the screens then show no reading
+            log.warning("background: publishing the rule values failed: %s", type(exc).__name__)
+            return
+        self._rule_values_sent = (shown, now)
 
     async def _gate_step(self, w: Watched, now: datetime.datetime, preset: alert_gate.Preset,
                          readings: Mapping[str, gate_readings.Reading]) -> None:
@@ -2038,6 +2090,7 @@ class Worker:
             slowest = max(slowest, _seconds(self._clock() - started))
         self._cursor = (self._cursor + visited) % n if n else 0
         await self._close_pass(checked)
+        await self._publish_rule_values()
         monitored = {w.strategy_id for w in self.monitors}  # FE2 review F2: what is not monitored is never published
         await self._monitoring.publish({k: v for k, v in self.status.items() if k in monitored},
                                        self.paused_reason, self.paused_why, self._clock(),

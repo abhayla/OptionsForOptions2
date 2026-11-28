@@ -59,6 +59,7 @@ INDEX_STALE_REASON: Final = "stale"  # the existing code and sentence (``monitor
 INDEX_READING_TTL_S: Final = 120
 LEG_NOT_LIVE: Final = "leg_not_live"  # the ``why`` of a trade whose leg-price exit has no live leg reading
 LEG_READING_MAX_AGE_S: Final = 90  # current while the worker re-reads (its tick key turns over every IST minute)
+EXIT_NOT_APPLICABLE: Final = "exit_not_applicable"  # the why of a real position's old armed paper stop (ADR-330 (64))
 EXIT_NOT_PRICED: Final = "exit_not_priced"  # the why of a crossed exit that could not run (no live leg price)
 MAX_READING_VALUE: Final = Decimal(10) ** 9  # no index or option price is this large: such a value is no reading
 WATCH_FRESH_S: Final = 30  # a monitor's claim "I judge this exit" counts this long (it renews every ``REFRESH_S``)
@@ -369,6 +370,7 @@ async def read_readings(client: Any, now: datetime.datetime) -> Readings | None:
     return Readings(items)
 
 
+WRITE_TRIES: Final = 3  # a report write is verified and repeated this often at most (two writers can cross)
 OWNER_KEEP_S: Final = 3600  # a monitor's slot that stopped reporting this long ago is dropped by the next writer
 EXITS_KEY_TTL_S: Final = 86400  # the report key itself (a deployment with no monitor for a day has nothing to say)
 
@@ -448,15 +450,33 @@ class ExitsPublisher:
         if fingerprint == self._written and not due:
             return False
         try:
-            owners = await self._others(now)
-            owners[self.owner] = slot
-            await self._client.set(exits_key(), json.dumps({"at": slot["at"], "owners": owners}, sort_keys=True),
-                                   ex=EXITS_KEY_TTL_S)
+            kept = False
+            for _ in range(WRITE_TRIES):  # F4: read-merge-write is not atomic; verify the slot is there, else again
+                owners = await self._others(now)
+                owners[self.owner] = slot
+                await self._client.set(exits_key(), json.dumps({"at": slot["at"], "owners": owners}, sort_keys=True),
+                                       ex=EXITS_KEY_TTL_S)
+                if await self._has_slot(slot["at"]):
+                    kept = True
+                    break
         except Exception as exc:  # noqa: BLE001 - never stops the monitor; the report then ages out (= not run)
             log.warning("paper monitor: writing the index-exit report failed: %s", type(exc).__name__)
             return False
+        if not kept:  # a store that never kept the slot: not recorded as written, so the next pass writes again
+            log.warning("paper monitor: the index-exit report lost this monitor's slot %d times", WRITE_TRIES)
+            return False
         self._written, self._written_at = fingerprint, now
         return True
+
+    async def _has_slot(self, at_text: str) -> bool:
+        """Whether the stored report holds this monitor's slot as just written."""
+        raw = await self._client.get(exits_key())
+        text = raw.decode("utf-8", "replace") if isinstance(raw, bytes) else raw
+        try:
+            found = (json.loads(text).get("owners") or {}).get(self.owner) if isinstance(text, str) else None
+        except (ValueError, AttributeError):
+            return False
+        return isinstance(found, dict) and found.get("at") == at_text
 
     async def _others(self, now: datetime.datetime) -> dict[str, Any]:
         """The other monitors' slots as stored (those that stopped over ``OWNER_KEEP_S`` ago are dropped). A stored
