@@ -1,4 +1,4 @@
-STATUS 23:20 | PUSHED fix/r3-frontend-f1b-1128 at 83baad95c, prepush TOTAL PASS 1245 s jobs 4 (vitest 417 files, 4336 tests, all pass; exit-lock-second-tab, exit-lock-builder-wiring, unknown-locks-reload green) | open: browser walk, review round 2, F-G second half (Question 1) | blocker: none (messages to the coordinator refused: device trust)
+STATUS 01:00 | review round 2 done, its money finding fixed (builder add vanish without event), full vitest 4337/4337, final check running | hand-over below | blocker: none
 
 # RESULTS Lane F1b, branch fix/r3-frontend-f1b-1128, base origin/fix/r3-frontend-2-1128 (d93fce449)
 
@@ -31,6 +31,18 @@ Attack: can the release paths let a second order be SENT while an outcome is unk
 | 6 `mergeNewer` can bring back a lock another tab decided | minor, fails closed | not changed (blocks again until a read decides) |
 | 7 `sentNow` tokens unique only among the last 64 | minor | not changed |
 Reviewer's "not covered": the server block; real browser quota or "clear site data" events (simulated with dispatched events); a reload in the middle of an open read at component level; a possible older gap: PaperStrategies has no stale-screen gate like the builder's `paperStale` after a marker release (until `refreshNow` answers it may offer Exit on old rows under a new key; the server block covers it). Round 2 of the review has NOT been run (the second round is for the batch-2 diff).
+
+## Opus review round 2 (reviewer agent, Opus): REVISE, money finding fixed, rest listed (two rounds used)
+| Finding | Severity | Done |
+|---|---|---|
+| F1 the builder's ADD path (`addEndedElsewhere`) released a vanished lock with no marker check; with `localStorage.clear()` and NO storage event a second add went out under another key (run by the reviewer: 2 posts) | can cost money, open since before the lane | FIXED: the held add keeps its lock in memory (`addUnknown.lock`); a vanished lock with no decided marker is written back with its key and the recheck loop goes on. Test first (red): builder-add-key-f1b-1128 "a same-tab wipe without an event". The old pin "a lock another tab removes" now passes the lock it decided (a real decider writes the marker) |
+| F5 a restored key never matched again (sig text) | not money | FIXED: the restored key slot uses `keySigOf` text |
+| F2 the NEXT lock save over an unreadable store overwrites it (F-G second half) | minor | NOT FIXED (needs Question 1); hand-over |
+| F3 (a) marker write refused while the removal goes through: the other tab restores the lock every cycle; (b) one marker per strategy and kind: a frozen tab restores an older lock | minor, not permanent (at most one window) | NOT FIXED; hand-over |
+| F4 the real-write cleanup drops a request key kept on purpose after "not stored" | minor, not money | NOT FIXED; hand-over |
+| F6 an old marker without a nonce matches a lock with no `at` and the same key | minor, narrow | NOT FIXED; hand-over |
+| F7 Positions has no stale-screen gate after a marker release (a Confirm before the list read returns is built from old rows under a new key) | not money in practice behind Lane B2's server block, older than the lane | NOT FIXED; hand-over |
+Held up: two tabs with a marker (no bounce), wipe with an event (lock and key restored), exit paths with a same-tab wipe and no event, save bar same-tab wipe, `canConfirm` includes `locked` (the window line is text only), `sameSig` only for 'add', held-map growth, no permanent block in normal flows. Not covered by the reviewer: whether a real browser's "Clear site data" fires storage events; whether Lane B2's block refuses a second ADD (if it does, F1 was browser-only); builder Retry; the `tracking.js` text; mutation runs.
 
 ## For the owner lane
 - OUTSIDE MY EDIT LIST, done because the guard's own message demands it (screen-inventory-guard failed the full check on the new Retry button): one row BUILD-192 added to docs/design/next-batch-2026-11-26/screen-inventory.md and screen-inventory.json regenerated with `node frontend/e2e/support/inventory-extract.mjs` (the JSON diff is large only because line numbers shifted; no other control changed). Another lane that edits the same file will meet a textual conflict: take both rows and regenerate the JSON.
@@ -74,4 +86,18 @@ Scratch worktree ../wt-next (purpose: build W-25 while the check ran on the main
 - Three full checks (about 22 min each) each failed on ONE frontend test the targeted runs missed (an old pin of changed behaviour, the ADR-008 `Math.min` lib scan, screen-inventory-guard for a new control). Running the whole vitest suite once before starting prepush would have caught all three. Suggest: a `npm test` run in the pre-check list for any lane that adds a control or touches lib/.
 - The kit write-guard blocked `git add` for the whole run of a reviewer subagent; a removed worktree path stayed blocked by the prod-gate hook (a new path worked); `git stash` in a worktree is blocked.
 
-SAFE TO CLOSE (head 83baad95c pushed with prepush TOTAL PASS; left: the FJ2 browser walk (needs the app with its backend), Opus review round 2 of the batch-2 diff, F-G second half and FJ2 Question 1 (owner), the deferred-issue texts above)
+(older line, superseded by the one at the very end)
+SAFE TO CLOSE-old (head 83baad95c; left: the FJ2 browser walk (needs the app with its backend), Opus review round 2 of the batch-2 diff, F-G second half and FJ2 Question 1 (owner), the deferred-issue texts above)
+
+## Hand-over to a successor lane (nothing below is started)
+Named by the coordinator (28 Nov 23:00 IST):
+1. The save bar (SaveDraftBar.vue) polls the `execute:<id>` locks and gets a 422 every 5 seconds (checkAddUnknown decides locks of ids that are not builder strategies).
+2. The PC's note: after Exit then Cancel on the builder one staged exit stays and the first Discard does not clear it (a reload does).
+3. The builder's book panel greys every Exit after a failed read: a clash between an older rule and ADR-330 (60): a QUESTION FOR THE OWNER, not to be decided.
+From this lane:
+4. F-G second half and FJ2 Question 1 (permanent block vs a release such as "I checked the Orderbook"): the next lock save over an unreadable store overwrites it (unknownLocks.js `writeLock`, `entriesOf`). Owner answer first.
+5. Round 2 minor findings F3, F4, F6, F7 above (files: unknownLocks.js `markDecided`, `lockDecidedElsewhere`; PaperStrategies.vue, StrategyBuilderPage.vue, SaveDraftBar.vue real-write cleanup; PaperStrategies `releaseForeignDecided` needs a stale-screen gate like the builder's `paperStale`).
+6. The browser walk of FJ2 item 3 (Lane W3 walks the build); a builder price tick between "not stored" and a resend is not driven in a page test.
+7. To file as deferred issues (coordinator): the residuals in "Not done" above and items 4 and 5.
+
+SAFE TO CLOSE (head = the commit of this section; the check of that head ends TOTAL PASS before the push; left: the hand-over list above)

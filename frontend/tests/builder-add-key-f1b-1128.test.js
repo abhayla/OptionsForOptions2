@@ -66,3 +66,16 @@ describe('review finding 1: the builder add survives a wipe', () => {
     expect(posts()).toHaveLength(1)
   })
 })
+
+// Opus round 2, F1: the same wipe with NO storage event (DevTools "Clear site data" in the same tab) must not release the held add either.
+describe('round 2 F1: a same-tab wipe without an event', () => {
+  it('unknown add, storage cleared silently, book unchanged inside the window: a second Confirm sends nothing', async () => {
+    const w = await H.showBuilder()
+    await stageAdd(w)
+    expect(posts()).toHaveLength(1)
+    globalThis.localStorage.clear()
+    await adv(6000)
+    await stageAdd(w)
+    expect(posts()).toHaveLength(1)
+  })
+})

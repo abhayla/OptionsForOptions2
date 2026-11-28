@@ -627,15 +627,21 @@ function decideAddLock(id, read) {
 // A lock that vanishes from the store while it is held was ended by another actor (another tab's read): the net on screen is then stale, so the book is read again before anything is offered or sent.
 const addUnknown = ref(null)
 let addRun = null
+const safeParse = (t) => { try { return JSON.parse(t) } catch { return [] } }
 function holdAdd(id) {
   const l = addLockFor(id)
   if (l && typeof l.before === 'string' && l.before.startsWith('#')) {
-    if (!addUnknown.value || String(addUnknown.value.id) !== String(id)) { addUnknown.value = { id }; void recheckUnknownAdd() }
+    if (!addUnknown.value || String(addUnknown.value.id) !== String(id)) { addUnknown.value = { id, lock: l }; void recheckUnknownAdd() }
   } else if (addUnknown.value && String(addUnknown.value.id) === String(id)) addUnknown.value = null
 }
 function addEndedElsewhere() { // true (and the book is read again) when a held add lock is gone from the store without this page's own decision
   const u = addUnknown.value
   if (!u || !paper.value || String(u.id) !== String(paper.value.id) || addLockFor(u.id)) return false
+  if (u.lock && !lockDecidedElsewhere(u.id, u.lock, 'add')) { // F1b round 2 (Opus): a lock that VANISHED with no decided marker (site data cleared, no storage event) is not a decision: it is written back with its key and keeps blocking until a read decides it
+    saveAddLock(u.id, u.lock)
+    if (u.lock.key && u.lock.sig) orderKeyFor(u.id, keySigOf(safeParse(u.lock.sig)), u.lock.key, 'add')
+    return false
+  }
   addUnknown.value = null
   paperStale.value = true
   void rereadAfterPlace(paper.value.id, () => {})
@@ -659,7 +665,7 @@ async function recheckUnknownAdd() { // the builder's own reads of its unknown a
     if (leaving || addRun !== run || addUnknown.value !== u) return
     if (read?.kind !== 'paper' || paperBusy.value) continue
     const v = addVerdict(id, read)
-    if (!v) { addEndedElsewhere(); return }
+    if (!v) { if (addEndedElsewhere()) return; continue } // the vanished lock was written back: the loop goes on
     if (v.d.verdict === 'keep') continue
     const edits = keepStaged
     enterDrafts(id, read) // decides (drops the lock and, when over, its key), clears the held add and rebases the legs on the book just read

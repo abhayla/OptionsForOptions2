@@ -52,7 +52,7 @@ describe('R5 N1 (d) the builder listens to the add store', () => {
     await confirmStaged(w)
     expect(posts()).toHaveLength(1)
     H.state.answers['GET /paper/strategies/1'] = () => Promise.resolve({ data: H.bookWith((d) => { d.positions.find((p) => p.contract_id === 776).net_quantity = 325 }) })
-    L.dropAddLock(1) // another tab decided it and ended it
+    L.dropAddLock(1, L.addLockFor(1)) // another tab DECIDED it and ended it (F1b: a deciding page passes the lock it decided, so its decided marker is written)
     H.storm('ofo.addUnknown'); await flushPromises()
     await adv(50)
     expect(S(w).paperStale === false && S(w).pendingOrders.length === 0, 'the net was rebased on the book that holds the add').toBe(true)

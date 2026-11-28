@@ -273,8 +273,8 @@ function restoreVanished(name) {
     writeAll(name, next)
     if (typeof raw.key === 'string' && raw.key && typeof raw.sig === 'string') {
       const keys = entriesOf(KEYS_KEY)
-      const slot = kind === 'add' ? `${id}#add` : String(id)
-      if (!keys[slot]) { keys[slot] = { sig: raw.sig, key: raw.key }; writeAll(KEYS_KEY, keys) }
+      const slot = kind === 'add' ? `${id}#add` : String(id) // the key slot compares keySigOf text (an entry row's price left out)
+      if (!keys[slot]) { keys[slot] = { sig: ((t) => { try { return keySigOf(JSON.parse(t)) } catch { return t } })(raw.sig), key: raw.key }; writeAll(KEYS_KEY, keys) }
     }
   }
 }
