@@ -10,7 +10,7 @@ const open = (props) => mount(PaperConfirmDialog, { props: { open: true, orders:
 const q = (id) => document.body.querySelector(`[data-testid="${id}"]`)
 
 describe('PaperConfirmDialog with a kind nobody could read', () => {
-  for (const kind of ['unknown', 'none', undefined === 0 ? '' : 'weird', '']) {
+  for (const kind of ['unknown', 'none', 'weird', '']) {
     it(`kind ${JSON.stringify(kind)}: neutral title, the plain reason, Confirm off, no paper wording`, () => {
       const w = open({ kind })
       expect(q('kind-locked').textContent).toBe(KIND_UNREAD_LINE)
