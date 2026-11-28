@@ -1,4 +1,4 @@
-STATUS 21:45 | BATCH 1 pushed: items 1 to 3 + the coordinator's MUST (unknown-outcome block) + the CI Redis-less Execute failure; TOTAL PASS on 507c3c86f; Opus reviews done (two) | batch 2 (items 4, 6, 7, 8 + review minors) next, due 01:30 | item 5 DROPPED (Lane R1 owns StrategyOut.position_kind) | blocker: send_message to @parent REFUSED (elevated_session_untrusted_device); messages from the coordinator reach me, mine do not; this STATUS line is the report
+STATUS 23:20 | BATCH 2 pushed: item 6 done, 7 nothing, 8 done (read-only), outcome block hardened (waits for a running first request, cascade), migration renumbered 0064 after RA2's 0063; DB regression of the 69 order-door test files: 1890 passed, 1 failed (Lane B1's stale test_n7, pre-existing) | batch 1 was pushed 21:49 | blocker: send_message to @parent REFUSED (elevated_session_untrusted_device); this STATUS line is the report
 
 # Lane B2: the order-door and request-key backend lane (round 3, weekend)
 
@@ -18,6 +18,22 @@ Local database as CI builds it (`scripts/orchestrator/cloud_services.sh`), one t
 | 3 Execute door deadline | built: `_stamp_request` first dependency, check after `finish_in_transaction`, own code `order_request_too_slow`. Red before (200 at 10.5 s after arrival), green after. | tests_app/test_execute_revision.py 16 passed |
 | 4 I-183 | falls out of item 2: a same-key resend after a crash places once or replays; pinned by the core test and `test_an_unknown_outcome_leaves_a_hint...`. NOTE: with the new block, a resend within 120 s of a crash with NO stored rows now reads `order_outcome_unknown` (not placed); after the window it places once. | |
 | 5 `StrategyOut.position_kind` | DROPPED by the coordinator (R1 builds it; ADR-330 (64) withdrawn). Built, then reverted in e1e3154da. | |
+
+## Batch 2 (after the batch 1 push)
+| Item | State | Evidence |
+|---|---|---|
+| FINDING (affects every lane): the full check (`prepush.py`) SKIPS every database test (2413 skipped: `TEST_DATABASE_URL` is unset by the brief's own command), so a database test can be red with TOTAL PASS | I ran the DB tests myself: the 69 files that reach an order door (grep of /orders, /execute, tracking/exit, /triggers, /keep, request_key, guard names), 3 shards, `OFO_TEST_DB_PER_FILE=1`, `db_run.py` | 1890 passed, 1 failed (`test_exit_door_real_fd3.py::test_n7...`, Lane B1's file, failed already on the base: `calls["n"] >= 2` should be `>= 1`; not edited: not on my list). Two regressions of my own were found this way and fixed: strategy cleanups in `test_exit_door.py` and `test_paper_triggers_routes.py` failed on the new table's foreign key (fixed: `ON DELETE CASCADE`) and `test_d05_two_identical_saves...` (a double click answered 201 + 409: fixed, see next row) |
+| Outcome block, double click | a request that finds a YOUNG open attempt now waits up to 4 s (polls every 0.1 s) for it to close, and is refused only if the outcome stays unknown; the idempotent trigger saves keep answering 201 and 201 | tests_app/test_order_outcome_b2_1128.py 12 passed (incl. the waiting test and a wiring mutation test: strip the guard from the Execute door or the paper orders door and `misguarded_order_routes` names that route) |
+| MIGRATION NUMBER | Lane RA2 (fix/r3-leftovers-2-1128) took `0063_basket_facts_spot_at`; mine is now `0064_order_attempts` (revises 0063_basket_facts_spot_at); RA2's branch merged into mine (templates.py: both sentences kept, 589 RA2 `execution_return_changed`, 590 mine); one head | `alembic heads` = 0064_order_attempts; tests/errors 711 passed |
+| 6 re-check of RA's rows | test_paper_orders_r2_fd2 4 passed; test_order_request_key_durable_fd3 20; test_execute_revision 16; test_route_latency_budget 7 passed 1 xfailed (the guard's extra statements fit the ceilings); test_held_stop_ra_1128 8 | |
+| 7 other "handed to RA2" items that are mine | none left: durable key (done), record_plan F2/F4/F5 (done by FD5/RA), StrategyOut.position_kind (RA2 built it; mine was dropped) | |
+| 8 cross-review (read-only) | RA2 I-205/D-TG-1 (stored close with no session, `routes/paper.py`): display only; fills, stops and exits read `leg_price`, so no double-order path; the book now reads state LIVE with the close's own `as_of`: the frontend must show that time or the figure reads current (stale-figure risk, frontend). RA2 Return door: `gate_broker_unconfirmed` became `execution_return_changed` on both refusals, still fail-closed. F1's I-188 lock (`unknownLocks.js`): a reloaded page waits 130 s by its own monotonic clock; the server block releases at 120 s, so the server is never later than the browser: no double-order window; the browser lock is now a courtesy, the server is the guarantee | read of `git diff origin/integration/weekend-r3-1129...origin/fix/r3-leftovers-2-1128` and `...fix/r3-frontend-2-1128` |
+| Review minors of Opus review 1 | stale 582 comments fixed (`request_key.py`); (1) free only the record this request made, (2) the "already prepared" answer for a racing repeat, (3) cheap early refusal of a repeat, (4) a two-keyed-requests race test through the real doors: NOT built (no money effect); listed here for a later lane | |
+
+## For the owner lane (added)
+- Lane B1 (RA2): `test_n7_a_stop_stored_then_a_failed_kind_read...` (above): change `assert calls["n"] >= 2` to `>= 1`.
+- The Return door could close the open Execute attempt at once (`routes/execution_return.py`, not mine); today it releases by evidence or after 120 s.
+- A later lane may run the DB test files in `prepush.py` (it skips them): see the FINDING above.
 
 ## Opus reviews (read-only, Opus)
 - Review 1 (items 1 to 3): PASS. No path where two presses with one key both store; no stale check stores on a changed plan. Six MINOR findings, not fixed (batch 2): (1) a refused second press that passed the hint frees the first press's Redis record (`begin` should say whether it created the record); (2) a racing repeat can read `gate_dependencies_unsatisfied` instead of "already prepared"; (3) a repeat that passes the hint does all the Zerodha reads before it is refused (Kite budget, pool); (4) no test races two keyed requests through the real doors (a structural test: lock, claim, writes, finish, commit with no release between); (5) stale comments naming 582 (`request_key.py` `finish` docstring, paper.py:1513); (6) Redis calls up to 2 s each.
@@ -56,7 +72,7 @@ Local database as CI builds it (`scripts/orchestrator/cloud_services.sh`), one t
 - test_order_request_key_r2_fd2.py (3 tests: a Redis pending hint and a Redis outage no longer refuse); test_order_request_key_durable_fd3.py (1); test_execute_revision.py (the deadline test, a `tweak` hook, the DB-free apps stub the outcome guard); test_order_path_switch.py and test_browser_never_decides_eligibility.py (DB-free apps stub the guard).
 
 ## Not done (batch 2)
-- Items 6 (re-run RA's cancel-ids and deadline tests on this head), 7, 8 (cross-reviews), and the review minors above.
+- The review minors (1) to (4) of Opus review 1 and the exit and trigger doors' arrival deadline (Opus review 2, F5).
 
 ## Models and minutes
 | task | model | minutes |
