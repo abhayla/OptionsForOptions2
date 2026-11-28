@@ -122,3 +122,26 @@ C1: 24; C2: 28; C3: 17; C4: 5; C5: 2; C6: 8; C7: 3; C8: 1; C9: 10; total 98
 | screen-positions | STOP-22 | C9 | a stop typed in one leg's box does not move into another leg's box, and typing never jumps | 2 |
 | screen-positions | STOP-32 | C9 | every control of the panel is reachable with the keyboard: Tab from Above reaches Below, t | 2 |
 | screen-positions | KEY-2 | C3 | Enter on the focused Confirm posts the exit once (keyboard parity with the click) | 2 |
+
+## Result (Lane F3, 29 Nov 00:20 IST): every row above fixed to the decided behaviour, none skipped
+Run as CI runs it (`CI=1 npx playwright test`, retries 1, both projects, 4 workers) on this head: the 8 `screen-*.spec.ts` files = **1652 passed, 0 failed, 2 skipped (as before), 20 flaky** (the 20 are mobile-390 tests that passed on the retry; they passed first time in the single-file runs: the run shared the CPU with my other runs). The three files that need the real API (`positions.spec.ts`, `index-view.spec.ts`, `my-strategies.spec.ts`), run against a local API and database as CI does: 14 passed, 2 skipped (the Save Draft tests need the seeded catalogue), 0 failed. Before the fixes the first two had 2 + 1 failing tests (x2 projects); the single failing `my-strategies.spec.ts` test CI reported was not reproducible here (it passes), so it is listed as "not reproduced".
+
+### The ten that were not pinned (C9), now classified
+| spec | test | class | cause |
+|---|---|---|---|
+| screen-home | STRIP-3 | (b) | ADR-330 (56) round 2 (b4c5ec832): with an answer in hand the page's ONE price notice speaks; the strip does not repeat "Index values unavailable." |
+| screen-live-strategies | ST-10 | (b) | Lane Y item 1 (080afd10a): the worker's monitoring answer owns the paused badge (shared MonitoringBadge); the card's local badge steps aside |
+| screen-live-strategies | LINK-6b | (b) | the Running row must carry `position_kind: 'paper'` (ADR-330 (64)) to show its Exit link; the spec fixture lacked it |
+| screen-live-strategies | OPP-5 | (b) | Lane F3's own I-201: a dismissal with no reason says "No reason given" |
+| screen-live-strategies | ADJ-17, ADJ-18 | (b) | D-TD-2 / I-86 (Lane FC2 cd3a22875): Retry beside the server's sentence; one failed-load sentence with no server message |
+| screen-live-strategies | LINK-7 | (b) | ADR-330 (54): the Plan button of a running trade is the card's one button; it places no order |
+| screen-my-strategies | DEL-17, BULK-14, BULK-15 | (b) | N-30: a delete sends the revision the LIST ROW carries (no read per row); the spec made the per-row read fail while the row had a revision. Fail-closed kept and now tested the right way: a row with no revision and an unreadable strategy sends nothing |
+| screen-positions | STOP-22 | (c) | the measure was in viewport coordinates: filling a box scrolls the page by 7 px (the Stops panel moved 7 px as a whole; the leg box and its reason slot kept their offsets inside it). No layout jump; the spec now measures inside the panel |
+| screen-positions | EXIT-17c | (b) | Lane U r1 (ADR-016/017/019): after an unknown outcome Confirm waits for the page's re-read, never a timer (stricter than the 5 s hold of the old spec) |
+
+### Product change found by this work (mine, fixed)
+My own earlier item 3 (I-207) had made Positions, not connected, print only the first sentence of a clean server message: REAL-10 showed the next-action text was lost. Now a refusal whose four parts all read as sentences keeps them with a Retry (REQ-065, D-TD-2); only a raw (JSON or class-code) or missing message becomes the one plain sentence. Files: PositionsPage.vue and its tests.
+
+### Found, not assigned
+- Builder book panel (PaperBookPanel.vue, Lane F1b): Exit all and each leg's Exit are greyed while a read has failed (D-05), where ADR-330 (60) says the Exit control opens its dialog and the dialog gives the reason. On Positions the two already agree. Written as a question in RESULTS-lane-f3.md.
+- The CI "frontend" job: with all specs green the Playwright step is about 9 minutes here on 4 workers; the CI runner has 2 workers (playwright.config.ts), so expect about 15 to 18 minutes for Playwright on top of the unit tests; the 40-minute limit Lane T set is needed.

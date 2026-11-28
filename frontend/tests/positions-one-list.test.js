@@ -232,7 +232,7 @@ describe('ADR-330 (10): one Positions list', () => {
       answers['GET /broker/status'] = ok({ account_connection: { state: 'disconnected' } })
       const { w } = await page()
       expect(state(w)).toBe('not_connected')
-      expect(t(w, 'positions-error-error').text()).toContain('Connect your Zerodha account')
+      expect(t(w, 'positions-error-what').text()).toContain('Connect your Zerodha account')
       expect(all(w, 'paper-group').length).toBeGreaterThan(0)
       expect(t(w, 'totals-paper').text()).toBe(REAL.totals.total_text)
     })

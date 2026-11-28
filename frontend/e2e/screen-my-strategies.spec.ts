@@ -139,6 +139,8 @@ async function open(page: Page, over: Over = {}, list: Row[] = LIST, url = LIST_
   await page.goto(url)
   return F
 }
+// N-30: a delete / bulk delete sends the revision the LIST ROW carries (no read per row); a row without one falls back to one read of the strategy, and when that cannot be read nothing is sent
+const withoutRevision = (list: Row[], ids: number[]): Row[] => list.map((r) => (ids.includes(r.id) ? { ...r, revision: undefined } : r))
 async function openLoaded(page: Page, over: Over = {}, list: Row[] = LIST) {
   const F = await open(page, over, list)
   await expect(rows(page).first()).toBeVisible()
@@ -351,7 +353,7 @@ test.describe('My Strategies: loading, empty and failure states (ADR-320 S-05, R
   test('EMPTY-2 a list that holds only Completed strategies is empty here too; the Completed page says "No strategy is completed yet." when there are none', async ({ page }) => {
     // Spec basis: ADR-259 (a closed trade leaves this list); the page's own Completed empty sentence (searched: "No strategy is completed yet")
     await open(page, {}, [DONE])
-    await expect(page.getByTestId('empty-state-message')).toHaveText(EMPTY)
+    await expect(page.getByTestId('empty-state-message')).toHaveText('No open strategies. Your completed strategies are listed under Strategies > Completed Strategies.') // T2-17 (ADR-259): the empty state says where the Completed ones are
     await page.goto(DONE_URL)
     await expect(rowOf(page, 30)).toBeVisible()
     await page.unroute(/\/api\//)
@@ -808,7 +810,7 @@ test.describe('My Strategies: delete one and Undo (REQ-070 AC-6, ADR-293, ADR-29
 
   test('DEL-17 when the revision cannot be read no DELETE is sent (fail closed) and the neutral message shows', async ({ page }) => {
     // Spec basis: REQ-070 AC-6 (the delete carries the revision it read; unreadable sends nothing)
-    const F = await openLoaded(page, { one: { json: { id: 17 } } })
+    const F = await openLoaded(page, { one: { json: { id: 17 } } }, withoutRevision(LIST, [17])) // the row carries no revision and the one read has none either
     await page.getByTestId('delete-17').click()
     await page.getByTestId('delete-confirm').click()
     await expect(page.getByTestId('delete-error-what')).toHaveText(NEUTRAL.what)
@@ -882,7 +884,7 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
   test('BULK-2 (MYSTR-02) "Select all 3 shown" counts only the rows that can be deleted (held and basket-sent rows are not counted) and ticks them all', async ({ page }) => {
     // Spec basis: REQ-070 "My Strategies screen wording" ("Select all N shown" selects only the rows left after the search); ADR-330 (8)
     await openLoaded(page)
-    await expect(page.getByTestId('select-all-label')).toHaveText('Select all 3 shown')
+    await expect(page.getByTestId('select-all-label')).toHaveText('Select all 3 of the 5 shown') // the label names the rows that can be ticked out of those shown
     await page.getByTestId('select-all').check()
     await expect(deleteSelected(page)).toHaveText('Delete selected (3)')
     for (const id of [21, 17, 9]) await expect(page.getByTestId(`select-${id}`)).toBeChecked()
@@ -1031,7 +1033,7 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
 
   test('BULK-14 a revision that cannot be read: that row is kept as failed with "The strategy could not be read, so it was not deleted." and the others are still sent', async ({ page }) => {
     // Spec basis: REQ-070 AC-7 ('"The strategy could not be read, so it was not deleted." (a row whose revision could not be read, kept as failed)')
-    const F = await openLoaded(page, { one: (c) => (c.id === 9 ? { status: 500, json: {} } : { json: { id: c.id, revision: 3 } }) })
+    const F = await openLoaded(page, { one: (c) => (c.id === 9 ? { status: 500, json: {} } : { json: { id: c.id, revision: 3 } }) }, withoutRevision(LIST, [9])) // row 9 carries no revision and its read fails
     await tick(page, 17)
     await tick(page, 9)
     await deleteSelected(page).click()
@@ -1044,7 +1046,7 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
 
   test('BULK-15 every revision unreadable: nothing is sent to bulk-delete and every row is named as kept', async ({ page }) => {
     // Spec basis: REQ-070 AC-7 (fail closed: an unreadable row is kept as failed)
-    const F = await openLoaded(page, { one: { status: 500, json: {} } })
+    const F = await openLoaded(page, { one: { status: 500, json: {} } }, withoutRevision(LIST, [21, 17, 9, 5, 4]))
     await tick(page, 17)
     await deleteSelected(page).click()
     await page.getByTestId('bulk-confirm').click()
@@ -1148,7 +1150,7 @@ test.describe('My Strategies: bulk select and Delete selected (ADR-330 (8) S-01,
   test('BULK-24 when no row can be deleted "Select all 0 shown" is greyed', async ({ page }) => {
     // Spec basis: REQ-070 "My Strategies screen wording" (held / basket-sent rows have no tick box)
     await openLoaded(page, {}, [R5, R4])
-    await expect(page.getByTestId('select-all-label')).toHaveText('Select all 0 shown')
+    await expect(page.getByTestId('select-all-label')).toHaveText('Select all 0 of the 2 shown')
     await expect(page.getByTestId('select-all')).toBeDisabled()
     await expect(deleteSelected(page)).toBeDisabled()
   })

@@ -52,18 +52,26 @@ const NEUTRAL = {
 }
 const EMPTY_ACTIVE = 'No alerts yet. Alerts start when strategy monitoring rules are added.'
 const EMPTY_RECORDS = 'No stops or expiry settlements yet.'
+const LIST_FAILED = 'Could not load this list. Nothing was changed.' // D-TD-2 / I-86 (FC2): no server message = ONE sentence and a Retry; pending owner read
+const expectListFailed = async (page: Page, prefix: string) => {
+  await expect(page.getByTestId(`${prefix}-error`)).toHaveText(LIST_FAILED)
+  await expect(page.getByTestId(`${prefix}-retry`)).toBeVisible()
+}
 const NO_CHANNELS = 'No notification channels are set up yet.'
 
 // ---------------------------------------------------------------- the stub: every /api call of the page
 type Reply = { status?: number; json?: unknown; abort?: boolean; wait?: Promise<void> }
 type Stub = { rows: AlertRow[]; calls: string[] }
-type Over = { rows?: AlertRow[]; alerts?: Reply; read?: Reply; records?: Reply; opps?: Reply }
+type Over = { rows?: AlertRow[]; active?: Reply; answered?: Reply; answer?: Reply; records?: Reply; opps?: Reply }
 const gate = () => {
   let open!: () => void
   const wait = new Promise<void>((r) => { open = r })
   return { wait, open }
 }
-const shape = (rows: AlertRow[]) => ({ unread: rows.filter((r) => !r.read).length, alerts: rows })
+// ADR-330 (3), (4): ONE read feeds the bell and Alerts > Active: GET /alerts/active = { count, alerts: [{ id, strategy_id, strategy_name, kind, text, fired_line, answers: [{ code, label }] }] }.
+// The old unread / read / "Earlier" model and POST /paper/alerts/read are gone; an alert leaves the list when it is ANSWERED (POST /alerts/{id}/answer).
+const toActive = (r: AlertRow) => ({ id: r.id, strategy_id: r.strategy_id, strategy_name: r.strategy_name ?? undefined, kind: 'stop_fired', text: r.body, fired_line: `Fired at ${r.created_at.slice(11, 16)}`, answers: [{ code: 'understood', label: 'Understood' }] })
+const activeShape = (rows: AlertRow[]) => ({ count: rows.length, alerts: rows.map(toActive) })
 
 async function stubApi(page: Page, over: Over = {}): Promise<Stub> {
   const S: Stub = { rows: (over.rows ?? []).map((r) => ({ ...r })), calls: [] }
@@ -77,11 +85,13 @@ async function stubApi(page: Page, over: Over = {}): Promise<Stub> {
     const { pathname } = new URL(req.url())
     const get = req.method() === 'GET'
     S.calls.push(`${req.method()} ${pathname}`)
-    if (get && pathname === '/api/paper/alerts') return serve(route, over.alerts, shape(S.rows))
-    if (req.method() === 'POST' && pathname === '/api/paper/alerts/read') {
-      if (over.read) return serve(route, over.read, {})
-      S.rows.forEach((r) => { r.read = true }) // the server remembers: the next GET says read
-      return route.fulfill({ json: shape(S.rows) })
+    if (get && pathname === '/api/alerts/active') return serve(route, over.active, activeShape(S.rows))
+    if (get && pathname === '/api/alerts/answered') return serve(route, over.answered, { items: [] })
+    const ans = /^\/api\/alerts\/(\d+)\/answer$/.exec(pathname)
+    if (req.method() === 'POST' && ans) {
+      if (over.answer) return serve(route, over.answer, {})
+      S.rows = S.rows.filter((r) => String(r.id) !== ans[1]) // the server remembers: the next GET no longer lists it
+      return route.fulfill({ json: {} })
     }
     if (get && pathname === '/api/paper/alerts/records') return serve(route, over.records, { records: [] })
     if (get && pathname === '/api/adjustment-opportunities') return serve(route, over.opps, { groups: [] })
@@ -90,7 +100,7 @@ async function stubApi(page: Page, over: Over = {}): Promise<Stub> {
   return S
 }
 
-const posts = (S: Stub) => S.calls.filter((c) => c === 'POST /api/paper/alerts/read').length
+const posts = (S: Stub) => S.calls.filter((c) => /^POST \/api\/alerts\/\d+\/answer$/.test(c)).length
 async function shot(page: Page, id: string) {
   await page.screenshot({ path: `test-results/lane-t/${id}-${page.viewportSize()!.width}.png`, fullPage: true })
 }
@@ -164,191 +174,167 @@ test.describe('Alerts: the three routes and how a user reaches them (REQ-009 AC-
 
 // =============================================================================================== Alerts > Active
 test.describe('Alerts > Active (REQ-062 AC-4, REQ-109 AC-8, ADR-260, ADR-323, REQ-065)', () => {
-  test('ACT-1 absent: no alerts -> the empty state with the exact line, no list, nothing marked read', async ({ page }) => {
+  // Alerts > Active in the ADR-330 (3), (4) model: ONE read (GET /alerts/active) lists the alerts that need an answer; the bell number is that
+  // read's own count; an alert leaves the list when it is answered. (The earlier tests of this block covered unread stops, a mark-read POST
+  // and an "Earlier" list: that model is gone; each test below keeps its intent in the new one.)
+  const answerPosts = (page: Page) => { const sent: Array<{ url: string; body: unknown }> = []; page.on('request', (r) => { if (r.method() === 'POST' && /\/alerts\/\d+\/answer$/.test(r.url())) sent.push({ url: r.url(), body: r.postDataJSON() }) }); return sent }
+
+  test('ACT-1 absent: no alerts -> the empty state with the exact line, no list, nothing answered', async ({ page }) => {
     // Spec basis: REQ-062 AC-4 (Active lists active alerts); none for the line (searched: "No alerts yet"; the line is paperAlerts.js PAPER_ALERTS_EMPTY)
     const S = await stubApi(page)
     await openAlerts(page, 'active', 'Active')
     await expect(page.getByTestId('alerts-empty')).toBeVisible()
     await expect(page.getByTestId('empty-state-message')).toHaveText(EMPTY_ACTIVE)
     await expect(attention(page)).toHaveCount(0)
-    await expect(earlier(page)).toHaveCount(0)
     await expect(page.getByTestId('error-message')).toHaveCount(0)
-    expect(posts(S)).toBe(0) // zero unread: no POST
+    expect(posts(S)).toBe(0)
     expect(S.calls).not.toContain('GET /api/paper/alerts/records') // the records are the History tab's
   })
 
-  test('ACT-2 two unread stops: listed as the server sent them (newest first) with title, IST time, strategy and body; opening marks them read with ONE POST and they move under "Earlier"', async ({ page }) => {
-    // Spec basis: REQ-109 AC-8 (stop alerts, paper wording as sent), ADR-260 (the list is what the bell counts; read stops sit under Earlier), ADR-207 (5)
-    const g = gate()
-    const S = await stubApi(page, { rows: [STOP_PE, STOP_CE], read: { json: { unread: 0, alerts: [{ ...STOP_PE, read: true }, { ...STOP_CE, read: true }] }, wait: g.wait } })
+  test('ACT-2 two alerts: listed as the server sent them (newest first) with strategy, the server\'s text, its fired line and its answers; opening answers nothing; the bell shows the server\'s count', async ({ page }) => {
+    // Spec basis: REQ-109 AC-8 (stop alerts, paper wording as sent), ADR-330 (3), (4) (one read; the bell number is its count), ADR-207 (5)
+    const S = await stubApi(page, { rows: [STOP_PE, STOP_CE] })
+    const sent = answerPosts(page)
     await openAlerts(page, 'active', 'Active')
     const rows = attention(page).getByTestId('alert-row')
     await expect(rows).toHaveCount(2)
-    await expect(rows.nth(0).getByTestId('alert-title')).toHaveText('Paper strategy - Short Iron Condor')
-    await expect(rows.nth(0).getByTestId('alert-time')).toHaveText('26 Nov 2026, 09:59:06 IST')
     await expect(rows.nth(0).getByTestId('alert-strategy')).toHaveText('Short Iron Condor') // the quotes the API wraps names in are not shown
-    await expect(rows.nth(0).getByTestId('alert-body')).toHaveText(STOP_PE.body)
-    await expect(rows.nth(1).getByTestId('alert-time')).toHaveText('26 Nov 2026, 09:57:59 IST')
-    await expect(rows.nth(1).getByTestId('alert-body')).toHaveText(STOP_CE.body)
+    await expect(rows.nth(0).getByTestId('alert-text')).toHaveText(STOP_PE.body)
+    await expect(rows.nth(0).getByTestId('alert-fired')).toHaveText('Fired at 09:59')
+    await expect(rows.nth(0).getByTestId('alert-answer-understood')).toHaveText('Understood')
+    await expect(rows.nth(1).getByTestId('alert-text')).toHaveText(STOP_CE.body)
+    await expect(rows.nth(1).getByTestId('alert-fired')).toHaveText('Fired at 09:57')
     await expect(page.getByTestId('alerts-bell-count')).toHaveText('2')
-    await expect.poll(() => posts(S)).toBe(1)
-    g.open()
-    await expect(attention(page)).toHaveCount(0)
-    await expect(page.getByTestId('alerts-earlier-heading')).toHaveText('Earlier')
-    await expect(earlier(page).getByTestId('alert-row')).toHaveCount(2)
-    await expect(page.getByTestId('alerts-bell-count')).toHaveCount(0) // read: the badge is gone
-    expect(posts(S)).toBe(1)
-  })
-
-  test('ACT-3 only an already-read stop: it sits under "Earlier", nothing is on top, nothing is sent, the bell has no badge', async ({ page }) => {
-    // Spec basis: ADR-260 (read stops sit under Earlier, never counted)
-    const S = await stubApi(page, { rows: [STOP_OLD] })
-    await openAlerts(page, 'active', 'Active')
-    await expect(page.getByTestId('alerts-earlier-heading')).toHaveText('Earlier')
-    await expect(earlier(page).getByTestId('alert-row')).toHaveCount(1)
-    await expect(earlier(page).getByTestId('alert-time')).toHaveText('25 Nov 2026, 11:21:58 IST')
-    await expect(attention(page)).toHaveCount(0)
-    await expect(page.getByTestId('alerts-empty')).toHaveCount(0)
-    await expect(page.getByTestId('alerts-bell-count')).toHaveCount(0)
     expect(posts(S)).toBe(0)
+    expect(sent).toHaveLength(0) // looking at the list answers nothing
   })
 
-  test('ACT-4 an open adjustment record and one unread stop: the open record is first, the list length equals the bell number, the read stop is under "Earlier"', async ({ page }) => {
-    // Spec basis: ADR-260 (open records, then unread stops; the bell counts exactly what is on top), REQ-162
-    const g = gate()
-    await stubApi(page, {
-      rows: [STOP_PE, STOP_OLD],
-      read: { json: { unread: 0, alerts: [{ ...STOP_PE, read: true }, STOP_OLD] }, wait: g.wait }, // held, so the unread stop is still on top while we look
-      opps: { json: { groups: [oppGroup(12, '"Iron Condor Nov"', [OPEN_RECORD])] } },
-    })
+  test('ACT-3 answering one alert: ONE POST with that answer, the row leaves, the bell follows the server\'s new count', async ({ page }) => {
+    // Spec basis: ADR-330 (3) (an alert is closed by the user's answer; the list and the bell follow the server's re-read)
+    await stubApi(page, { rows: [STOP_PE, STOP_CE] })
+    const sent = answerPosts(page)
     await openAlerts(page, 'active', 'Active')
-    await expect(page.getByTestId('open-record-row')).toHaveCount(1)
-    const top = attention(page).locator('li')
-    await expect(top).toHaveCount(2)
-    await expect(top.nth(0)).toHaveAttribute('data-testid', 'open-record-row')
-    await expect(top.nth(1)).toHaveAttribute('data-testid', 'alert-row')
-    await expect(page.getByTestId('alerts-bell-count')).toHaveText('2') // one open record + one unread stop = the two rows on top
-    await expect(earlier(page).getByTestId('alert-row')).toHaveCount(1)
-    g.open()
+    await attention(page).getByTestId('alert-row').nth(0).getByTestId('alert-answer-understood').click()
+    await expect.poll(() => sent.length).toBe(1)
+    expect(sent[0].url).toMatch(/\/api\/alerts\/22\/answer$/)
+    expect(sent[0].body).toEqual({ answer: 'understood' })
+    await expect(attention(page).getByTestId('alert-row')).toHaveCount(1)
+    await expect(page.getByTestId('alerts-bell-count')).toHaveText('1')
   })
 
-  test('ACT-5 the open record shows the trade, its time and the rule\'s words, and "Compare approaches" opens the Strategy Builder compare for that trade and that record', async ({ page }) => {
-    // Spec basis: REQ-156 / REQ-162 AC-3 (the compare answers the open record: &opp=<id>), ADR-260 (each open alert carries its Compare approaches link), ADR-308 (4) (no pick from an alert link)
-    await stubApi(page, { opps: { json: { groups: [oppGroup(12, '"Iron Condor Nov"', [OPEN_RECORD])] } } })
+  test('ACT-4 an open adjustment record is NOT listed on Active and not added to the bell: the list length equals the server\'s count (ADR-330 (4))', async ({ page }) => {
+    // Spec basis: ADR-330 (4) (open adjustment records are no longer counted by the bell; they live in Adjustment opportunities)
+    await stubApi(page, { rows: [STOP_PE], opps: { json: { groups: [oppGroup(12, 'Iron Condor Nov', [OPEN_RECORD])] } } })
     await openAlerts(page, 'active', 'Active')
-    const rec = page.getByTestId('open-record-row')
-    await expect(rec.getByTestId('open-record-strategy')).toHaveText('Iron Condor Nov')
-    await expect(rec.getByTestId('open-record-time')).toHaveText('26 Nov 2026, 10:05:00 IST')
-    await expect(rec.getByTestId('open-record-text')).toHaveText('Delta above 0.3')
-    const link = rec.getByTestId('open-record-compare')
-    await expect(link).toHaveText('Compare approaches')
-    await expect(link).toHaveAttribute('href', '/strategy/builder?adjust=12&opp=5')
-    await link.click()
-    await expect(page).toHaveURL(/\/strategy\/builder\?adjust=12&opp=5$/)
-    await expect(page.getByTestId('alerts')).toHaveCount(0)
+    await expect(attention(page).getByTestId('alert-row')).toHaveCount(1)
+    await expect(page.getByTestId('open-record-row')).toHaveCount(0)
+    await expect(page.getByTestId('alerts-bell-count')).toHaveText('1')
   })
 
-  test('ACT-6 a strategy with no name is shown as "Strategy <id>", on a stop and on an open record', async ({ page }) => {
-    // Spec basis: none (searched: "Strategy <id>", alerts name fallback; AlertsPage.vue's own fallback, fail closed: no guessed name)
-    await stubApi(page, { rows: [{ ...STOP_PE, strategy_id: 31, strategy_name: null }], opps: { json: { groups: [oppGroup(40, null, [OPEN_RECORD])] } } })
+  test('ACT-5 the answers of an alert are exactly the server\'s list: each is a button with the server\'s label', async ({ page }) => {
+    // Spec basis: ADR-330 (3) (the choices are the server's, printed as sent)
+    const row = { ...toActive(STOP_PE), answers: [{ code: 'understood', label: 'Understood' }, { code: 'remind_later', label: 'Remind me later' }] }
+    await stubApi(page, { active: { json: { count: 1, alerts: [row] } } })
+    await openAlerts(page, 'active', 'Active')
+    await expect(page.getByTestId('alert-answer-understood')).toHaveText('Understood')
+    await expect(page.getByTestId('alert-answer-remind_later')).toHaveText('Remind me later')
+    await expect(attention(page).getByRole('button')).toHaveCount(2)
+  })
+
+  test('ACT-6 a strategy with no name is shown as "Strategy <id>"', async ({ page }) => {
+    // Spec basis: none (searched: "Strategy <id>"; AlertsPage.vue plainName fallback)
+    await stubApi(page, { rows: [{ ...STOP_PE, strategy_id: 31, strategy_name: null }] })
     await openAlerts(page, 'active', 'Active')
     await expect(page.getByTestId('alert-strategy')).toHaveText('Strategy 31')
-    await expect(page.getByTestId('open-record-strategy')).toHaveText('Strategy 40')
   })
 
-  test('ACT-7 a body that begins with the title repeats nothing: the title shows once (U23)', async ({ page }) => {
+  test('ACT-7 a record body that begins with the title repeats nothing: the title shows once (U23), on History', async ({ page }) => {
     // Spec basis: none (searched: U23, alert title repeated; AlertsPage.vue alertBody and the owner's U23 wording)
-    await stubApi(page, { rows: [{ ...STOP_PE, title: 'Stop-loss', body: 'Stop-loss: NIFTY 1 Dec 25550 PE crossed below 98.10; exited at 98.00.' }] })
-    await openAlerts(page, 'active', 'Active')
-    await expect(page.getByTestId('alert-title')).toHaveText('Stop-loss')
-    await expect(page.getByTestId('alert-body')).toHaveText('NIFTY 1 Dec 25550 PE crossed below 98.10; exited at 98.00.')
+    await stubApi(page, { records: { json: { records: [{ ...REC_STOP, title: 'Stop-loss', body: 'Stop-loss: NIFTY 1 Dec 25550 PE crossed below 98.10; exited at 98.00.' }] } } })
+    await openAlerts(page, 'history', 'History')
+    await expect(page.getByTestId('record-title')).toHaveText('Stop-loss')
+    await expect(page.getByTestId('record-body')).toHaveText('NIFTY 1 Dec 25550 PE crossed below 98.10; exited at 98.00.')
   })
 
-  test('ACT-8 a body that does not begin with the title is shown whole', async ({ page }) => {
+  test('ACT-8 a record body that does not begin with the title is shown whole, on History', async ({ page }) => {
     // Spec basis: REQ-109 AC-8 (text as sent by the server, never cut)
-    await stubApi(page, { rows: [STOP_PE] })
-    await openAlerts(page, 'active', 'Active')
-    await expect(page.getByTestId('alert-body')).toHaveText(STOP_PE.body)
+    await stubApi(page, { records: { json: { records: [REC_STOP] } } })
+    await openAlerts(page, 'history', 'History')
+    await expect(page.getByTestId('record-body')).toHaveText(REC_STOP.body)
   })
 
-  test('ACT-9 failed read (500 with the catalogue message): the four parts exactly, no rows, no empty line, no mark-read POST, no badge', async ({ page }) => {
-    // Spec basis: REQ-065 (four-part error message), CLAUDE.md hard rule fail closed (no guessed count), paperAlerts.js dropAlerts
-    const S = await stubApi(page, { rows: [STOP_PE], alerts: { status: 500, json: CATALOGUE } })
+  test('ACT-9 failed read (500 with the catalogue message): the four parts exactly, a Retry, no rows, no empty line, no badge', async ({ page }) => {
+    // Spec basis: REQ-065 (four-part error message), D-TD-2 (the server's message keeps its four parts and gets a Retry), CLAUDE.md fail closed (no guessed count)
+    const S = await stubApi(page, { rows: [STOP_PE], active: { status: 500, json: CATALOGUE } })
     await openAlerts(page, 'active', 'Active')
-    await expect(page.getByTestId('alerts-error-what')).toHaveText(CATALOGUE.what_happened)
-    await expect(page.getByTestId('alerts-error-impact')).toHaveText(CATALOGUE.impact)
-    await expect(page.getByTestId('alerts-error-blocked')).toHaveText(CATALOGUE.what_is_blocked)
-    await expect(page.getByTestId('alerts-error-next')).toHaveText(CATALOGUE.next_action)
-    await expect(page.getByTestId('alert-row')).toHaveCount(0)
+    await expectParts(page, 'alerts-error', { what: CATALOGUE.what_happened, impact: CATALOGUE.impact, blocked: CATALOGUE.what_is_blocked, next: CATALOGUE.next_action })
+    await expect(page.getByTestId('alerts-error-retry')).toBeVisible()
+    await expect(attention(page)).toHaveCount(0)
     await expect(page.getByTestId('alerts-empty')).toHaveCount(0)
     await expect(page.getByTestId('alerts-bell-count')).toHaveCount(0)
     expect(posts(S)).toBe(0)
   })
 
   test('ACT-10 not found (404 with the catalogue message): shown the same way, nothing else', async ({ page }) => {
-    // Spec basis: REQ-065; fail closed
-    await stubApi(page, { alerts: { status: 404, json: { ...CATALOGUE, what_happened: 'That list was not found.' } } })
+    // Spec basis: REQ-065
+    await stubApi(page, { rows: [STOP_PE], active: { status: 404, json: { ...CATALOGUE, what_happened: 'That list was not found.' } } })
     await openAlerts(page, 'active', 'Active')
     await expect(page.getByTestId('alerts-error-what')).toHaveText('That list was not found.')
-    await expect(page.getByTestId('alert-row')).toHaveCount(0)
+    await expect(attention(page)).toHaveCount(0)
     await expect(page.getByTestId('alerts-empty')).toHaveCount(0)
   })
 
-  test('ACT-11 connection refused: the neutral four-part message, no rows, no guessed number', async ({ page }) => {
-    // Spec basis: REQ-065 (neutral fallback when the failure carries no catalogue message), fail closed
-    await stubApi(page, { rows: [STOP_PE], alerts: { abort: true } })
+  test('ACT-11 connection refused: the one failed-load sentence and a Retry, no rows, no guessed number', async ({ page }) => {
+    // Spec basis: REQ-065; D-TD-2 (no server message = ONE sentence and a Retry); fail closed
+    await stubApi(page, { rows: [STOP_PE], active: { abort: true } })
     await openAlerts(page, 'active', 'Active')
-    await expectParts(page, 'alerts-error', NEUTRAL)
-    await expect(page.getByTestId('alert-row')).toHaveCount(0)
-    await expect(page.getByTestId('alerts-empty')).toHaveCount(0)
+    await expectListFailed(page, 'alerts-error')
+    await expect(attention(page)).toHaveCount(0)
     await expect(page.getByTestId('alerts-bell-count')).toHaveCount(0)
   })
 
-  test('ACT-12 a 500 whose body is not a catalogue message (a framework detail) shows the neutral message, never the server\'s text', async ({ page }) => {
-    // Spec basis: REQ-065 (only catalogue text is ever shown)
-    await stubApi(page, { alerts: { status: 500, json: { detail: 'Traceback: psycopg2.OperationalError' } } })
+  test('ACT-12 a 500 whose body is not a catalogue message (a framework detail) shows the one failed-load sentence, never the server\'s text', async ({ page }) => {
+    // Spec basis: REQ-065 / services/api.js (a framework "detail" is never shown)
+    await stubApi(page, { rows: [STOP_PE], active: { status: 500, json: { detail: 'Traceback: secret stack' } } })
     await openAlerts(page, 'active', 'Active')
-    await expectParts(page, 'alerts-error', NEUTRAL)
-    await expect(page.getByTestId('error-message')).not.toContainText('Traceback')
+    await expectListFailed(page, 'alerts-error')
+    await expect(page.getByTestId('alerts')).not.toContainText('Traceback')
   })
 
-  test('ACT-13 ambiguous answer (a negative unread count) is treated as a failed read: neutral message, no rows', async ({ page }) => {
-    // Spec basis: CLAUDE.md hard rule fail closed; paperAlerts.js takeAlerts ("an answer that does not read leaves NO count and NO rows")
-    const S = await stubApi(page, { alerts: { json: { unread: -1, alerts: [STOP_PE] } } })
+  test('ACT-13 ambiguous answer (a negative count) is treated as a failed read: the failed-load sentence, no rows', async ({ page }) => {
+    // Spec basis: REQ-065; fail closed (no guessed count): paperAlerts.js takeActive
+    await stubApi(page, { active: { json: { count: -1, alerts: [toActive(STOP_PE)] } } })
     await openAlerts(page, 'active', 'Active')
-    await expectParts(page, 'alerts-error', NEUTRAL)
-    await expect(page.getByTestId('alert-row')).toHaveCount(0)
-    expect(posts(S)).toBe(0)
+    await expectListFailed(page, 'alerts-error')
+    await expect(attention(page)).toHaveCount(0)
   })
 
-  test('ACT-14 ambiguous answer (a row with no created_at) is treated as a failed read: neutral message, not the good rows beside it', async ({ page }) => {
-    // Spec basis: CLAUDE.md hard rule fail closed
-    await stubApi(page, { alerts: { json: { unread: 2, alerts: [STOP_PE, { id: 23, title: 'x', body: 'y', strategy_id: 1, strategy_name: null, read: false }] } } })
+  test('ACT-14 ambiguous answer (a row with no text) is treated as a failed read: the failed-load sentence, not the good rows beside it', async ({ page }) => {
+    // Spec basis: REQ-065; fail closed: one unreadable row makes the whole read unreadable
+    const bad = { ...toActive(STOP_CE) } as Record<string, unknown>
+    delete bad.text
+    await stubApi(page, { active: { json: { count: 2, alerts: [toActive(STOP_PE), bad] } } })
     await openAlerts(page, 'active', 'Active')
-    await expectParts(page, 'alerts-error', NEUTRAL)
-    await expect(page.getByTestId('alert-row')).toHaveCount(0)
+    await expectListFailed(page, 'alerts-error')
+    await expect(attention(page)).toHaveCount(0)
   })
 
-  test('ACT-15 the mark-read POST fails (500): the stops stay on top as unread, no error is shown, the bell keeps the number', async ({ page }) => {
-    // Spec basis: paperAlerts.js markPaperAlertsRead ("a failure keeps what is shown; the next read brings the server's count back"); none in the spec for the wording
-    const S = await stubApi(page, { rows: [STOP_PE, STOP_CE], read: { status: 500, json: CATALOGUE } })
+  test('ACT-15 the answer POST fails (500): the alert stays on the list, the server\'s message is shown under it, the bell keeps the number', async ({ page }) => {
+    // Spec basis: ADR-330 (3) (nothing is closed without the server's yes); REQ-065
+    await stubApi(page, { rows: [STOP_PE, STOP_CE], answer: { status: 500, json: CATALOGUE } })
     await openAlerts(page, 'active', 'Active')
-    await expect.poll(() => posts(S)).toBe(1)
+    await attention(page).getByTestId('alert-row').nth(0).getByTestId('alert-answer-understood').click()
+    await expect(page.getByTestId('alert-answer-error')).toBeVisible()
     await expect(attention(page).getByTestId('alert-row')).toHaveCount(2)
-    await expect(page.getByTestId('error-message')).toHaveCount(0)
-    await expect(earlier(page)).toHaveCount(0)
     await expect(page.getByTestId('alerts-bell-count')).toHaveText('2')
   })
 
-  test('ACT-16 the open records cannot be read (500): the stops still list and the bell counts only the stops', async ({ page }) => {
-    // Spec basis: paperAlerts.js ("a failed read of them leaves the paper count alone"); ADR-260
-    const g = gate()
-    await stubApi(page, { rows: [STOP_PE], opps: { status: 500, json: CATALOGUE }, read: { json: { unread: 0, alerts: [{ ...STOP_PE, read: true }] }, wait: g.wait } })
+  test('ACT-16 the open adjustment records cannot be read (500): the alerts still list and the bell counts the server\'s number', async ({ page }) => {
+    // Spec basis: ADR-330 (4) (the alerts read does not wait for, or depend on, the adjustment read)
+    await stubApi(page, { rows: [STOP_PE], opps: { status: 500, json: {} } })
     await openAlerts(page, 'active', 'Active')
-    await expect(page.getByTestId('alert-row')).toHaveCount(1)
-    await expect(page.getByTestId('open-record-row')).toHaveCount(0)
+    await expect(attention(page).getByTestId('alert-row')).toHaveCount(1)
     await expect(page.getByTestId('alerts-bell-count')).toHaveText('1')
-    g.open()
   })
 
   test('ACT-17 stops of two different trades that carry the one name can be told apart in the list (R-07 / N-14)', async ({ page }) => {
@@ -413,7 +399,7 @@ test.describe('Alerts > History (REQ-062 AC-4, REQ-109 AC-7, AC-8, ADR-323, D-22
     // Spec basis: REQ-065 (neutral fallback), fail closed
     await stubApi(page, { records: { abort: true } })
     await openAlerts(page, 'history', 'History')
-    await expectParts(page, 'records-error', NEUTRAL)
+    await expectListFailed(page, 'records-error')
     await expect(page.getByTestId('record-row')).toHaveCount(0)
     await expect(page.getByTestId('alerts-empty')).toHaveCount(0)
   })
@@ -422,7 +408,7 @@ test.describe('Alerts > History (REQ-062 AC-4, REQ-109 AC-7, AC-8, ADR-323, D-22
     // Spec basis: CLAUDE.md hard rule fail closed; paperAlerts.js loadPaperRecords
     await stubApi(page, { records: { json: { records: [REC_STOP, { kind: 'stop', strategy_id: 1, title: 't', body: 'b' }] } } })
     await openAlerts(page, 'history', 'History')
-    await expectParts(page, 'records-error', NEUTRAL)
+    await expectListFailed(page, 'records-error')
     await expect(page.getByTestId('record-row')).toHaveCount(0)
   })
 

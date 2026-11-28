@@ -64,7 +64,7 @@ test('AC-2: two pushes with different times are shown as sent; a socket kill sho
   await sock.kill()
   const answer = await (await fallback).json()
   expect(answer.state).toBe('NOT_CONNECTED')
-  await expect(page.getByTestId('index-state')).toHaveText('Index values unavailable.')
+  await expect(page.getByTestId('price-notice-text')).toContainText('Prices are not live.') // ADR-330 (56): with an answer in hand the page's ONE price notice says it; the page does not repeat it (UX-A09)
   await expect(panel.getByTestId('index-value')).toHaveText('Not available')
   await expect(page.getByTestId('index-panel-SENSEX').getByTestId('index-value')).toHaveText('Not available')
 })

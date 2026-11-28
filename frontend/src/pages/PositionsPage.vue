@@ -75,7 +75,8 @@ const brokerOffLine = computed(() => plain(result.value?.real_pnl?.reason) ?? NO
 // I-207 (F3, TG D-TG-3): a refused read while the connection read says not connected is ONE plain sentence: the server's own sentence when it
 // reads as a sentence (never JSON or a class code), else the not-connected line. Printed once, in the Real block; the totals card says only the dash.
 const looksRaw = (t) => plain(t) === null || /error_class|[A-Z]+_[A-Z]+/.test(t)
-const refusedLine = computed(() => { const w = errorParts.value?.what_happened; return errorParts.value === NEUTRAL_PARTS || looksRaw(w) ? NOT_CONNECTED_LINE : w.trim() })
+// a refusal whose four parts all read as sentences keeps them (REQ-065, D-TD-2: the server's message keeps its four parts and gets a Retry); anything else (JSON, a class code, the neutral fallback) is the one plain sentence
+const cleanParts = computed(() => { const p = errorParts.value; return p && p !== NEUTRAL_PARTS && ['what_happened', 'impact', 'what_is_blocked', 'next_action'].every((k) => !looksRaw(p[k])) ? p : null })
 // ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
 // shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.
 const realTotals = computed(() => {
@@ -159,7 +160,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="filter !== 'paper'" :data-state="realState" data-testid="real-state">
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
-    <div v-else-if="errorParts && notConnected" data-testid="positions-not-connected"><LoadFailed :text="refusedLine" prefix="positions-error" @retry="loadReal" /></div>
+    <div v-else-if="errorParts && notConnected" data-testid="positions-not-connected"><ListLoadFailed v-if="cleanParts" :parts="cleanParts" compact prefix="positions-error" @retry="loadReal" /><LoadFailed v-else :text="NOT_CONNECTED_LINE" prefix="positions-error" @retry="loadReal" /></div>
     <ListLoadFailed v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" @retry="loadReal" />
     <p v-else-if="brokerOff" class="text-sm text-ink-muted" data-testid="positions-not-connected">{{ brokerOffLine }}</p>
     <div v-else-if="result" class="grid gap-4 text-sm">

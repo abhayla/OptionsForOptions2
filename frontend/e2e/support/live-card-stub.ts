@@ -33,7 +33,7 @@ export type Row = {
   updated_at: string; open_opportunities_text?: string | null
 }
 export const row = (id: number, name: string | null, status_word: Row['status_word'], updated_at: string, extra: Partial<Row> = {}): Row =>
-  ({ id, name: name === null ? null : `"${name}"`, underlying: 'NIFTY', status_word, updated_at, ...extra })
+  ({ id, name: name === null ? null : `"${name}"`, underlying: 'NIFTY', status_word, updated_at, ...(status_word === 'Running' ? { position_kind: 'paper' } : {}), ...extra }) // ADR-330 (64): the list row says whose position it is; a Running paper trade carries 'paper' (its Stops and Exit links)
 
 // The contracts of the stub catalogue: id -> token. A strategy follows its own contracts, so the socket knows whose follow it is.
 export const CONTRACTS = [
@@ -98,6 +98,8 @@ export type Stub = {
   posts: { path: string; body: unknown }[]
   calls: string[]
   push: (owner: number, msg: object) => void
+  /** the answer of GET /api/market/indices (the page's one price notice reads it) */
+  indices: unknown
   drop: (owner: number) => Promise<void>
   /** the connection of the newest socket of this owner */
   last: (owner: number) => Stub['sockets'][number]
@@ -115,6 +117,7 @@ export async function stubLive(page: Page, over: Partial<Stub> = {}): Promise<St
   const S: Stub = {
     strategies: ok({ strategies: [] }), paperList: ok(paperList([])), alerts: ok({ unread: 0, alerts: [] }), opps: { status: 503, json: {} }, dismiss: () => ({ status: 503, json: {} }),
     book: {}, saved: {}, catalogue: ok({ contracts: CONTRACTS }), outcome: { status: 503, json: {} },
+    indices: { state: 'LIVE', answered_at: T_NOW, last_price_at: T_NOW, market_closed: false, indices: [] }, // ADR-330 (56): the page's ONE price notice reads this answer; live by default so the cards show their own lines (UX-A09)
     auto: {}, sockets: [], follows: [], refuseSockets: false, posts: [], calls: [],
     push: (owner, msg) => S.last(owner).pushStamped(msg), // same payload plus the version stamp (REQ-133 AC-2)
     drop: async (owner) => { S.refuseSockets = true; await S.last(owner).ws.close() },
@@ -138,7 +141,7 @@ export async function stubLive(page: Page, over: Partial<Stub> = {}): Promise<St
     const dis = /^\/api\/adjustment-opportunities\/(\d+)\/dismiss$/.exec(pathname)
     if (dis && req.method() === 'POST') { const b = req.postDataJSON(); S.posts.push({ path: pathname, body: b }); return serve(route, S.dismiss(Number(dis[1]), b)) }
     if (get && pathname === '/api/paper/alerts') return serve(route, S.alerts)
-    if (get && pathname === '/api/market/indices') return route.fulfill({ json: { state: 'NOT_CONNECTED', answered_at: T_NOW, last_price_at: null, market_closed: false, indices: [] } })
+    if (get && pathname === '/api/market/indices') return route.fulfill({ json: S.indices })
     if (get && pathname === '/api/catalogue/NIFTY/contracts') { void searchParams; return serve(route, S.catalogue) }
     const book = /^\/api\/paper\/strategies\/(\d+)$/.exec(pathname)
     if (get && book) return serve(route, S.book[Number(book[1])] ?? { status: 404, json: { detail: 'not found' } })
