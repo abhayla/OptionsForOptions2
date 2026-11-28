@@ -1463,7 +1463,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     repeat of the same key, strategy and orders answers the first result and stores nothing; see ``request_key``."""
     stored = await _load_strategy(db, user_ref, strategy_id)
     key = body.client_request_id
-    sent = body.model_dump(mode="json", exclude={"client_request_id"})
+    sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id"})
     if key is not None:
         first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
         if first is not None:  # a repeat: the first result, nothing stored
@@ -1471,8 +1471,8 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
                                cancelled=first.get("result", {}).get("cancelled_stops", []))
     stage = {"commit_started": False}
     try:
-        placed_at, cancelled = await _place_orders(stored, body, (db, user_ref, ctx, feed, now, rates,
-                                                                  tracked_reader, settings), stage)
+        placed_at, cancelled = await _place_orders(strategy_id, stored, body, (
+            db, user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
     except BaseException:
         if key is not None and not stage["commit_started"]:  # refused with nothing stored: the key is free again
             await request_key.free(keys, user_ref, key)
@@ -1493,13 +1493,13 @@ async def _stops_out(db: Any, stored: Any, state: Mapping[int, Any], cancelled: 
             for t in cancelled]
 
 
-async def _place_orders(stored: Any, body: PaperOrdersIn, deps: tuple, stage: dict  # noqa: C901
+async def _place_orders(strategy_id: int, stored: Any, body: PaperOrdersIn, deps: tuple,  # noqa: C901
+                        stage: dict
                         ) -> tuple[datetime.datetime, list[dict]]:
     """The order door's body: every refusal, the store and the commit. Returns the time it placed at and the stops it
     cancelled (read in the transaction that cancelled them); ``stage['commit_started']`` is set just before the commit
     (from there the outcome is unknown to the caller until it returns)."""
     db, user_ref, ctx, feed, now, rates, tracked_reader, settings = deps
-    strategy_id = stored.id
     for order in body.orders:
         if order.kind != "exit" and order.price > 0:  # C10: exit prices are the server's; 0 or less: below
             _check_price(order.price)

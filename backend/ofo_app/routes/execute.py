@@ -307,7 +307,7 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
     keys: Annotated[request_key.KeyStore, Depends(request_key.get_key_store)],
 ) -> ExecuteOut:
     key = body.client_request_id
-    sent = body.model_dump(mode="json", exclude={"client_request_id", "seq"})
+    sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id", "seq"})
     claimed = committing = False
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else

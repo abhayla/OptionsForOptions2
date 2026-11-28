@@ -80,7 +80,7 @@ class RealPnlOut(ApiModel):
 
     value: Money | None
     pnl_text: CatalogueText | None
-    state: Literal["stated", "empty", "partial", "stale"]
+    state: Literal["stated", "empty", "partial", "stale", "not_connected"]  # FD2 D-2: not_connected = no session
     reason: CatalogueText | None
     source: Literal["Zerodha"]
     read_at: datetime.datetime
@@ -97,6 +97,9 @@ class PositionsOut(ApiModel):
     outside_lots: int | None  # those units in lots, summed; null when a lot size cannot be read exactly (never guessed)
     blocked: bool
     blocked_strategy_ids: list[int]  # W-108's blocked set, ascending
+    #: FD2 item 3 D-2: false when no Zerodha session is stored: the Real part is ``real_pnl.state == "not_connected"``
+    #: with its reason; nothing was read at Zerodha. True in every other answer.
+    broker_connected: bool = True
 
 
 def _refuse(template: str) -> StrategyRefused:
@@ -303,14 +306,24 @@ def _answer(result: ra.Attribution, snap: _ReadSnapshot, now: datetime.datetime)
         "blocked": bool(blocked_ids), "blocked_strategy_ids": blocked_ids})
 
 
+def _not_connected(now: datetime.datetime) -> PositionsOut:
+    """No stored Zerodha session: the answer states it (the gate's own sentence) and carries no figure or group."""
+    said = render("gate_broker_not_connected")
+    real = {"value": None, "pnl_text": None, "state": "not_connected", "reason": said, "source": SOURCE,
+            "read_at": now, "caption": said, "excludes_note": None}
+    return PositionsOut.model_validate({
+        "read_at": now, "real_pnl": real, "pnl_text": None, "strategies": [], "has_outside": False,
+        "outside_lots": None, "blocked": False, "blocked_strategy_ids": [], "broker_connected": False})
+
+
 @router.get("/positions", response_model=PositionsOut)
 async def read_positions(
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
     clock: Annotated[Callable[[], datetime.datetime], Depends(get_execute_clock)],
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
 ) -> PositionsOut:
-    if session is None:
-        raise _refuse("gate_broker_not_connected")
+    if session is None:  # FD2 D-2: a calm state the page shows, not a red 409 on every load (ADR-330 (63))
+        return _not_connected(clock())
     catalogue = await load_catalogue(db)
     snap = _read(session, catalogue)
     now = clock()
