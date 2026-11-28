@@ -39,8 +39,12 @@ LINE = re.compile(r"request (\w+) (\S+) (\d+) ([\d.]+)ms(?: db=([\d.]+)ms/(\d+)q
 # MEASURED: with that read stubbed out the counts are exactly 23 / 19 / 18 again, so it is the only added statement. It
 # is needed for correctness (ADR-330 (19)(b): the kind decides which stop rows apply; an unknown kind fails closed), so
 # the ceilings rise by one, not the guard's meaning: a second added statement still fails.
+# FD5 item 1: plan-watch runs ONE more (25): the armed lines read the position's kind (``strategy_store.kinds_of``,
+# FD3 round 2 / R6, ADR-330 (64): a real or unreadable position has no paper stop). MEASURED: with
+# ``_stored_kind_or_empty`` stubbed out the batch of one row counts 24 (was 23), so the kind read is the only
+# statement added; it runs only when the strategy has armed rows. Needed for correctness, so the ceiling rises by one.
 CEILINGS = {  # route -> most statements one request may run: today's counts, an N+1 regression guard
-    "plan-watch": 24,
+    "plan-watch": 25,
     "adjustment-check": 20,
     "adjustment-plan": 19,
     "paper/strategies/{id}": 11,
