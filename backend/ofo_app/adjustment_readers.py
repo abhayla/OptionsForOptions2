@@ -731,7 +731,7 @@ async def read_market(tracked: Tracked, ctx: Any, *, extra_ids: Iterable[str] = 
     provider = ctx.provider
     listed = listed_options(provider, underlying)
     scn = _scenario()
-    expiry_kind = _expiry_kind(provider, underlying, min(x.expiry for x in position.legs), listed, scn)  # nearest leg
+    expiry_kind = _expiry_kind(provider, underlying, expiry, listed, scn)  # the nearest leg's
     live = live_market.current_feed()  # F-92: the position's own legs are held for the read, like the paper book's
     first_index = provider.underlying_quote(underlying)  # only to centre the window; never used after the hold
     window_spot = await _window_spot(ctx, underlying, first_index, now)
@@ -922,7 +922,7 @@ async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any], confir
     states: no context / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
     spot); the IV not readable (no forward, unpriced chain, a read that fails) -> the facts with ``entry_atm_iv``
     None. ADR-330 (39): the spot is the index's LIVE price (``priced``: AVAILABLE and above 0), the one rule a leg's
-    price follows; a not-live value (old, flagged, or the feed not connected) is stored only when the user confirmed
+    price follows; a not-live value (old, or the feed not connected; never a flagged quote) is stored only when the user confirmed
     the not-live line (``confirmed``, ``_index_value_not_live``: its own flag rule), never silently (K2 F1: a ticked
     first fill with the feed down stores the held value, as ``record_basket_facts`` does). ``feed``: when given, an
     index nobody holds yet is held on the shared fan-out until its first quote (``_index_quote_held``); None = the

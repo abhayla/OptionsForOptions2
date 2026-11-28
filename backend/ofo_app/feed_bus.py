@@ -192,8 +192,10 @@ async def write_heartbeat(client: Any, at: datetime.datetime) -> None:
 
 def judge_heartbeat(raw: Any, now: datetime.datetime) -> str:
     """``stale`` when older than HEARTBEAT_STALE_S, ``fresh`` otherwise; ``unreadable`` when missing, not text, not a
-    time with a zone, or more than HEARTBEAT_SKEW_S ahead of ``now`` (never read as fresh: a writer whose clock runs
-    100 s ahead must not stretch the two-minute window to 220 s, #879)."""
+    time with a zone, or more than HEARTBEAT_SKEW_S ahead of ``now`` (never read as fresh: a stamp from the future is
+    not a live reading). Limit (Opus review F1, #879): a writer whose clock runs ahead and then dies still reads fresh
+    until real time passes its last stamp plus HEARTBEAT_STALE_S; only a reader-side clock (noting when the stamp
+    last CHANGED) or a store-side expiry closes that, which is the owner lane's call (RESULTS-lane-fr)."""
     text = _text(raw)
     try:
         at = datetime.datetime.fromisoformat(text) if text else None

@@ -1,4 +1,4 @@
-STATUS 08:30 | items 1-6: Fixed, not tested live (tests green; Opus review and pre-push gate pending) | next push: after the review | blocker: none
+STATUS 08:55 | items 1-6: Fixed, not tested live (tests green; Opus review done, gate pending) | next push: after the review | blocker: none
 
 # Lane FR: readers and evaluators the worker depends on (28 Nov 2026)
 
@@ -48,6 +48,18 @@ test_dropped_and_skew_fe2_1128, test_monitor_reports_fe2_1128, test_background_c
    `entry_facts_store.BasketFacts` (e.g. `spot_at`) and `_index_spot_held` returning `(spot, at)`; `entry_facts_store.py`
    is not on this lane's list. Written down as the gap; nothing stored today says the value was old.
 
+5. Opus review F1 (#879): the one-sided 5 s rule (the brief's decision text) does not shorten the window after a
+   writer whose clock runs ahead DIES: stamp 10:01:40 from a 100 s-ahead worker that died at 10:00:00 reads fresh from
+   10:01:35 to 10:03:40 (stale only 221 s after death). `worker_watch.py:94` also sends "worker-recovered" when
+   `unreadable` turns `fresh`. Structural fix (one clock): the reader notes when the stamp last CHANGED by its own
+   clock, or the beat is written with a store-side expiry (`SET ... PX`); needs `worker_watch.py`, `monitoring_state.py`
+   and the worker's writer (not on this lane's list). Recommendation: reader-side "stamp changed within 120 s".
+6. Opus review F2 (pre-existing, #861 area): `adjustment_check.py:404` `if resolved is not None and kind:` leaves
+   `stops` None for an unknown kind, so an iron condor's 2x-credit stop (which does not depend on the kind) gets no
+   result at all. Fix: call `sif.stops_of(resolved, money, sif.StageAt(kind, days))` also for `kind == ""`
+   (`stops_of` now names the unknown kind for the % lines and keeps the credit line's amount); then `days_left` for the
+   state stays None. Needs `adjustment_check.py`; file as a deferred issue.
+
 ## Decided for the owner
 
 - Unknown-kind stop answer: `stops is None` and `days_left is None` is the unknown-kind state (that is how
@@ -68,11 +80,24 @@ Proposed by FE2, unchanged here, to be added by FC3 (this lane does not touch `t
 
 None.
 
+## Review findings not fixed here
+
+- F3 (nit, item 3): with an unknown kind, `_t10b` skips the "no T-10b value in this stage" answer (a copy with T-10b on
+  but every stage blank fires a flag instead of "not checked"). Alert only, no order path, rare (the current month's
+  future is listed on expiry day). Left as the brief's decision text says (call `_limit` only when `days_left` is known).
+- F1 and F2: above, under "For the owner lane" 5 and 6.
+- Fixed from the review: F4 (docstring: a flagged quote is never stored), F5 (duplicate `min(...)` in `read_market`),
+  and F1's docstring now states the limit instead of promising the 220 s window is shortened.
+
+## To file as deferred issues
+
+F2 above; F1 above; F3 above.
+
 ## Not done
 
-- Opus review of the whole diff and the pre-push gate (`PREPUSH_JOBS=1 python scripts/orchestrator/prepush.py --jobs 1`):
-  see the STATUS line for their state.
-- `tests_app/test_entry_facts.py` was slow on the cloud database; see its result below if listed.
+- The pre-push gate result is on the STATUS line / the last section below.
+- Also fixed: `tests_app/test_execution_return.py` `_market` fake index quote had no `health` (2 tests failed on the base
+  too, `priced()` needs it, ADR-330 (39)); now 42 pass.
 
 ## PC steps
 
@@ -89,6 +114,6 @@ entry facts are stored with the held index value.
 | task | model | minutes |
 |---|---|---|
 | items 1 to 6, tests, RESULTS | Sonnet (this lane) | about 60 |
-| review of the whole diff | Opus | pending |
+| review of the whole diff | Opus | about 6 |
 
 SAFE TO CLOSE: not yet (review and gate pending)
