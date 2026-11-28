@@ -75,7 +75,11 @@ EXEMPT: dict[Key, tuple[str, str]] = {
     **_entries("display", "open-interest block of the outcome", "outcome_oi.py",
                {"oi_block": "option_chain_snapshot"}),
     **_entries("display", "adjustment screen read of the market it shows", "adjustment_readers.py",
-               {"read": "underlying_quote option_chain_snapshot latest_day_stats", "_window_spot": "resolve_spot"}),
+               {"held_read.read": "underlying_quote option_chain_snapshot latest_day_stats",
+                "_window_spot": "resolve_spot"}),
+    **_entries("awaiting_phase_8", "the entry facts' decision read of the index (plan section 6 row 13), now inside "
+                                   "the closure of _index_quote_held; moves into read_market in phase 8",
+               "adjustment_readers.py", {"_index_quote_held.read": "underlying_quote"}),
     **_entries("display", "paper book display (the exit read goes through paper_exit.live_exit_prices)",
                "routes/paper.py",
                {"_hold_until_ready": "underlying_quote read_snapshot", "_snapshot": "read_snapshot"}),
@@ -105,7 +109,12 @@ def scan(rel: str, source: str) -> tuple[list[tuple[str, int, str]], list[str]]:
 
     def walk(node: ast.AST, func: str) -> None:
         for child in ast.iter_child_nodes(node):
-            inner = child.name if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)) else func
+            if isinstance(child, (ast.FunctionDef, ast.AsyncFunctionDef)):
+                # FD5 3.7: a closure is keyed by its full path (``outer.inner``), so a read in a nested function can
+                # never ride on the exemption of an unrelated function that happens to share the inner name
+                inner = child.name if func == "<module>" else f"{func}.{child.name}"
+            else:
+                inner = func
             if isinstance(child, ast.ImportFrom):
                 issues.extend(f"aliased import: {rel}:{child.lineno} imports {a.name} as {a.asname}; a call through "
                               f"the alias is invisible, import it by its own name" for a in child.names
@@ -205,6 +214,16 @@ def test_mutation_an_aliased_import_gives_one_problem(source):
     found = problems({"ofo_app/x.py": source}, exempt={})
     assert len(found) == 1
     assert found[0].startswith("aliased import: ofo_app/x.py:1")
+
+
+def test_mutation_a_closure_is_not_covered_by_an_exemption_of_another_function_with_its_inner_name():
+    """FD5 3.7: the scan keys a nested function by its full path, so ``outer.read`` cannot ride on ``read``'s entry."""
+    source = "def outer(p):\n    def read():\n        return p.underlying_quote('NIFTY')\n    return read()\n"
+    exempt = {("ofo_app/x.py", "read", "underlying_quote"): ("display", "an unrelated function of the same name")}
+    found = problems({"ofo_app/x.py": source}, exempt=exempt)
+    assert len(found) == 2  # noqa: PLR2004 - the closure is a site outside the door, and the other entry is stale
+    assert "in outer.read calls underlying_quote()" in found[0]
+    assert found[1].startswith("stale exemption: ofo_app/x.py::read")
 
 
 def test_mutation_an_unparsable_file_fails_closed():

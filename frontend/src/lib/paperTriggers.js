@@ -14,6 +14,8 @@ export const triggerListOf = (data) => (Array.isArray(data?.triggers) ? data.tri
 // Any other state, an unknown or an absent one included, keeps its old behaviour.
 export const NOT_APPLICABLE_REAL_TEXT = 'Not applicable: real position.'
 export const isNotApplicable = (x) => x?.state === 'not_applicable'
+/** FJ2-2: the row's own sentence is the server's `not_applicable_text`; the constant is only the fallback (absent, empty or not text). */
+export const notApplicableTextOf = (x) => (typeof x?.not_applicable_text === 'string' && x.not_applicable_text.trim() !== '' ? x.not_applicable_text.trim() : NOT_APPLICABLE_REAL_TEXT)
 
 // The Conditional exits still on the screen: armed and fired ones; cancelled ones and per-leg stops are dropped.
 export const armedIndexExits = (list) => list.filter((x) => x.kind === 'conditional_exit' && x.state !== 'cancelled')

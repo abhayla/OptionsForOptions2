@@ -103,6 +103,13 @@ _SELECT = text(
     f"FROM {CONTRACTS} AS c LEFT JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id WHERE NOT c.retired AND NOT c.delisted "
     f"ORDER BY c.id, b.broker"
 )
+_SELECT_NAMED = text(
+    f"SELECT c.id, c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "  # noqa: S608
+    f"c.currently_listed, b.broker, b.broker_token, b.broker_symbol, b.broker_segment, b.lot_size, b.tick_size, "
+    f"b.freeze_limit, b.seen_on "
+    f"FROM {CONTRACTS} AS c LEFT JOIN {BROKER_ROWS} AS b ON b.contract_id = c.id "
+    f"WHERE NOT c.retired AND NOT c.delisted AND c.name = :name ORDER BY c.id, b.broker"
+)
 _SELECT_ONE = text(
     f"SELECT c.id, c.exchange_segment, c.exchange_token, c.name, c.expiry, c.strike, c.instrument_type, "
     f"c.currently_listed, c.retired, c.delisted, c.delisted_on, b.broker, b.broker_token, b.broker_symbol, b.broker_segment, b.lot_size, "
@@ -313,10 +320,12 @@ def _stored_row(rows: list[Any]) -> tuple[ListedContract, bool]:
     return ListedContract(contract=contract, broker_refs=tuple(refs)), bool(head.currently_listed)
 
 
-async def _load_live(conn: Any) -> list[tuple[int, ListedContract, bool]]:
-    """Every LIVE (not retired) stored contract: (internal id, listed contract, stored listedness)."""
+async def _load_live(conn: Any, name: str | None = None) -> list[tuple[int, ListedContract, bool]]:
+    """Every LIVE (not retired) stored contract (those named ``name`` only when given): (internal id, listed contract,
+    stored listedness)."""
     grouped: dict[int, list[Any]] = {}
-    for row in (await conn.execute(_SELECT)).all():
+    for row in (await conn.execute(_SELECT if name is None else _SELECT_NAMED,
+                                   {} if name is None else {"name": name})).all():
         grouped.setdefault(row.id, []).append(row)
     out = []
     for contract_id, rows in grouped.items():
@@ -343,10 +352,11 @@ def _catalogue_of(live: list[tuple[int, ListedContract, bool]]) -> Catalogue:
     return catalogue
 
 
-async def load_catalogue(conn: Any) -> Catalogue:
+async def load_catalogue(conn: Any, name: str | None = None) -> Catalogue:
     """Every LIVE stored contract as a domain Catalogue, each with its broker rows and stored listedness. Retired
-    contracts are read by their internal id with ``load_contract``."""
-    return _catalogue_of(await _load_live(conn))
+    contracts are read by their internal id with ``load_contract``. ``name`` (FD5 item 4): only that underlying's
+    contracts (the expiry kind reads its expiries and futures; about 4,700 rows for all, a few hundred for one)."""
+    return _catalogue_of(await _load_live(conn, name))
 
 
 def _check_contract_id(contract_id: Any) -> int:

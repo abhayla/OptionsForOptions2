@@ -33,6 +33,7 @@ import asyncio
 import dataclasses
 import datetime
 import logging
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -96,6 +97,11 @@ from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import RequestSeq, get_settings_reader, load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
+
+#: R9 (as the paper door's ``COMMIT_DEADLINE_S``): the page gives up at 10 s and may press again, so a request that only
+#: reaches its commit after 8 s refuses ``store_busy`` with nothing stored and its key freed
+COMMIT_DEADLINE_S = 8.0
+_monotonic = time.monotonic  # the clock the deadline reads (a test replaces it)
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
 _LOG = logging.getLogger(__name__)
@@ -299,7 +305,7 @@ class _Request:
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut, response_model_exclude_unset=True)
-async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
+async def execute_strategy(  # noqa: PLR0913, PLR0912, C901 - FastAPI dependencies
     strategy_id: int, body: ExecuteIn,
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
     quotes: Annotated[QuoteReader, Depends(get_quote_reader)],
@@ -311,6 +317,7 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
     key = body.client_request_id
     sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id", "seq"})
     claimed = committing = False
+    deadline = _monotonic() + COMMIT_DEADLINE_S
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if stored.revision != body.revision:  # W-151: FIRST after the load, before any Zerodha read or plan write
@@ -327,6 +334,8 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates,
                                       key, sent), stored)
         out = echo_seq(out, body.seq)  # REQ-119 AC-1: before the commit, so a failed echo rolls the plan back
+        if _monotonic() > deadline:  # R9: the page has given up by now; refused before the commit, the key freed below
+            raise StrategyRefused("store_busy", Failure.CONFLICT)
         committing = True  # from here an exception leaves the outcome unknown: the key stays claimed until it expires
         await db.commit()
     except request_key.Repeated:  # FD3: another press with this key committed first (the durable claim)
@@ -447,8 +456,9 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await _refuse_lots_over_limit(req, wanted, units, catalogue, underlying)  # ADR-330 (58): the paper door's function
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
+    await store.lock_strategy(req.db, req.user_ref, req.strategy_id)  # the paper door's order: lock, then claim
+    await _refuse_if_changed(req, stored, adopted)  # W-151 / R3: what the waits above could not see
     if req.key is not None and req.sent is not None:  # FD3 item 2: the durable claim, in THIS transaction
-        await store.lock_strategy(req.db, req.user_ref, req.strategy_id)  # the paper door's order: lock, then claim
         await request_key.claim_in_transaction(req.db, req.user_ref, req.key, req.strategy_id, req.sent, "real")
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
@@ -460,6 +470,16 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
         await request_key.finish_in_transaction(req.db, req.user_ref, req.key, {"plan_number": plan_number})
     return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
                    priced.planned_prices)
+
+
+async def _refuse_if_changed(req: _Request, stored: Any, adopted: tuple[books.AdoptedHolding, ...]) -> None:
+    """R3 (W-151): the adopted holdings and the strategy revision were read BEFORE the Zerodha, quote and margin waits,
+    which gave the lock back. Under the lock again, right before the plan is stored, both are read once more; either
+    one changed (another tab adopted a holding or saved the strategy) -> ``execute_plan_changed``, nothing stored."""
+    if tuple(await books.adopted_for(req.db, req.user_ref, req.strategy_id)) != tuple(adopted):
+        raise _refuse("execute_plan_changed")
+    if (await store.load(req.db, req.user_ref, req.strategy_id)).revision != stored.revision:
+        raise _refuse("execute_plan_changed")
 
 
 async def _refuse_lots_over_limit(req: _Request, wanted: list[ep.LegToPrice], held: Mapping[str, int],
