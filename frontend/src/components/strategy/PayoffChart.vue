@@ -209,7 +209,16 @@ const marks = {
   },
 }
 
+// Lane FK (28 Nov 2026): a redraw queued before the chart was removed, or before the page's DOM was torn down (a test
+// leaves components mounted), must do no work: no DOM read, no new chart.
+let gone = false
+const domGone = () => gone || typeof document === 'undefined' || !document?.documentElement
 const createChart = () => {
+  if (domGone()) {
+    if (chartInstance) chartInstance.destroy()
+    chartInstance = null
+    return
+  }
   // G-065 round 2 (REQ-148 AC-6): the previous reply's chart goes FIRST, so a reply with no curve never leaves the
   // old line on screen
   if (chartInstance) chartInstance.destroy()
@@ -416,6 +425,8 @@ watch(points0, (now, before) => {
 watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi, props.targetCurve], createChart, { deep: true })
 onMounted(createChart)
 onUnmounted(() => {
+  gone = true
   if (chartInstance) chartInstance.destroy()
+  chartInstance = null
 })
 </script>
