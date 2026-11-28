@@ -301,7 +301,7 @@ async def test_f_a_failing_catalogue_read_keeps_the_claim_and_stores_orders_with
     app.dependency_overrides.pop(get_tracked_reader)  # production: ``partial(read_tracked, db=<the request>)``
     monkeypatch.setattr(readers, "current_user_ref", lambda: stored.user_ref)
 
-    async def broken(_db):
+    async def broken(_db, _name=None):
         raise OperationalError("SELECT", {}, Exception("catalogue read failed"))
     monkeypatch.setattr(readers, "load_catalogue", broken)
     before = await _count(db, stored)

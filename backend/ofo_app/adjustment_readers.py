@@ -904,7 +904,8 @@ async def stored_kind(db: Any, underlying: str, expiry: datetime.date, *, scn: A
     scn = _scenario() if scn is None else scn
 
     async def listed() -> list[Any]:
-        return [e for e in (await (load or load_catalogue)(db)).all_entries()
+        catalogue = await (load(db) if load is not None else load_catalogue(db, underlying))  # FD5 item 4: one name
+        return [e for e in catalogue.all_entries()
                 if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
     try:
         if db is None:
