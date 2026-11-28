@@ -32,7 +32,8 @@ from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
 from fastapi import Depends
-from fastapi.exceptions import HTTPException
+from fastapi.exceptions import HTTPException, RequestValidationError
+from ofo.errors import UserFacingError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
 
@@ -49,13 +50,14 @@ SETTLE_SECONDS = 120
 UNKNOWN_TEMPLATE = "order_outcome_unknown"
 STORE_TEMPLATE = "request_key_store_unavailable"
 
+_OWNS = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u")
 _OPEN = text(
     "INSERT INTO public.order_attempts (user_ref, strategy_id, door, state) VALUES (:u, :s, :d, 'open') "
     "ON CONFLICT (strategy_id) WHERE state = 'open' DO NOTHING RETURNING id")
 _READ_OPEN = text(
     "SELECT a.id, a.started_at, a.started_at < clock_timestamp() - make_interval(secs => :settle) AS settled, "
     "(EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = a.strategy_id "
-    "          AND o.created_at >= a.started_at) "
+    "          AND o.created_at >= a.started_at AND o.kind NOT IN ('stop', 'settle')) "
     " OR EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = a.strategy_id "
     "            AND p.created_at >= a.started_at) "
     " OR EXISTS (SELECT 1 FROM public.order_request_keys k WHERE k.strategy_id = a.strategy_id "
@@ -63,7 +65,7 @@ _READ_OPEN = text(
     "FROM public.order_attempts a WHERE a.strategy_id = :s AND a.state = 'open'")
 _STORED_SINCE = text(
     "SELECT (EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = a.strategy_id "
-    "                AND o.created_at >= a.started_at) "
+    "                AND o.created_at >= a.started_at AND o.kind NOT IN ('stop', 'settle')) "
     " OR EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = a.strategy_id "
     "            AND p.created_at >= a.started_at) "
     " OR EXISTS (SELECT 1 FROM public.order_request_keys k WHERE k.strategy_id = a.strategy_id "
@@ -87,6 +89,9 @@ async def open_attempt(db: Any, user_ref: str, strategy_id: int, door: str) -> i
     """Opens the strategy's one attempt and returns its id (committed). Refuses (nothing stored) while an earlier
     attempt's outcome is unknown, or when the table cannot be used."""
     try:
+        if (await db.execute(_OWNS, {"u": user_ref, "s": strategy_id})).first() is None:
+            await _end_transaction(db, commit=False)  # the door's own answer for a strategy that is not the user's
+            raise _refused("user_input_request_not_available", Failure.NOT_FOUND)
         for _ in range(3):
             row = (await db.execute(_OPEN, {"u": user_ref, "s": strategy_id, "d": door})).first()
             if row is not None:
@@ -113,7 +118,7 @@ async def open_attempt(db: Any, user_ref: str, strategy_id: int, door: str) -> i
 
 
 #: An exception that is a clean refusal made by the app before it stored anything it could not undo.
-_CLEAN = (StrategyRefused, HTTPException)
+_CLEAN = (StrategyRefused, HTTPException, RequestValidationError, UserFacingError)
 
 
 async def close_attempt(db: Any, attempt_id: int, error: BaseException | None) -> None:

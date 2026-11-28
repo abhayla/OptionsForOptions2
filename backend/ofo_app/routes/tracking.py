@@ -530,7 +530,7 @@ def _locked_ids(ids: list[int]) -> Callable[[Mapping[Hashable, int]], list[int]]
 
 @router.post("/strategies/{strategy_id}/tracking/exit", response_model=TrackingOut,
              dependencies=[Depends(guard_paper_order),  # IC e2e 5: scenario mode = own scenario only
-                           Depends(guard_paper_outcome)])
+                           Depends(guard_paper_outcome, scope="function")])
 async def exit_tracking(strategy_id: int, body: TrackingExitIn,  # noqa: PLR0913 - FastAPI dependencies
                         db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                         ctx: Annotated[MarketContext | None, Depends(get_market_context)],

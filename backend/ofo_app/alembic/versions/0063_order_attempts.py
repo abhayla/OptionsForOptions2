@@ -13,8 +13,9 @@ Changes (owner-run, one transaction; ADDITIVE: ONE new table, nothing existing c
 - public.order_attempts(id, user_ref, strategy_id -> public.strategies(id), door ('paper'|'real'), started_at, state
   ('open'|'stored'|'not_stored'), resolved_at). A partial unique index allows ONE 'open' attempt per strategy: opening
   is the atomic claim, so two tabs cannot both pass.
-- Grants to the application role: SELECT; INSERT on every column but id; UPDATE on state and resolved_at only; no
-  DELETE.
+- Grants to the application role: SELECT; INSERT on user_ref, strategy_id, door and state only (the
+  database sets started_at; a request cannot back-date or pre-close an attempt); UPDATE on state and resolved_at
+  only; no DELETE.
 - downgrade: drops the table.
 
 Old-code compatibility: additive; old code never reads or writes the table and keeps working. New code on an
@@ -49,7 +50,7 @@ def _load(filename: str, name: str):
 _BASE = _load("0009_minute_history.py", "ofo_migration_0009_for_0063")._BASE
 
 TABLE = "public.order_attempts"
-INSERT_COLUMNS = ("user_ref", "strategy_id", "door", "started_at", "state", "resolved_at")
+INSERT_COLUMNS = ("user_ref", "strategy_id", "door", "state")
 UPDATE_COLUMNS = ("state", "resolved_at")
 
 

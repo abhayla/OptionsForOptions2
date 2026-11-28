@@ -220,6 +220,7 @@ async def _db_free(monkeypatch, sent: int, stored_revision: int = 3):
     broker, db = _CountingBroker(), _FakeDb()
     app = create_app()
     app.dependency_overrides[route.get_db] = lambda: db
+    app.dependency_overrides[route.guard_real_outcome] = lambda: None  # B2: the block reads the database; none here
     app.dependency_overrides[route.get_kite_session] = lambda: broker
     app.dependency_overrides[route.get_quote_reader] = lambda: None
     app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
@@ -266,6 +267,7 @@ async def test_a_missing_or_malformed_revision_is_a_malformed_request(body, monk
     monkeypatch.setenv("APP_ENV", "test")
     app = create_app()
     app.dependency_overrides[route.get_db] = lambda: None
+    app.dependency_overrides[route.guard_real_outcome] = lambda: None  # B2: the block reads the database; none here
     app.dependency_overrides[route.get_kite_session] = lambda: None
     app.dependency_overrides[route.get_quote_reader] = lambda: None
     app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: None)

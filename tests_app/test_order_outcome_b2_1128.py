@@ -13,6 +13,8 @@ from ofo_app import order_outcome
 from sqlalchemy import text
 from test_order_request_key_r2_fd2 import _body, _count, _post, _prices, _use, keys  # noqa: F401 - fixtures
 from test_paper_triggers_routes import _setup, db, notified  # noqa: F401 - fixtures
+from test_strategy_followups import _ConnMaker  # a test's own connection: commit and rollback are no-ops
+from test_strategy_store import _client
 
 TWO_ORDERS = 2
 UNKNOWN = "no known result yet"
@@ -111,10 +113,11 @@ async def test_two_tabs_the_second_is_refused_while_the_first_is_running_and_rel
     app, stored, *_ = await _setup(db)
     _use(app, keys)
     _, orders = _prices(stored)
-    running = await order_outcome.open_attempt(db, stored.user_ref, stored.id, "paper")  # tab one is placing
+    # tab one is placing:
+    running = await order_outcome.open_attempt(_ConnMaker(db), stored.user_ref, stored.id, "paper")
     second = await _post(app, stored, _body(orders, uuid.uuid4()))
     assert second.status_code == HTTPStatus.CONFLICT and UNKNOWN in second.text, second.text[:300]
-    await order_outcome.close_attempt(db, running, None)  # tab one finished
+    await order_outcome.close_attempt(_ConnMaker(db), running, None)  # tab one finished
     third = await _post(app, stored, _body(orders, uuid.uuid4()))
     assert third.status_code == HTTPStatus.CREATED, third.text[:300]
 
@@ -140,3 +143,39 @@ async def test_a_table_that_cannot_be_used_refuses_and_stores_nothing(db, notifi
     reply = await _post(app, stored, _body(orders, uuid.uuid4()))
     assert reply.status_code == HTTPStatus.SERVICE_UNAVAILABLE, reply.text[:300]
     assert await _count(db, stored) == 0
+
+
+async def test_a_strategy_that_does_not_exist_answers_not_found_never_a_store_error(db, notified, keys):
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    async with _client(app) as c:
+        reply = await c.post("/paper/strategies/999999999/orders", json=_body(orders))
+    assert reply.status_code == HTTPStatus.NOT_FOUND, reply.text[:300]
+
+
+async def test_an_order_the_server_wrote_itself_is_not_proof_that_the_open_attempt_stored(db, notified, keys):
+    """Opus review F1: a monitor stop or a settlement row written while an attempt runs must not close it as stored."""
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    running = await order_outcome.open_attempt(_ConnMaker(db), stored.user_ref, stored.id, "paper")
+    await db.execute(text(
+        "INSERT INTO public.paper_orders (strategy_id, contract_id, side, quantity, price, kind, placed_at, reason, "
+        "trigger_id) VALUES (:s, :c, 'BUY', 65, 10.00, 'stop', now(), 'stop', NULL)"),
+        {"s": stored.id, "c": stored.saved.contract_ids[0]})
+    refused = await _post(app, stored, _body(orders, uuid.uuid4()))
+    assert refused.status_code == HTTPStatus.CONFLICT and UNKNOWN in refused.text, refused.text[:300]
+    assert await _states(db, stored) == ["open"]
+    await order_outcome.close_attempt(_ConnMaker(db), running, None)
+
+
+async def test_a_body_the_schema_refuses_releases_the_attempt_at_once(db, notified, keys):
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    bad = _body(orders)
+    bad["orders"][0]["quantity"] = 0
+    assert (await _post(app, stored, bad)).status_code == HTTPStatus.UNPROCESSABLE_ENTITY
+    assert await _states(db, stored) == ["not_stored"]
+    assert (await _post(app, stored, _body(orders))).status_code == HTTPStatus.CREATED

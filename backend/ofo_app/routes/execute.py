@@ -114,7 +114,8 @@ async def _stamp_request(request: Request) -> None:
 
 router = APIRouter(route_class=ClosedRoute,
                    dependencies=[Depends(_stamp_request), Depends(require_order_path),
-                                 Depends(guard_real_outcome)])  # W-121: the gate is next; B2: then the outcome block
+                                 # W-121: the gate runs first; B2: then the unknown-outcome block
+                                 Depends(guard_real_outcome, scope="function")])
 _LOG = logging.getLogger(__name__)
 
 ENTRY, EXIT = "ENTRY", "EXIT"
