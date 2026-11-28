@@ -53,3 +53,11 @@ Base: origin/integration/weekend-r3-1129 + Lane FJ2 push 68a46dd62 merged (its v
 | task | model | minutes |
 |---|---|---|
 | items 1, 2, 3 | Sonnet (main session, no helper used) | 50 |
+
+## Friction (for the coordinator to enter in docs/process/friction-log.md; not in my May edit list)
+| Date | Who | What happened | How often / long | Cost | Class |
+|---|---|---|---|---|---|
+| 2026-11-28 | lane F2 | send_message to "@parent" refused every time (elevated_session_untrusted_device) until the owner confirms trust; the STATUS line on the pushed branch was the only report channel, and the coordinator's later messages reached me but my replies could not reach it | 4 sends | 4 failed calls | missing tool |
+| 2026-11-28 | lane F2 | prepush stopped at once: ruff, fastapi, sqlalchemy not installed in a fresh cloud container; fixed by pip install -r requirements-dev.txt -r requirements-app.txt (not in the lane brief or runbook) | 1 run | 3 min | missing tool |
+| 2026-11-28 | lane F2 | The commit gate hook refused git commit/push chained after a pipe or a python heredoc in the same call, so every commit became two or three calls | 5 times | about 10 calls | unclear rule |
+| 2026-11-28 | lane F2 | A hook asks to push 60+ unpushed commits while the brief allows two pushes; the count is mostly the merged integration branch | 3 times | 3 turns | unclear rule |
