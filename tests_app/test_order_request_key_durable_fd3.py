@@ -257,9 +257,9 @@ async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(
 
 async def test_n5_the_deadline_counts_from_the_requests_entry_not_from_after_the_early_work(db, notified, keys,
                                                                                             monkeypatch):
-    """FD5 N5: the 8 s deadline started after the key lookup and the Redis claim, so a request that spent 3 s there could
-    commit at 11 s, after the page's 10 s timeout. Now the clock starts at the entry: entered at 0, 3 s spent in the
-    early work, the commit check at 9 s is past 8 s from the entry (it would be 6 s from the old start)."""
+    """FD5 N5: the 8 s deadline started after the key lookup and the Redis claim, so a request that spent 3 s there
+    could commit at 11 s, after the page's 10 s timeout. Now the clock starts at the entry: entered at 0, 3 s spent in
+    the early work, the commit check at 9 s is past 8 s from the entry (it would be 6 s from the old start)."""
     from ofo_app.routes import paper as route  # noqa: PLC0415
     app, stored, *_ = await _setup(db)
     _use(app, keys)
