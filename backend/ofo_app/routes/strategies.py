@@ -43,13 +43,15 @@ from ofo.errors import LegValue, render
 from ofo.settings.calc import history_max_days
 from ofo.strategy import stored_form as sf
 from pydantic import BaseModel, ConfigDict, Field, model_validator
+from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import eligibility_from_zerodha as elig
-from ofo_app import open_legs, paper_store, playbook_store, tracked_contracts
+from ofo_app import open_legs, paper_store, playbook_store, real_action_store, tracked_contracts
 from ofo_app import strategy_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
+from ofo_app.real_action_store import RecordOut
 from ofo_app.routes import adjustment_opportunities as opportunities
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.catalogue import get_shown_date
@@ -218,6 +220,8 @@ class SummaryOut(ApiModel):
     held_at_broker: bool  # ADR-292: a held entry exists (Delete is refused with the held sentence)
     position_kind: Optional[Identifier] = None  # noqa: UP045 - ADR-330 (64): position_kind.kind_of
     position_kind_text: Optional[CatalogueText] = None  # noqa: UP045 - the real / unknown row's one line; None for paper
+    stored_not_sent: Optional[Literal[True]] = None  # noqa: UP045 - Lane R1 (73): a REAL row; nothing is sent
+    record: Optional[RecordOut] = None  # noqa: UP045 - Lane R1: the newest stored record of a real position
     open_opportunities: Optional[int]  # noqa: UP045 - GC-MU A3: open adjustment records; None = could not be read
     open_opportunities_text: Optional[CatalogueText]  # noqa: UP045 - "N adjustment opportunities"; None at 0 or unread
     # GC-ICGUIDE g23 (Completed tab): set only for a closed strategy, all from the engine; None + reason when unreadable
@@ -500,6 +504,11 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
         tracked = await _tracked_ids(db, [r.id for r in rows])
         opened = await _open_opportunities(db, user_ref)
         current = await current_legs_many(db, user_ref)  # D-42: the legs and the word the Positions page reads
+        kinds = {r.id: position_kind.kind_of(r.has_order, r.position_tag, r.held_at_broker) for r in rows}
+        try:  # Lane R1: the newest record of each real position (a failed read leaves the rows without it)
+            newest = await real_action_store.latest_many(db, [i for i, k in kinds.items() if k == "real"])
+        except SQLAlchemyError:
+            newest = {}
         return StrategyListOut.model_validate({"shown_date": shown_date, "strategies": [
             {"id": r.id, "underlying": r.underlying, "status": r.status, "created_at": r.created_at,
              "updated_at": r.updated_at, "revision": r.revision, "name": sf.shown_name(r.name),
@@ -510,8 +519,10 @@ async def list_strategies(db: Annotated[Any, Depends(get_db)], user_ref: Annotat
              "tracked": None if tracked is None else r.id in tracked, "can_delete": r.can_delete,
              "has_paper_order": r.has_paper_order, "has_order": r.has_order,
              "held_at_broker": r.held_at_broker,
-             "position_kind": (kind := position_kind.kind_of(r.has_order, r.position_tag, r.held_at_broker)),
+             "position_kind": (kind := kinds[r.id]),
              "position_kind_text": position_kind.line_of(kind),
+             "stored_not_sent": True if kind == "real" else None,
+             "record": real_action_store.record_out(newest.get(r.id)),
              "open_opportunities": None if opened is None else opened.get(r.id, 0),
              "open_opportunities_text": None if opened is None else opportunities.open_mark(opened.get(r.id, 0)),
              **closed.get(r.id, _NO_FIGURES)}

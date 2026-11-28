@@ -2265,6 +2265,45 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("paper_alert_body_one_named", "what_triggered",
                         "{what}; exited {leg}. A paper exit only: no order was sent to Zerodha.",
                         {"what": Explained, "leg": Explained}),
+    # Lane R1 (28 Nov 2026; ADR-330 (73)), pending owner read: a REAL position's reached stop. Stored as an exit record;
+    # nothing is sent to Zerodha. Same three shapes as the paper bodies above.
+    ExplanationTemplate("real_alert_body_one", "what_triggered",
+                        "{what}; exit stored at {price}. Not sent to Zerodha. Place it in Kite.",
+                        {"what": Explained, "price": Explained}),
+    ExplanationTemplate("real_alert_body_one_named", "what_triggered",
+                        "{what}; exit stored: {leg}. Not sent to Zerodha. Place it in Kite.",
+                        {"what": Explained, "leg": Explained}),
+    ExplanationTemplate("real_alert_body", "what_triggered",
+                        "{what}; exit stored for {count} legs at {prices}. Not sent to Zerodha. Place it in Kite.",
+                        {"what": Explained, "count": Recorded, "prices": Explained}),
+    ExplanationTemplate("stop_fired_note_real", "what_triggered", "{body}", {"body": Explained}),
+    # the one line a stored record carries (the field contract's record.text), by action
+    ExplanationTemplate("real_record_exit", "values_seen",
+                        "Exit stored {time} at {price}. Not sent to Zerodha. Place it in Kite.",
+                        {"time": HourMinute, "price": Explained}),
+    ExplanationTemplate("real_record_add", "values_seen",
+                        "Add stored {time} at {price}. Not sent to Zerodha. Place it in Kite.",
+                        {"time": HourMinute, "price": Explained}),
+    ExplanationTemplate("real_record_open", "values_seen",
+                        "Open stored {time} at {price}. Not sent to Zerodha. Place it in Kite.",
+                        {"time": HourMinute, "price": Explained}),
+    ExplanationTemplate("real_record_stop", "values_seen",
+                        "Stop stored {time} at {price}. When it is reached you get an alert. Nothing is sent to "
+                        "Zerodha. Place the exit in Kite.", {"time": HourMinute, "price": Explained}),
+    ExplanationTemplate("real_record_stop_fired", "values_seen",
+                        "Stop reached {time} at {price}. Stored as an exit record. Not sent to Zerodha. Place it in "
+                        "Kite.", {"time": HourMinute, "price": Explained}),
+    # the Exit dialog's sentence for a real position, and what follows the press
+    ExplanationTemplate("real_exit_dialog", "rule",
+                        "This stores your exit in the app as a record and a reminder. It does not place an order and "
+                        "does not change your Zerodha position. Place it in Kite."),
+    ExplanationTemplate("real_exit_stored", "rule",
+                        "Exit stored. Not sent to Zerodha. Place it in Kite. This position stays open here until "
+                        "Zerodha shows it closed."),
+    ExplanationTemplate("real_stop_stored", "rule",
+                        "Stop stored for this real position. When it is reached you get an alert. Nothing is sent to "
+                        "Zerodha. Place the exit in Kite."),
+    ExplanationTemplate("real_add_stored", "rule", "Add stored. Not sent to Zerodha. Place it in Kite."),
     ExplanationTemplate("summary_breakeven_level", "values_seen", "{level}", {"level": WholePoints}),
     ExplanationTemplate("summary_breakeven_percent", "values_seen", "{level} ({percent}%)",
                         {"level": WholePoints, "percent": SignedPercent}),
@@ -2628,7 +2667,8 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("monitor_pause_label", "rule", "Pause adjustment checks"),
     # Lane Y item 1: the monitoring badge and its reasons (REQ-115 AC-4/AC-6, REQ-049); pending owner read
     # ADR-330 (64): what a real position's row offers while real order placing is on hold; pending owner read
-    ExplanationTemplate("position_kind_real", "rule", "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."),
+    # Lane R1 (ADR-330 (73)), pending owner read: replaces "Real position: exit and protect it in Kite. ..."
+    ExplanationTemplate("position_kind_real", "rule", "Real position. Zerodha shows its quantity and P&L. Exits and stops you store here are not sent. Place them in Kite."),
     ExplanationTemplate("position_kind_unknown", "rule", "Cannot tell whether this is a real or a paper position, so Exit and Stops are not shown. Check it in Kite."),
     ExplanationTemplate("monitoring_badge", "rule", "Monitoring paused"),
     ExplanationTemplate("monitoring_health_unknown", "rule", "Health unknown"),
@@ -2650,7 +2690,7 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     ExplanationTemplate("monitoring_why_exits_not_checked_yet", "rule", "Not being watched: the exits have not been checked yet."),
     ExplanationTemplate("monitoring_why_book_not_read", "rule", "Not being watched: the book could not be read, so the exits cannot run."),
     ExplanationTemplate("monitoring_why_exit_not_applicable", "rule",
-                        "Not being watched: this is a real position, and stops here cover paper trades only."),
+                        "Watching this real position. An alert only; nothing is sent."),
     ExplanationTemplate("monitoring_why_stale", "rule", "The last price is too old, so no rule can fire."),
     ExplanationTemplate("monitoring_why_disconnected", "rule", "The price feed is not connected, so no rule can fire."),
     ExplanationTemplate("monitoring_why_leg_missing", "rule", "A leg of this trade has no price, so no rule can fire."),

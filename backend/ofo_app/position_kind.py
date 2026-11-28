@@ -1,14 +1,13 @@
-"""ADR-330 (64): is a strategy's position REAL or PAPER, in one place (owner 27 Nov evening).
+"""Is a strategy's position REAL or PAPER, in one place (ADR-330 (73), owner 28 Nov 2026; (64) withdrawn).
 
-While real order placing is on hold (ADR-281) a real position has no stop, no watcher and no exit in the app, so its row
-shows its P&L and ONE line (position_kind_real: "Real position: exit and protect it in Kite. Stops and alerts here
-cover paper trades only.") and offers no Exit and no Stops; an alert never offers "Exit the position" for it. A stated
-exception to ADR-330 (58) until one door for paper and real exists.
+Paper and real are one rule with one tag: a real position gets the same Exit, Stops, Add, Open and alerts on the same
+screens as a paper trade; what the user stores for it is a record in the app (``real_action_records``) and nothing is
+sent to the broker. The row shows the broker's quantity and P&L and ONE line (position_kind_real).
 
-The tag is the stored fact, never the name: a held entry exists (ADR-292: a condor held at the broker is a REAL position
-stored as practice orders) -> real; an order exists and no paper order -> real (a basket was sent); a paper order and
-no held entry -> paper; no order -> none (a draft: no row to protect); any fact that could not be read -> unknown
-(fail closed: neither Exit nor Stops, and the line says why).
+The tag is the STORED fact (``strategy_position_tags``, migration 0063; written once at the first order, never
+updated), never the name: a held entry (ADR-292: a condor held at the broker is a REAL position stored as practice
+orders) -> real; else the stored tag, paper or real; no order -> none (a draft: no row to protect); an order and no
+stored tag, or any fact that could not be read -> unknown (fail closed: no action is stored, and the line says why).
 """
 from __future__ import annotations
 

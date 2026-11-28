@@ -1104,16 +1104,14 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
           "This took too long, so no order was stored.",
           "Nothing was stored and the strategy was not changed; pressing again places the orders once.",
           "Placing these paper orders.", "Press Place again."),
-    # Lane FD2 #877 (ADR-330 (64)): a real position is exited and protected in Kite, not on the paper routes.
-    _gate("real_position_exit_refused", _SV, 584,
-          "Real position: exit and protect it in Kite.",
-          "Stops and alerts here cover paper trades only.",
-          "Exiting or protecting a real position here.", "Use Kite to exit or protect this position."),
-    # Lane RA F4: the same refusal for an open and an add (own code, the sentence is the exit one's, word for word).
-    *(_gate(code, _SV, number, "Real position: exit and protect it in Kite.",
-            "Stops and alerts here cover paper trades only.",
-            "Exiting or protecting a real position here.", "Use Kite to exit or protect this position.")
-      for code, number in (("real_position_open_refused", 587), ("real_position_add_refused", 588))),
+    # Lane R1 (ADR-330 (73), pending owner read): the paper store takes no order for a REAL position (its exit, add and
+    # stop are stored as records from its own row). The three codes stay (the store's structural refusal).
+    *(_gate(code, _SV, number,
+            "This is a real position, so no paper order is placed for it.",
+            "Your exit, add or stop for a real position is stored from its row; nothing is sent to Zerodha.",
+            "Placing a paper order on a real position.", "Use the row's Exit or Stops, then place it in Kite.")
+      for code, number in (("real_position_exit_refused", 584), ("real_position_open_refused", 587),
+                           ("real_position_add_refused", 588))),
     # GC-ICGUIDE g10 (audit C9; ADR-255): the plan's most adjustments, enforced when the orders are saved.
     _gate("paper_adjustment_limit", _SV, 505,
           "These orders open or add to a leg, and there is no room left: plan maximum of {limit} reached.",

@@ -223,6 +223,11 @@ async def paper_order_refused(conn: Any, strategy_id: int, order_kinds: Iterable
     return not held or "exit" in set(order_kinds)
 
 
+async def is_held(conn: Any, strategy_id: int) -> bool:
+    """ADR-292: whether a held entry exists (a read that fails PROPAGATES)."""
+    return bool((await conn.execute(_HELD, {"id": strategy_id})).scalar())
+
+
 async def has_order(conn: Any, strategy_id: int) -> bool:
     """ADR-299: whether ANY order (practice or real) exists for the strategy: the same fragment the list selects."""
     return bool((await conn.execute(_HAS_ORDER, {"id": strategy_id})).scalar())

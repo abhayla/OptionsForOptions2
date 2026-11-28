@@ -211,3 +211,28 @@ async def place_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequen
     await check_adjustment_limit(db, user_ref, strategy_id, book[:-len(orders)], [o.order for o in book[-len(orders):]],
                                  reader, rates, check.listed_of(ctx))
     return book
+
+
+async def record_checked(db: Any, user_ref: str, strategy_id: int, orders: Sequence[Any], *,  # noqa: PLR0913
+                         ctx: Any, at: Any, settings: Mapping[str, Decimal], request_key: str | None = None,
+                         reason: str | None = None) -> tuple[Any, ...]:
+    """Lane R1 (ADR-330 (73), ADR-281): the ONE write for a user's open / add / exit of a REAL position. It runs the
+    checks a paper order runs (every fill outside market hours refused, ADR-212 / (60); the size of every order and leg
+    total, ADR-330 (50)-(52), over an empty book: the broker's quantity is not in this app) and then stores one record
+    per action in ``real_action_records``. It never reaches ``paper_store`` and never a broker: the position, its
+    quantity and its P&L stay the broker's figure. A kind that is not real, or cannot be read, is refused (fail closed).
+    The caller commits, or rolls back on any raise. Returns the records of this request."""
+    from ofo_app import may_act, real_action_store, strategy_store  # noqa: PLC0415 - they import the route layer
+    may_act.refuse_unless_allowed(ctx, "place", at)  # ADR-212 / (60): the same rule, before anything is stored
+    if (await strategy_store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown") != "real":
+        raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY)
+    if any(o.kind not in real_action_store.USER_ACTIONS for o in orders):
+        raise StrategyRefused("user_input_request_not_available", Failure.CONFLICT)
+    await check_order_size(db, [], orders, settings)
+    stored = []
+    for action in dict.fromkeys(o.kind for o in orders):  # one record per action, in the order the basket named them
+        legs = [real_action_store.Leg(o.contract_id, o.side, o.quantity, o.price) for o in orders if o.kind == action]
+        await real_action_store.record(db, user_ref=user_ref, strategy_id=strategy_id, action=action, legs=legs,
+                                       stored_at=at, reason=reason, request_key=request_key)
+        stored.append(action)
+    return tuple(await real_action_store.load(db, strategy_id))

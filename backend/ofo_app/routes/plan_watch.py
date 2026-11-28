@@ -273,9 +273,9 @@ async def _armed_lines(db: Any, strategy_id: int, run: CheckRun, live: bool) -> 
         distance = adjust_money.distance_to_level(t.level, price, up)
         lines.append(_line(key, kind_out, "armed", label, unit, "fired" if r.fired_at is not None else "watching",
                            fires=t.level, now=price, distance=distance, pct=_pct(distance, price)))
-    if kind in (position_kind.REAL, position_kind.UNKNOWN):
-        # ADR-330 (64) / R6: a real (or unreadable) position has no paper stop; an old armed row stays stored, never
-        # shown as a live line: "not applicable", with the position-kind sentence, no price and no distance
+    if kind == position_kind.UNKNOWN:
+        # Lane R1 (ADR-330 (73)): a REAL position's stops are live lines now; only an unreadable kind (fail closed)
+        # shows its armed rows as "not applicable", with the position-kind sentence, no price and no distance
         lines = [{**ln, "state": "not_applicable", "now": None, "distance_rs": None, "distance_pct": None,
                   "reason": position_kind.line_of(kind)} for ln in lines]
     return lines

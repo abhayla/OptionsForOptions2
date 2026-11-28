@@ -15,7 +15,7 @@ from __future__ import annotations
 import datetime
 import logging
 import re
-from typing import Annotated, Any
+from typing import Annotated, Any, Literal
 
 from fastapi import APIRouter, Depends, Query
 from ofo.alerts import CLOSED_BY_SYSTEM, SIDE_CLOSED
@@ -25,11 +25,12 @@ from pydantic import BaseModel, ConfigDict
 from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import actionable_alerts as aa
-from ofo_app import alert_title, side_closed
+from ofo_app import alert_title, real_action_store, side_closed
 from ofo_app import playbook_store as store
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier
 from ofo_app.db import get_db
 from ofo_app.errors import ClosedRoute, Failure
+from ofo_app.real_action_store import RecordOut
 from ofo_app.routes.adjustment_opportunities import ID_MAX, condition_text
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.strategy_refused import StrategyRefused
@@ -65,6 +66,8 @@ class ActiveAlert(ApiModel):
     answers: list[AnswerChoice]
     position_kind: Identifier  # ADR-330 (64): paper | real | none | unknown (the stored fact, never the name)
     position_kind_text: CatalogueText | None  # the real / unknown row's one line; None for paper
+    stored_not_sent: Literal[True] | None = None  # Lane R1 (73): a REAL position; nothing is sent to the broker
+    record: RecordOut | None = None  # Lane R1: the newest record of the position (a reached stop reads stop_fired)
 
 
 class ActiveOut(ApiModel):
@@ -178,8 +181,9 @@ def _worse(a: aa.Alert) -> Any:
 
 
 def offered(codes: tuple[str, ...], position_kind: str) -> tuple[str, ...]:
-    """ADR-330 (64): "Exit the position" is offered for a PAPER position only; real, none and unknown never get it."""
-    return codes if position_kind == "paper" else tuple(c for c in codes if c != "exit")
+    """ADR-330 (73), withdraws (64): "Exit the position" is offered for a PAPER and a REAL position alike (a real exit
+    is stored in the app, nothing is sent); none and unknown never get it (fail closed)."""
+    return codes if position_kind in {"paper", "real"} else tuple(c for c in codes if c != "exit")
 
 
 def _label(code: str | None) -> Any:
@@ -212,6 +216,12 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
         kinds = await strategy_store.kinds_of(db, [a.strategy_id for a in rows])
     except SQLAlchemyError:  # FD5 D (F4): a failed kind read is the not-available refusal, never a bare 500
         raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
+    try:  # Lane R1: the newest record of each real position (a failed read leaves the rows without it)
+        newest = await real_action_store.latest_many(
+            db, [a.strategy_id for a in rows if kinds.get(a.strategy_id) == "real"])
+    except SQLAlchemyError:
+        log.warning("records of the alerts' strategies could not be read", exc_info=True)
+        newest = {}
     alerts = [{"id": a.id, "strategy_id": a.strategy_id, "strategy_name": titles[a.strategy_id], "kind": _kind(a),
                "text": _words(a, by_id), "fired_at": a.fired_at, "fired_line": _fired(a),
                "no_longer_true_since": a.no_longer_true_since, "no_longer_true_line": _stopped(a),
@@ -220,7 +230,9 @@ async def active_alerts(db: Annotated[Any, Depends(get_db)],
                            for c in offered(allowed_answers(a.kind) if a.kind else ("exit", "continue"),
                                             kinds.get(a.strategy_id, "unknown"))],
                "position_kind": kinds.get(a.strategy_id, "unknown"),
-               "position_kind_text": position_kind.line_of(kinds.get(a.strategy_id, "unknown"))} for a in rows]
+               "position_kind_text": position_kind.line_of(kinds.get(a.strategy_id, "unknown")),
+               "stored_not_sent": True if kinds.get(a.strategy_id) == "real" else None,
+               "record": real_action_store.record_out(newest.get(a.strategy_id))} for a in rows]
     return ActiveOut.model_validate({"count": len(rows), "alerts": alerts})
 
 

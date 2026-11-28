@@ -99,6 +99,7 @@ from ofo_app import (
     plan_ending,
     playbook_store,
     position_kind,
+    real_action_store,
     request_key,
     tracked_contracts,
 )
@@ -116,6 +117,7 @@ from ofo_app.paper_reasons import (
     unpriced_text,
 )
 from ofo_app.read_door import NO_TOKEN, read_quotes
+from ofo_app.real_action_store import RecordOut
 from ofo_app.routes.adjustment import TrackedReader, get_tracked_reader
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.catalogue import get_shown_date
@@ -472,6 +474,12 @@ class PaperBookOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBloc
     status_word: Literal["Draft", "Running", "Completed", "Unknown"]  # ADR-299 (D-28): the same word /strategies says
     held: HeldEntryOut | None = None  # GC-TRACK1 k07
     cancelled_stops: list[CancelledStopOut] = []  # noqa: RUF012 - pydantic copies the default per instance
+    # Lane R1 (ADR-330 (73)): the frozen field contract. ``stored_not_sent`` is true ONLY for a real position's stored
+    # action (nothing was sent to the broker); ``record`` is the latest record the answer is about (real only).
+    position_kind: Literal["paper", "real", "unknown", "none"] | None = None
+    position_kind_text: CatalogueText | None = None
+    stored_not_sent: Literal[True] | None = None
+    record: RecordOut | None = None
 
 
 class PaperStrategyOut(PaperFigures, PaperExtremes, PaperBreakevens, PaperGreeksBlock):
@@ -1469,22 +1477,57 @@ async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, 
 
 #: ADR-330 (64), the stated exception to (58): the position kinds that offer no paper exit and no paper stop (the one
 #: rule, ``position_kind.kind_of``, names them)
-_NO_PAPER_ACTION_KINDS = frozenset({"real", "unknown"})  # unknown: fail closed (ADR-016 to ADR-019)
+_NO_PAPER_ACTION_KINDS = frozenset({"unknown"})  # Lane R1 (73): real is no longer here; unknown: fail closed
 
 
 async def _refuse_real_position(db: Any, strategy_id: int) -> str:
-    """#877 (ADR-330 (64), (58)): a real position (a held entry, or an order and no paper order) has no stop and no exit
-    in the app: an exit or stop request for it reaches this paper route only by a wrong link, and would run a PAPER
-    action the trader could take for a real exit. Refused by name (nothing is stored); every other kind goes on, an
-    unreadable one too (fail closed). Returns the kind it read (RA N7, Opus F-2: the trigger routes read it BEFORE
-    their commit and pass it on, so the answer built after the commit never depends on a second read)."""
+    """Lane R1 (ADR-330 (73), withdraws (64)): the ONE kind read of a door, BEFORE its commit; that read decides and the
+    answer built after the commit reuses it (RA N7). A real position takes the same exit, stop and orders as paper (they
+    are stored as records, nothing is sent); only a kind that could not be read is refused (fail closed: 503, nothing
+    stored). Returns the kind it read."""
     try:
         kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id)
     except SQLAlchemyError:  # FD5 D (F4): a failed kind read refuses with a catalogue sentence (nothing stored)
         raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
-    if kind in _NO_PAPER_ACTION_KINDS:
-        raise StrategyRefused(position_kind.EXIT_REFUSED, Failure.CONFLICT)
+    if kind not in {"paper", "real", "none"}:
+        raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY)
     return kind
+
+
+async def _records_door(db: Any, strategy_id: int, kind: str, orders: Sequence[Any]) -> bool:
+    """Lane R1: whether this basket is stored as RECORDS (a real position's action) and not as paper orders. A real
+    position that is not held: always. A held position (ADR-292 (4), Q3 interim: its add and open stay paper orders):
+    only a basket of exits; an exit mixed with other kinds is refused (one basket, one place)."""
+    if kind != "real":
+        return False
+    if not await store.is_held(db, strategy_id):
+        return True
+    exits = [o.kind == "exit" for o in orders]
+    if exits and all(exits):
+        return True
+    if any(exits):
+        raise StrategyRefused("user_input_request_not_available", Failure.CONFLICT)
+    return False
+
+
+async def _real_fields(db: Any, strategy_id: int, user_ref: str, kind: str | None, key: Any = None) -> dict[str, Any]:
+    """Lane R1: the contract fields of an answer (``position_kind``, ``position_kind_text``, ``stored_not_sent``,
+    ``record``) from the kind the door read BEFORE its commit (no second kind read here). ``record`` is the newest
+    record of the request key when the request had one, else the strategy's newest. A failed records read leaves
+    ``record`` out (the action is still reported as stored): never a 5xx after a commit."""
+    out: dict[str, Any] = {"position_kind": kind, "position_kind_text": position_kind.line_of(kind or "unknown")}
+    if kind != "real":
+        return out
+    out["stored_not_sent"] = True
+    try:
+        async with db.begin_nested():
+            keyed = await real_action_store.for_key(db, user_ref, str(key)) if key is not None else ()
+            newest = keyed[-1] if keyed else await real_action_store.latest(db, strategy_id)
+    except SQLAlchemyError:
+        _LOG.warning("records of strategy %s could not be read for the answer", strategy_id, exc_info=True)
+        return out
+    out["record"] = real_action_store.record_out(newest)
+    return out
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
@@ -1505,22 +1548,22 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     entered = _monotonic()  # FD5 N5: the deadline counts from the request's entry, not after the key lookup
     arrived = getattr(getattr(request, "state", None), "arrived_at", entered)  # RA F-1: before the dependencies
     stored = await _load_strategy(db, user_ref, strategy_id)
-    if any(o.kind == "exit" for o in body.orders):
-        await _refuse_real_position(db, strategy_id)  # #877: before any key is claimed
+    kind = await _refuse_real_position(db, strategy_id)  # Lane R1: the ONE kind read; before any key is claimed
+    to_records = await _records_door(db, strategy_id, kind, body.orders)  # a real action: a record, not an order
+    shown = "paper" if kind == "none" else kind  # the first paper order makes it paper (the store writes the tag)
     key = body.client_request_id
     sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id"})
     if key is not None:
         # FD3 item 2: the durable record first (the record of truth); Redis is the fast path for "still running"
         recorded = await request_key.lookup(db, user_ref, key, strategy_id, sent)
         if recorded is not None:  # a repeat of a request that committed: its result, nothing stored
-            return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
-                               cancelled=await _replayed_stops(db, stored, recorded.get("cancelled_stops", [])))
+            return await _answer(db, stored, user_ref, shown, key, (ctx, feed, now(), rates),
+                                 await _replayed_stops(db, stored, recorded.get("cancelled_stops", [])))
         first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
         if first is not None:  # a repeat: the first result, nothing stored
-            return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
-                               cancelled=await _replayed_stops(
-                                   db, stored, first.get("result", {}).get("cancelled_stops", [])))
-    stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent,
+            return await _answer(db, stored, user_ref, shown, key, (ctx, feed, now(), rates), await _replayed_stops(
+                db, stored, first.get("result", {}).get("cancelled_stops", [])))
+    stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent, "records": to_records,
                              "deadline": arrived + COMMIT_DEADLINE_S}
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
@@ -1530,8 +1573,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         stops = same_key.result.get("cancelled_stops", [])
         await request_key.finish(keys, user_ref, key, request_key.done(strategy_id, sent, {"cancelled_stops": stops}))
         replayed = await _replayed_stops(db, stored, stops)
-        return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
-                           cancelled=replayed)
+        return await _answer(db, stored, user_ref, shown, key, (ctx, feed, now(), rates), replayed)
     except BaseException:
         if key is not None and not stage["commit_started"]:  # refused with nothing stored: the key is free again
             await request_key.free(keys, user_ref, key)
@@ -1539,8 +1581,34 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     if key is not None:
         await request_key.finish(keys, user_ref, key,
                                  request_key.done(strategy_id, sent, {"cancelled_stops": cancelled}))
-    return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, placed_at, rates,
-                       cancelled=cancelled)
+    return await _answer(db, stored, user_ref, shown, key, (ctx, feed, placed_at, rates), cancelled)
+
+
+def _no_paper_book(stored: Any, at: datetime.datetime, cancelled: Sequence[Mapping[str, Any]]) -> PaperBookOut:
+    """Lane R1: the answer for a REAL position that has no paper book (a sent basket): no figure of the app's own (the
+    quantity and P&L are the broker's), the state PAUSED, the word the one status word. Every required figure is absent."""
+    required = {k: None for k, f in PaperBookOut.model_fields.items() if f.is_required()}
+    return PaperBookOut.model_validate(required | {
+        "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": stored.saved.definition.underlying,
+        "answered_at": at, "orders": [], "positions": [], "status_word": store.status_word(stored.status, True),
+        "state": "PAUSED", "booked": Decimal(0), "booked_text": render_explanation("cell_dash"),
+        "cancelled_stops": list(cancelled), "held": None})
+
+
+async def _answer(db: Any, stored: Any, user_ref: str, kind: str, key: Any, deps: tuple,  # noqa: PLR0913
+                  cancelled: Sequence[Mapping[str, Any]]) -> PaperBookOut:
+    """The order door's answer: the paper book as it stands plus the contract fields (Lane R1). For a real position the
+    book is whatever paper orders exist (none for a sent basket): the shown quantity and P&L are never changed by a
+    record; the word is the one status word (an order exists): Running until the broker shows it closed."""
+    ctx, feed, at, rates = deps
+    orders = await paper_store.load(db, stored.id)
+    out = (await _book(db, stored, orders, ctx, feed, at, rates, cancelled=cancelled) if orders
+           else _no_paper_book(stored, at, cancelled))
+    fields = await _real_fields(db, stored.id, user_ref, kind, key)
+    if kind == "real":
+        fields["status_word"] = store.status_word(stored.status, True)
+    kept = {name: value for name, value in out if name in out.model_fields_set}  # rebuilt by validation (frozen)
+    return PaperBookOut.model_validate({**kept, **fields})
 
 
 async def _replayed_stops(db: Any, stored: Any, kept: Sequence[Mapping[str, Any]]) -> list[dict]:
@@ -1590,7 +1658,10 @@ async def _place_orders(  # noqa: C901, PLR0912, PLR0913, PLR0915
     await release_connection(db)  # only reads so far (the strategy row lock is taken in place_checked, below)
     exit_prices = await _server_exit_prices(ctx, feed, stored.saved.definition.underlying, body.orders, state)
     # only a strategy with no paper order yet can be at its first fill (a book never shrinks): a later fill reads no IV
-    first = not await paper_store.tracked_ids(db, [strategy_id])
+    records = stage.get("records", False)  # Lane R1: a real action is stored as a record, never a paper order
+    if records and body.held is not None:
+        raise StrategyRefused("held_entry_not_a_first_open_basket")  # a held block is a first paper basket's
+    first = not records and not await paper_store.tracked_ids(db, [strategy_id])
     _check_held(body.held, first, body.orders, state, placed_at)
     await release_connection(db)  # I-47: tracked_ids above checked a connection out again; the entry IV read waits
     entry = (await entry_facts(ctx, stored.saved.definition.underlying, body.orders, state,
@@ -1602,6 +1673,8 @@ async def _place_orders(  # noqa: C901, PLR0912, PLR0913, PLR0915
         await request_key.claim_in_transaction(db, user_ref, stage["key"], strategy_id, stage["sent"], "paper")
     armed_before = await _armed_leg_stops(db, strategy_id)  # F3: the stops this request may cancel
     swept: list[int] = []  # FD5 2a: the ids the stale-stop sweep inside the fill cancels
+    if records:
+        return await _store_records(db, user_ref, strategy_id, body, (ctx, settings, placed_at, exit_prices), stage)
     try:
         book = await paper_limit.place_checked(
             db, user_ref, strategy_id, [
@@ -1643,6 +1716,31 @@ async def _place_orders(  # noqa: C901, PLR0912, PLR0913, PLR0915
         await db.rollback()
         raise
     return placed_at, cancelled_out
+
+
+async def _store_records(db: Any, user_ref: str, strategy_id: int, body: PaperOrdersIn, deps: tuple,  # noqa: PLR0913
+                         stage: dict) -> tuple[datetime.datetime, list[dict]]:
+    """Lane R1 (ADR-330 (73), ADR-281): the real position's branch of ``_place_orders``. The same checks, then ONE
+    record per action in ``real_action_records`` (never a paper order, never a broker call), the request key's own
+    result in the same transaction, the same deadline and the same commit rules. Cancels no stop and links no suggestion
+    (those read the paper book, which a real position does not have). Returns the time and no cancelled stops."""
+    ctx, settings, placed_at, exit_prices = deps
+    try:
+        await paper_limit.record_checked(
+            db, user_ref, strategy_id,
+            [paper_store.NewOrder(o.contract_id, o.side, o.quantity, exit_prices.get(i, o.price), o.kind, placed_at)
+             for i, o in enumerate(body.orders)],
+            ctx=ctx, at=placed_at, settings=settings, request_key=stage.get("key"))
+        if stage.get("key") is not None:
+            await request_key.finish_in_transaction(db, user_ref, stage["key"], {"cancelled_stops": []})
+        if _monotonic() > stage["deadline"]:  # R9: the page has given up by now; a late commit would surprise the user
+            raise StrategyRefused("order_request_too_slow", Failure.CONFLICT)
+        stage["commit_started"] = True
+        await db.commit()
+    except Exception:
+        await db.rollback()
+        raise
+    return placed_at, []
 
 
 class ExitRiskOut(ApiModel):
@@ -1994,10 +2092,16 @@ class TriggerOut(ApiModel):
     #: R6 (ADR-330 (64)): an old armed paper stop on a REAL (or unreadable) position stays stored but is never live: its
     #: state is "not_applicable" and this carries the position-kind sentence ("Real position: exit and protect it ...")
     not_applicable_text: CatalogueText | None = None
+    stored_not_sent: Literal[True] | None = None  # Lane R1: a REAL position's stop is stored here and nothing is sent
+    record: RecordOut | None = None  # Lane R1: the stop's record (action stop, or stop_fired once it was reached)
 
 
 class TriggersOut(ApiModel):
     triggers: list[TriggerOut]  # newest first
+    position_kind: Literal["paper", "real", "unknown", "none"] | None = None  # Lane R1: the frozen field contract
+    position_kind_text: CatalogueText | None = None
+    stored_not_sent: Literal[True] | None = None
+    record: RecordOut | None = None  # the newest record among the rows
     already_set: bool = False  # D-05: true only on a save that stored NOTHING new (the identical trigger was armed)
     # D-05 r3: directions of the submitted levels NOT stored (an identical armed trigger existed)
     already_armed: list[Direction] = Field(default_factory=list)
@@ -2085,8 +2189,22 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
     except SQLAlchemyError:  # FD5 N7: this answer is built AFTER the commit; a stop that was stored or cancelled is
         _LOG.warning("triggers answer: the position kind could not be read; its lines read unknown", exc_info=True)
         kind = "unknown"  # answered as success, the lines fail closed (no live paper stop)
-    off = kind in _NO_PAPER_ACTION_KINDS  # R6: a real or unreadable position has no live paper stop
-    return TriggersOut.model_validate({"already_set": already_set, "already_armed": list(already_armed), "triggers": [{
+    off = kind in _NO_PAPER_ACTION_KINDS  # R6: an unreadable position has no live stop (a real one has: Lane R1)
+    recs: dict[int, Any] = {}
+    if kind == "real":  # Lane R1: the stop's record, by trigger (a failed read leaves the rows without it)
+        try:
+            async with db.begin_nested():
+                for rec in await real_action_store.load(db, strategy_id):
+                    if rec.trigger_id is not None:
+                        recs[rec.trigger_id] = rec
+        except SQLAlchemyError:
+            _LOG.warning("records of strategy %s could not be read for the stops answer", strategy_id, exc_info=True)
+    return TriggersOut.model_validate({
+        "already_set": already_set, "already_armed": list(already_armed),
+        "position_kind": kind, "position_kind_text": position_kind.line_of(kind),
+        "stored_not_sent": True if kind == "real" else None,
+        "record": real_action_store.record_out(max(recs.values(), key=lambda x: x.id) if recs else None),
+        "triggers": [{
         "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
         "direction": r.trigger.direction, "level": r.trigger.level,
         "level_text": render_explanation("paper_trigger_level", level=r.trigger.level),
@@ -2097,7 +2215,9 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
         "state": "not_applicable" if off and _state(r) == "armed" else _state(r), "created_at": r.created_at,
         "fired_at": r.fired_at, "cancelled_at": r.cancelled_at,
         "set_before_adjustment": r.trigger.id in marks, "adjustment_note": marks.get(r.trigger.id),
-        "not_applicable_text": position_kind.line_of(kind) if off and _state(r) == "armed" else None}
+        "not_applicable_text": position_kind.line_of(kind) if off and _state(r) == "armed" else None,
+        "stored_not_sent": True if kind == "real" else None,
+        "record": real_action_store.record_out(recs.get(r.trigger.id))}
         for r in rows]})
 
 
@@ -2185,9 +2305,11 @@ def _judge_levels(new: Sequence[paper_trigger_store.NewTrigger], read: market_re
     return decision.reason if isinstance(decision, may_act.Refused) else None
 
 
-async def _validated_triggers(db: Any, strategy_id: int, body: TriggerIn,
-                              underlying: str) -> list[paper_trigger_store.NewTrigger]:
-    open_ids = _open_ids(await paper_store.load(db, strategy_id))
+async def _validated_triggers(db: Any, strategy_id: int, body: TriggerIn, underlying: str,
+                              real_legs: Sequence[int] = ()) -> list[paper_trigger_store.NewTrigger]:
+    """``real_legs``: for a real position with no paper book (a sent basket) the legs of its stored plan, "as last
+    read" (Lane R1, Q4 interim): the broker's own open legs are not read here."""
+    open_ids = _open_ids(await paper_store.load(db, strategy_id)) or list(real_legs)
     if not open_ids:
         raise StrategyRefused("paper_trigger_nothing_open")
     return _new_triggers(body, underlying, open_ids)
@@ -2201,16 +2323,18 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
                              feed: Annotated[LiveFeed | None, Depends(get_live_feed)],
                              now: Annotated[AnswerClock, Depends(get_answer_clock)]) -> TriggersOut:
     stored = await _load_strategy(db, user_ref, strategy_id)
-    kind = await _refuse_real_position(db, strategy_id)  # #877: a stop for a real position is set in Kite, not here
+    kind = await _refuse_real_position(db, strategy_id)  # Lane R1: the ONE kind read; only an unreadable kind refuses
     underlying = stored.saved.definition.underlying
+    real_legs = list(stored.saved.contract_ids) if kind == "real" else ()  # Q4 interim: the stored plan's legs
     # ADR-327: the price read (up to 3 s) happens BEFORE the strategy row lock, so a slow feed never holds the lock the
     # monitor's fire waits behind; what the read decided is re-validated under the lock below (D-05: the open legs)
     if crossed := await check_trigger_levels(db, ctx, feed, underlying,
-                                             await _validated_triggers(db, strategy_id, body, underlying), now):
+                                             await _validated_triggers(db, strategy_id, body, underlying, real_legs),
+                                             now):
         raise StrategyRefused(crossed)
     # D-05: two saves at one instant cannot both pass the read below
     await store.lock_strategy(db, user_ref, strategy_id)
-    new = await _validated_triggers(db, strategy_id, body, underlying)
+    new = await _validated_triggers(db, strategy_id, body, underlying, real_legs)
     # ADR-317 (3): the same armed trigger is not stored twice (read under the strategy's row lock taken above)
     armed = {(r.trigger.kind, r.trigger.direction, r.trigger.level, r.trigger.contract_id)
              for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"}
@@ -2218,13 +2342,31 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
     duplicate = [n.direction for n in new if n not in fresh]
     try:
         for n in fresh:
-            await paper_trigger_store.add(db, strategy_id, n)
+            trigger_id = await paper_trigger_store.add(db, strategy_id, n)
+            if kind == "real":  # Lane R1: the stop is also a record (nothing is sent; the worker alerts when reached)
+                await _record_stop(db, user_ref, stored, n, trigger_id, now())
         await db.commit()
     except Exception:
         await db.rollback()
         raise
     paper_monitor.notify()
     return await _triggers_out(db, strategy_id, already_set=not fresh, already_armed=duplicate, kind=kind)
+
+
+async def _record_stop(db: Any, user_ref: str, stored: Any, new: paper_trigger_store.NewTrigger,  # noqa: PLR0913
+                       trigger_id: int, at: datetime.datetime) -> None:
+    """Lane R1 (ADR-330 (73)): a stop set on a REAL position is stored as a ``stop`` record: the closing side and the
+    quantity of the leg (a leg stop) or of every leg (an index exit) as the stored plan has them, at the level. The
+    level is a reminder, not a price anyone got."""
+    legs = []
+    for contract_id, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True):
+        if new.contract_id is None or new.contract_id == contract_id:
+            legs.append(real_action_store.Leg(contract_id, "SELL" if leg.action.value == "BUY" else "BUY",
+                                              leg.quantity, new.level))
+    if not legs:
+        raise StrategyRefused("paper_trigger_leg_not_open")  # fail closed: a leg the stored plan does not have
+    await real_action_store.record(db, user_ref=user_ref, strategy_id=stored.id, action="stop", legs=legs,
+                                   stored_at=at, reason=new.kind, trigger_id=trigger_id)
 
 
 @router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
@@ -2265,7 +2407,7 @@ async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[An
     (``check_trigger_levels``) runs first, before the lock (the price read may wait up to 3 s): a level the live price
     has already reached is refused and the old exit stays as it is."""
     stored = await _load_strategy(db, user_ref, strategy_id)
-    kind = await _refuse_real_position(db, strategy_id)  # #877 (review F2): keeping an exit stores a stop again
+    kind = await _refuse_real_position(db, strategy_id)  # Lane R1: the ONE kind read; only an unreadable kind refuses
     current = {r.trigger.id: r for r in await paper_trigger_store.list_for(db, strategy_id)}.get(trigger_id)
     if current is not None and current.trigger.kind == "conditional_exit" and _state(current) == "armed":
         again = paper_trigger_store.NewTrigger("conditional_exit", current.trigger.direction, current.trigger.level,

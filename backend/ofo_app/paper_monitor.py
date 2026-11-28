@@ -156,8 +156,10 @@ def _contract_text(found: tracked_contracts.TrackedContract) -> ExplanationText:
     return display_contract((c.name, Instrument(c.instrument_type), strike, c.expiry))  # type: ignore[return-value]
 
 
-#: kind of position -> the report's why for an armed exit this monitor does not judge (any other kind: not run)
-_NOT_APPLICABLE_WHY: dict[str, str] = {"real": monitoring_state.EXIT_NOT_APPLICABLE}
+#: kind of position -> the report's why for an armed exit this monitor does not judge (any other kind: not run).
+#: Lane R1 (ADR-330 (73)): a REAL position's stops are judged like a paper one's (an alert and a record, no order), so
+#: only a kind that could not be read is left unjudged.
+_NOT_APPLICABLE_WHY: dict[str, str] = {}
 
 
 class BookUnreadError(RuntimeError):
@@ -166,6 +168,7 @@ class BookUnreadError(RuntimeError):
 
 class PaperMonitor:
     _held_count: int | None = None  # last logged count (class default: tests skip __init__)
+    _real_strategies: frozenset[int] | set[int] = frozenset()  # class default: tests skip __init__
     def __init__(self, sessions: Sessions, feed: Callable[[], LiveFeed | None], *,  # noqa: PLR0913 - seams
                  read_settings: SettingsReader,
                  leg_prices: LegPrices = provider_prices,
@@ -197,6 +200,7 @@ class PaperMonitor:
         self._exits_publisher: tuple[Any, monitoring_state.ExitsPublisher] | None = None
         self._dirty = True
         self._loaded_at: float | None = None
+        self._real_strategies: set[int] = set()  # Lane R1: armed strategies whose kind read real at the last reload
         self._na_strategies: dict[int, str] = {}  # strategy -> why its armed exits are not judged here (review F2)
         self.not_applicable: dict[int, str] = {}  # trigger id -> the position kind that has no stops here (told once)
         self._ever_loaded = False  # review F3: no armed exit is known until a reload has succeeded; no claim is made
@@ -248,6 +252,8 @@ class PaperMonitor:
             armed = await self._paper_only(session, await triggers.armed(session))
             orders = await triggers.orders_of(session, sorted({a.trigger.strategy_id for a in armed}))
             open_ids = {sid: _open(o) for sid, o in orders.items()}
+            for sid, legs in (await self._real_legs(session, armed)).items():  # Lane R1: a real position has no paper book
+                open_ids[sid] = legs
             ids = sorted({a.trigger.contract_id for a in armed if a.trigger.contract_id is not None}
                          | {c for a in armed if a.trigger.kind == "conditional_exit"
                             for c in open_ids[a.trigger.strategy_id]})
@@ -279,6 +285,20 @@ class PaperMonitor:
             await self._reload_hold(feed, found, session)  # AFTER the stop watch: a failed hold never unwatches a stop
         self._ever_loaded = True
 
+    async def _real_legs(self, session: Any, armed: Sequence[triggers.ArmedTrigger]) -> dict[int, list[int]]:
+        """Lane R1: the contracts of each armed REAL strategy, from its stored plan "as last read" (Q4 interim), for the
+        index exits that watch its legs. A strategy whose plan cannot be read is left out (its leg stops still watch)."""
+        from ofo_app import strategy_store  # noqa: PLC0415 - late: the one stored-plan reader
+        out: dict[int, list[int]] = {}
+        for a in armed:
+            sid = a.trigger.strategy_id
+            if sid in self._real_strategies and sid not in out:
+                try:
+                    out[sid] = list((await strategy_store.load(session, a.user_ref, sid)).saved.contract_ids)
+                except Exception:  # noqa: BLE001 - one unreadable plan never stops the others being watched
+                    log.warning("paper monitor: the plan legs of real strategy %s could not be read", sid)
+        return out
+
     async def _paper_only(self, session: Any, armed: Sequence[triggers.ArmedTrigger]) -> list[triggers.ArmedTrigger]:
         """ADR-330 (64): stops and alerts here cover PAPER trades only; a real position has no stop in this app. An
         armed trigger of a strategy whose position is real, or whose kind could not be read (fail closed), is never
@@ -291,10 +311,11 @@ class PaperMonitor:
             # fact: the last list is kept (and the age rule applies), never replaced by an empty one
             raise BookUnreadError("the position kinds of every armed strategy could not be read")
         keep: list[triggers.ArmedTrigger] = []
+        self._real_strategies = {sid for sid, k in kinds.items() if k == position_kind.REAL}
         self._na_strategies = {}
         for a in armed:
             kind = kinds.get(a.trigger.strategy_id, position_kind.UNKNOWN)
-            if kind == position_kind.PAPER:
+            if kind in (position_kind.PAPER, position_kind.REAL):  # Lane R1: real is judged too (alert + record)
                 keep.append(a)
                 self.not_applicable.pop(a.trigger.id, None)  # review F4: it reads paper again
                 continue
@@ -610,9 +631,12 @@ class PaperMonitor:
         # and the next crossing tick retries, never priced on a held or default rate)
         feed = LiveFeed(await with_rate_in_force(feed.ctx, self._read_settings), feed.fanout)
         async with self._sessions() as session, session.begin():
-            if not await self._still_paper(session, t.strategy_id):
+            kind = await self._kind_in_fire(session, t.strategy_id)
+            if kind == "real":  # Lane R1: no paper order, no broker call: an alert and one record
+                return await self._fire_real(session, w, price, now, feed)
+            if kind != "paper":
                 self._skipped_not_paper(a)  # RA (Z2 T1): left armed, and said: never a silent skip
-                return None  # review F5: the kind is read again in the fire; not paper (or unreadable) = left armed
+                return None  # review F5: the kind is read again in the fire; unreadable = left armed
             book = await paper_store.load(session, t.strategy_id)
             open_net = {int(p.instrument_id): p.net_quantity
                         for p in net_positions([o.order.as_paper() for o in book], {}).positions if p.net_quantity}
@@ -662,6 +686,51 @@ class PaperMonitor:
             self.not_applicable[tid] = "unknown"
             log.warning("paper trigger %s of strategy %s not fired: its position kind did not read paper at the "
                         "crossing (left armed, ADR-330 (64))", tid, sid)
+
+    async def _fire_real(self, session: Any, w: _Watch, price: paper.Price, now: datetime.datetime,
+                         feed: LiveFeed) -> dict[str, set[int]] | None:
+        """Lane R1 (ADR-330 (73), ADR-281): a stop reached on a REAL position raises its alert ONCE and stores ONE
+        ``stop_fired`` record. It writes no paper order and calls no broker endpoint: the position, its quantity and its
+        P&L stay the broker's figure. The legs are the stored plan's, "as last read" (Q4 interim). The claim is the
+        paper path's (``claim_fire``: once per trigger); a stop another process claimed first stores nothing."""
+        from ofo_app import real_action_store, strategy_store  # noqa: PLC0415 - late, like the kind reader
+        a, t = w.armed, w.armed.trigger
+        saved = (await strategy_store.load(session, a.user_ref, t.strategy_id)).saved
+        legs = dict(zip(saved.contract_ids, saved.definition.legs, strict=True))
+        targets = [t.contract_id] if t.kind == "leg_stop" else sorted(legs)
+        if t.kind == "leg_stop" and t.contract_id not in legs:
+            return {"cancelled": set(await triggers.cancel(session, t.strategy_id, t.id)), "fired": set()}
+        found = {c.contract_id: c for c in await tracked_contracts.resolve(session, targets)}
+        prices = self._exit_prices(feed, w.armed, w, price, targets, found)
+        if isinstance(prices, _NoPrice):  # a contract without a live price: not yet, the trigger stays armed
+            await self._tell_exit_not_run(session, a, prices, found, now)
+            return None
+        texts = {c: _contract_text(found[c]) for c in targets}
+        reason = stop_reason_at(self._reason(t, texts), a.underlying, await self._index_at_fire(feed, a, price))
+        if not await triggers.claim_fire(session, t.id):
+            return {"fired": {t.id}, "cancelled": set()}  # already fired elsewhere: nothing stored, never watched again
+        await real_action_store.record(
+            session, user_ref=a.user_ref, strategy_id=t.strategy_id, action="stop_fired",
+            legs=[real_action_store.Leg(c, "SELL" if legs[c].action.value == "BUY" else "BUY", legs[c].quantity,
+                                        prices[c]) for c in targets],
+            stored_at=now, reason=str(reason), trigger_id=t.id)
+        body = real_action_store.alert_body(reason, [(texts[c], prices[c]) for c in targets],
+                                            names_contract=t.kind == "leg_stop")
+        await actionable_alerts.inform(
+            session, a.user_ref, t.strategy_id, "stop_fired", "stop_fired_note_real", {"body": body}, at=now,
+            restore={"body": real_action_store.REAL_ALERT_BODY_TEMPLATES})
+        self.fires += 1
+        return {"fired": {t.id}, "cancelled": set()}
+
+    @staticmethod
+    async def _kind_in_fire(session: Any, strategy_id: int) -> str:
+        """The strategy's kind NOW (one read inside the fire's own transaction, before anything is claimed). An
+        unreadable kind answers "unknown": nothing is written."""
+        from ofo_app import strategy_store  # noqa: PLC0415 - late: the one kind reader
+        try:
+            return (await strategy_store.kinds_of(session, [strategy_id])).get(strategy_id, "unknown")
+        except Exception:  # noqa: BLE001 - fail closed
+            return "unknown"
 
     @staticmethod
     async def _still_paper(session: Any, strategy_id: int) -> bool:
@@ -855,6 +924,8 @@ def _why_of(w: _Watch) -> str:
 
 
 def _open(orders: Sequence[paper_store.StoredOrder]) -> list[int]:
+    if not orders:
+        return []  # net_positions refuses an empty book (a real position has none)
     return [int(p.instrument_id) for p in net_positions([o.order.as_paper() for o in orders], {}).positions
             if p.net_quantity != 0]
 
