@@ -914,19 +914,23 @@ async def atm_iv_now(ctx: Any, underlying: str, expiry: datetime.date, spot: Dec
     return _atm_vol(list(rows), ids, model.greeks, forward)
 
 
-async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any], confirmed: bool = False) -> EntryFacts | None:
+async def entry_facts_now(ctx: Any, underlying: str, sold: Iterable[Any], confirmed: bool = False,
+                          feed: Any = None) -> EntryFacts | None:
     """ADR-243 + ADR-270 (1): the entry facts a FIRST fill stores (paper and real alike), from the SOLD legs' listed
     contracts ``sold`` (``.instrument_type``, ``.strike``, ``.expiry``): the index's live spot now, each side's short
     distance (``entry_facts_of``) and the entry ATM IV of the nearest sold option expiry (``atm_iv_now``). Answer
-    states: not connected / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
+    states: no context / no quote / a quote that is not a positive price -> None (nothing stored, never a guessed
     spot); the IV not readable (no forward, unpriced chain, a read that fails) -> the facts with ``entry_atm_iv``
     None. ADR-330 (39): the spot is the index's LIVE price (``priced``: AVAILABLE and above 0), the one rule a leg's
-    price follows; a not-live value (old, flagged) is stored only when the user confirmed the not-live line
-    (``confirmed``, ``_index_value_not_live``: its own flag rule), never silently."""
-    if ctx is None or not ctx.provider.status().connected:
+    price follows; a not-live value (old, flagged, or the feed not connected) is stored only when the user confirmed
+    the not-live line (``confirmed``, ``_index_value_not_live``: its own flag rule), never silently (K2 F1: a ticked
+    first fill with the feed down stores the held value, as ``record_basket_facts`` does). ``feed``: when given, an
+    index nobody holds yet is held on the shared fan-out until its first quote (``_index_quote_held``); None = the
+    caller's book as it is."""
+    if ctx is None:
         return None
-    quote = ctx.provider.underlying_quote(underlying)
-    ltp = quote.ltp if priced(quote) else None
+    quote = await _index_quote_held(ctx, feed, underlying) if ctx.provider.status().connected else None
+    ltp = quote.ltp if quote is not None and priced(quote) else None
     if ltp is None and confirmed:
         held = _index_value_not_live(ctx, underlying)
         ltp = None if held is None else held[0]
@@ -987,6 +991,25 @@ def _index_not_held_reason(ctx: Any, quote: Any) -> str:
     return index_hold_refusal(quote) or "not_live_not_confirmed"
 
 
+async def _index_quote_held(ctx: Any, feed: Any, underlying: str) -> Any:
+    """The index quote now. The API process holds only what a page socket subscribed, so an index nobody holds is held
+    on the shared fan-out until its first quote or ``LEG_WAIT_S`` passes (``read_door.read_quotes``); ``feed`` None =
+    no hold (the book as it is). The caller has checked the feed is connected."""
+    from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
+
+    provider = ctx.provider
+    index_id = index_id_of(ctx, underlying)
+
+    def read() -> Any:
+        return provider.underlying_quote(underlying)
+    quote = read()
+    if quote is None and feed is not None and index_id is not None:
+        held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
+                                 lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
+        quote = quote if held is NO_TOKEN else held
+    return quote
+
+
 async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool = False) -> Decimal:
     """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
@@ -994,21 +1017,11 @@ async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool
     context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored), unless the
     user confirmed the not-live line (``confirmed``, ADR-330 (28)): then the last held value
     (``_index_value_not_live``)."""
-    from ofo_app.chain_push import index_id_of  # noqa: PLC0415 - chain_push imports the app layer
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
 
     spot = quote = None
     if ctx is not None and ctx.provider.status().connected:
-        provider = ctx.provider
-        index_id = index_id_of(ctx, underlying)
-
-        def read() -> Any:
-            return provider.underlying_quote(underlying)
-        quote = read()
-        if quote is None and feed is not None and index_id is not None:
-            held = await read_quotes(feed, [index_id], read, lambda q: q is not None,
-                                       lambda: provider.status().connected, LEG_WAIT_S, LEG_POLL_S)
-            quote = quote if held is NO_TOKEN else held
+        quote = await _index_quote_held(ctx, feed, underlying)
         # ADR-330 (39): the quote's own health carries the one index age rule (``FeedState.quote_health``); a value
         # that rule calls not live is not a live spot, whatever the feed as a whole says: it needs the user's tick
         live = quote is not None and quote.health is DataHealth.AVAILABLE
