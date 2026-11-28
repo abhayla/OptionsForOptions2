@@ -845,6 +845,11 @@ def _calls(dependant: Any) -> set[Any]:
 #: The guards by module + name: this module never imports the order path (the order-closure scan), only names it.
 _REQUIRE_ORDER_PATH = ("ofo_app.order_path_switch", "require_order_path")
 _GUARD_PAPER_ORDER = ("ofo_app.scenario_guard", "guard_paper_order")
+#: Lane B2: the unknown-outcome block (``ofo_app.order_outcome``): every order route but the Return door (it records an
+#: outcome) carries it, so a second order cannot follow an order whose result is not known, whatever its key or body.
+_GUARD_PAPER_OUTCOME = ("ofo_app.order_outcome", "guard_paper_outcome")
+_GUARD_REAL_OUTCOME = ("ofo_app.order_outcome", "guard_real_outcome")
+_RETURN_DOOR = ("POST", "/strategies/{strategy_id}/execution/return")
 
 
 def _name(fn: Any) -> tuple[str, str]:
@@ -863,11 +868,12 @@ def misguarded_order_routes(routes: list[Any]) -> list[tuple[str, str]]:
             names = {_name(c) for c in _calls(getattr(r, "dependant", None))}
             if key in REAL_ORDER_ROUTES:
                 seen.add(key)
-                if not names & {_name(refuse_orders), _REQUIRE_ORDER_PATH}:
+                if not names & {_name(refuse_orders), _REQUIRE_ORDER_PATH} or (
+                        key != _RETURN_DOOR and _GUARD_REAL_OUTCOME not in names):
                     out.append(key)
             elif key in PAPER_ORDER_ROUTES:
                 seen.add(key)
-                if _GUARD_PAPER_ORDER not in names:
+                if _GUARD_PAPER_ORDER not in names or _GUARD_PAPER_OUTCOME not in names:
                     out.append(key)
     out.extend(sorted(ORDER_ROUTES - seen))
     return out

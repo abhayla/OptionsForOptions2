@@ -1,7 +1,7 @@
 """ofo.alerts: the kind table (ADR-330 (3), (3b), (4)) and its tie to the catalogue and migration 0054."""
 from __future__ import annotations
 
-import importlib.util
+import ast
 from pathlib import Path
 
 import pytest
@@ -55,10 +55,19 @@ def test_every_answer_has_its_label_and_the_wording_lines_exist() -> None:
     assert EXPLANATIONS["alert_no_longer_true_since"].text == "no longer true since {time}"
 
 
+def _literals(path: Path, *names: str) -> dict[str, object]:
+    """Read module-level literal assignments from a file by parsing it, so the check never imports the module
+    (the file does ``from alembic import op``; domain-tests has no alembic, and a skip hides the guard)."""
+    found: dict[str, object] = {}
+    for node in ast.parse(path.read_text(encoding="utf-8")).body:
+        if isinstance(node, ast.Assign) and len(node.targets) == 1 and isinstance(node.targets[0], ast.Name) \
+                and node.targets[0].id in names:
+            found[node.targets[0].id] = ast.literal_eval(node.value)
+    assert set(found) == set(names), f"{path.name} lacks a literal for {sorted(set(names) - set(found))}"
+    return found
+
+
 def test_the_migration_copies_the_table() -> None:
-    found = importlib.util.spec_from_file_location("m0054_for_alert_kinds", _MIGRATION)
-    assert found is not None and found.loader is not None
-    module = importlib.util.module_from_spec(found)
-    found.loader.exec_module(module)
-    assert tuple(alerts.KINDS) == module.KINDS
-    assert module.ANSWERS == alerts.ANSWERS
+    copy = _literals(_MIGRATION, "KINDS", "ANSWERS")
+    assert tuple(alerts.KINDS) == copy["KINDS"]
+    assert copy["ANSWERS"] == alerts.ANSWERS

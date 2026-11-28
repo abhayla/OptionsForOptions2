@@ -42,7 +42,9 @@
                 <p v-for="r in g.records" :key="r.id" :data-outcome="r.outcome" data-testid="opp-outcome">
                   <span class="rounded border border-line px-1.5 text-xs">{{ r.outcome_text }}</span>
                   <span v-if="r.closed_at" class="ml-1 text-xs text-ink-muted tabular-nums" data-testid="opp-closed-at">{{ ' ' }}at {{ istTime(r.closed_at) }}</span>
-                  <span v-if="r.detail" class="ml-1 text-xs text-ink-muted">{{ ' ' }}{{ r.detail }}</span>
+                  <span v-if="typeof r.detail === 'string' && r.detail.trim() !== ''" class="ml-1 text-xs text-ink-muted">{{ ' ' }}{{ r.detail }}</span>
+                  <!-- I-201 (F3): a dismissal made with no reason says so (new sentence, pending owner read) -->
+                  <span v-else-if="r.outcome === 'dismissed'" class="ml-1 text-xs text-ink-muted" data-testid="opp-no-reason">{{ ' ' }}No reason given</span>
                 </p>
               </td>
               <td class="py-1.5">

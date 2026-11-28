@@ -1,9 +1,100 @@
-# Lane T: screen-by-screen browser tests (26 Nov 2026)
+STATUS (28 Nov, IST): pushed df1f89764 earlier; CI-2 (frontend job cancelled at 25 min) FOUND, see section CI-2: not a hang; 1956 Playwright tests (was 282) of which 75 fail twice (screen-* specs, not in frontend lane's reach from here) ate about 10 of the 16.5 min; timeout line raised 25 -> 40 in app-tests.yml (frontend job only), not yet pushed. CI-1, I-184, I-126, I-170, I-176 done; I-168 green alone; I-204 build re-run waits for wave 0. Messages to the coordinator are refused (device trust); read this line.
+
+# RESULTS: Lane T (test-only gaps and tooling)
+
+Spec basis: ADR-016 to ADR-019; ADR-330 (45) to (72); completion plan 2026-11-28 section 1, rows I-184, I-126, I-204, I-168, I-170, I-176.
+
+Set-up note (not a test change): the cloud container's database `ofo_test` had no schema, so every DB test failed with
+`relation "public.catalogue_contracts" does not exist` (9 of 10 in the I-184 file, 4 of 13 in the I-126 file). Fixed by
+`python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head` once. Every count
+below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables unset.
+
+## Items
+
+| Item | Real case (from the plan) | Before | After | Commit |
+|---|---|---|---|---|
+| I-184 | "Three stale xfail strict markers in tests_app/test_slow_price_source_live_day.py" | grep of `xfail|strict` on the build head: nothing | 10 passed (file alone) | none needed (already clean) |
+| I-126 | "Two plan-watch tests read the real clock and fail Friday after 15:00" | pins 8ed916db, cdce22ce are ancestors of the build | `tests_app/test_plan_watch.py` 13 passed; the two pinned tests are `test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live` and `test_a_quote_answering_after_the_market_was_cut_is_not_asked` (they call `_pin_server_clock`) | none needed |
+| I-204 | "Three FE2 DB tests fail on the merged build (F-39)" | build e2da71f50: 3 failed, 2 passed (`real_position_exit_refused`) | fix branch origin/fix/r3-leftovers-1128 (951aa698c, worktree, removed after): 5 passed. Build re-run after wave 0: PENDING | none (fix is a5259db50 on that branch) |
+| I-168 | "Pool-not-held plan-watch tests fail on the unmodified build; test_d36 assumes a fresh database" | first pass (under load, DB behind head): `test_pool_not_held_across_market_wait.py` 3 failed | alone on the r3 build with a database at head: `test_pool_not_held_across_market_wait.py` 5 passed, `test_d36_adjustment_counts.py` 6 passed. Re-run after Lane B3's I-48 lands: PENDING (not on origin) | none (no test change needed) |
+| CI-1 (coordinator, front of queue) | CI pull 881, job domain-tests, commit a1d70422: `tests/test_alert_kinds.py::test_the_migration_copies_the_table` ModuleNotFoundError: No module named 'alembic' | clean venv (pyyaml, jsonschema, pytest, mypy only): 1 failed, 12 passed | same venv: 13 passed; mutation (an extra answer in the 0054 literal) makes it fail, so the guard still runs; ruff clean | see git log |
+| I-170 | "27 DB tests in 12 files fail on a clean run" | 18 files, 28 tests failed (511 files run one by one, `OFO_TEST_DB_PER_FILE=1`, while the pre-push check used the machine) | the same 18 files alone, database at head 0062: 0 failed, 249 passed | none (no test change needed) |
+| I-176 | "11 of 29 failing tests never named" | all 28 failures named below (`-rf`) | 0 unnamed, 0 failing | none |
+
+## Closing evidence
+
+| Item | Claim | Evidence (command run this turn, result) |
+|---|---|---|
+| I-184 | no xfail/strict marker | `git grep -n -E "xfail|strict" origin/integration/weekend-r3-1129 -- tests_app/test_slow_price_source_live_day.py` prints nothing (exit 1); pytest on the file: `10 passed` |
+| I-126 | clock pins on the build, both tests green | `git merge-base --is-ancestor 8ed916db origin/integration/weekend-r3-1129` and the same for cdce22ce: both true; `tests_app/test_plan_watch.py`: `13 passed` (run on Saturday 28 Nov 18:5x IST; the pin makes the result day-independent, see `CLOCK_PIN` in the file). Not proven by a command: a run on a real Friday after 15:00 |
+| I-110 | issues 854 to 880 filed (27) | `gh issue list` is refused here (GraphQL blocked); REST instead: `gh api -X GET repos/abhayla/optionsforoptions2/issues -f state=all -f per_page=100 -f page=1..3`, non-PR numbers between 854 and 880: 27, first 854, last 880 |
+| I-109 | AX-01 to AX-14 are in the plan | `git show origin/docs/test-plan-weekend-1127:docs/process/test-plan-weekend-2026-11-28.md \| grep -o -E "AX-[0-9]+" \| sort -u` lists AX-01 to AX-14 (14 ids); AX-14 row at line 246 and section 14 intake table at lines 1681 to 1690 (AX-08 to AX-12 appear as one range row "not built") |
+| I-96 | Alerts Active and History rows are in the plan | same file: `grep -n -i alerts` finds rows W-13 (line 199, History "Closed by system"), W-17 (line 203, Active on a slow connection) and SW-8 (line 255, Alerts Active, History, Records block). The slow-link half is "not proven by a command" (the plan itself says the real link time is proven only by the PC) |
+
+## Same class search (CI-1)
+
+`grep -rln "alembic" tests/ | xargs grep -ln "exec_module\|import_module\|from alembic\|import alembic"` hits: test_prepush.py (105 passed), test_door_names_private.py (301 passed), test_history_not_shown.py (56 passed), test_alert_writers_one_caller.py (13 passed), test_alert_kinds.py (fixed). All run in /tmp/ci-like (only pyyaml, jsonschema, pytest, mypy). Wider search for tests naming `alembic/versions`: 8 more files, 129 passed, 1 skipped in the same environment. No other test needs a fix. The fix reads KINDS and ANSWERS by `ast.literal_eval` of the module-level assignments; no importorskip.
+
+## CI-2: the "frontend" job of app-tests.yml cancelled at 25 minutes (pull 881, commit a1d70422, run 46155059897)
+
+Measured from the job's own step times (gh api actions runs and jobs) and its log, compared with two green runs of the same job:
+
+| Step | cancelled run a1d70422 | green run a0e6fee1 | green run cf31e8d4 |
+|---|---|---|---|
+| migrations | 1:55 | 0:38 | 0:58 |
+| lint and unit tests | 5:22 (398 files, 4265 tests: local count) | 1:48 (222 files, 2605 tests) | 2:48 |
+| build to server start | 0:35 | 0:35 | 0:35 |
+| Playwright | cancelled after 16:32, 980 of 1956 tests done | 2:45, 282 tests | 3:59, 282 tests |
+| whole job | 25:19 (limit 25) | 6:54 | 9:20 |
+
+Findings:
+1. **Not a hang, not a watch mode.** The step was still finishing tests (about 60 per minute) when the 25-minute limit cancelled the job.
+2. **The Playwright suite grew 7 times.** The 26 Nov screen suite (8 `screen-*.spec.ts` files, from the push-5 tree) is on the round 3 build and not on main (main has 33 files in frontend/e2e, the build 44): `npx playwright test --list` on the build prints `Total: 1956 tests in 34 files`. The job was sized for 282.
+3. **75 tests fail on both attempts** (CI retries once; none passed on the retry): screen-alerts 20, screen-live-strategies 20, screen-home 13, screen-builder-legs 7, screen-positions 6, screen-my-strategies 5, positions 2, index-view 1, my-strategies 1. A failing attempt costs about 7.9 s (the 5 s expect timeout plus page work) against 0.69 s for a passing one: the 156 failed attempts used 1226 s of the 1792 s of measured test time (68 percent). Reproduced locally on the build: `CI=1 npx playwright test e2e/screen-alerts.spec.ts` with a preview on 4175: 40 failed attempts-lines, 70 passed, 4.2 min; the first failures read `getByTestId('alerts-empty')` / `alerts-attention` / `alerts-earlier-heading` not found, so the spec's expectations drifted from the Alerts page after 26 Nov (a test-side drift, not a hang).
+4. **With every test passing** the same rate gives about 11 to 12 minutes for Playwright, so about 21 minutes for the job on a healthy runner. The cancelled runner was also 2 to 3 times slower in the other steps, so 25 minutes was too thin even then.
+
+Decided: only the frontend job's `timeout-minutes` line in .github/workflows/app-tests.yml, 25 to 40 (the coordinator allowed this line, ci.yml untouched). The raise alone would not make the job green: the 75 failing screen-suite tests must be fixed or re-pinned by the lane that owns frontend/e2e (outside my edit list; screen-alerts first, 20 tests). Measured, not guessed: ~21 min healthy, ~42 min if the failures stay.
+
+Suggested (not done): a `timeout-minutes: 15` on the Playwright step itself so a slow step ends red with its log instead of a cancelled job with none.
+
+## For Lane Z3
+
+(New `*_t_1128.py` files: none so far.)
+
+## I-170 / I-176: the named list and causes
+
+22 tests in 15 files: `function public.expire_order_request_keys() does not exist`. The test database sat at migration 0061; my merge of the build brought 0062, so every downgrade-then-upgrade round trip ran `DROP FUNCTION` on a function that was never created. Files (tests): test_migration_0028_paper_orders (1), _0030_paper_settle_zero (1), _0031_adjustment_playbooks (1), _0043_scenario_marker (2), _0044_s06_carry_gap (2), _0045_rule_state_marker (1), _0052_held_entries (1), _0057_history_delete_entries (1), _0059_last_close (1), test_migration_actionable_alerts (1), test_migration_several_standard_playbooks (1), test_order_book_migration (1), test_reconciliation_store (1), test_strategy_closed_status (1), test_strategy_followups (1), test_strategy_planned_entry (1), and test_order_request_key_durable_fd3 (3, the same missing function). A further 3 tests in test_pool_not_held_across_market_wait failed on timing under load and pass alone. Fixed by `alembic upgrade head` on the test database, not by a test edit. Skip-only files (not failures): test_check_failed_fe3_1128 (3), test_execute_replay_api (1), test_index_leg_save (1), test_report_atomic_fe3_1128 (9); the files give "no Redis here" or "the test catalogue holds no INDEX row".
+
+Suggested tooling fix (scripts/ and tests_app/conftest.py are outside this lane's edit list): the per-file clone should fail fast with one line "test database at <rev>, code head <rev>: run alembic upgrade head" instead of 18 files of a misleading SQL error.
+
+## Product causes found
+
+None. No product code was at fault in any run.
+
+## Decided for the owner
+
+- Ran `alembic upgrade head` on the container's own throwaway test database to get a schema; no file, no product code touched.
+
+- Friction row for the coordinator (I1; this lane may not edit docs/process/friction-log.md): "Cloud test database `ofo_test` has no schema at session start: every DB test fails with `relation public.catalogue_contracts does not exist` until `db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head` is run; a 60 min foreground run of all tests_app was killed at 62 percent by the default background limit. Fix to recommend: cloud_services.sh migrates ofo_test, and the lane brief gives the 7200000 ms limit for a full tests_app run." Status: new.
+
+## Not done
+
+- Coordinator messages (send_message to the parent) are refused: "elevated_session_untrusted_device"; the remedy is an owner card (confirm_repository_trust) that also limits this session to trusted devices for good, so it was not raised unasked. Status goes through this file and the push line.
+- I-168 (needs B3's I-48 on origin), I-204 build re-run (needs wave 0).
+
+SAFE TO CLOSE: no (items 4 to 6 open)
+
+
+---
+
+# Earlier file of the same name (26 Nov 2026, screen-suite lane; kept unchanged below, headings demoted one level)
+
+## Lane T: screen-by-screen browser tests (26 Nov 2026)
 
 Branch `test/screen-suite-1126` from `feat/nb-screens-w2-1126` a9bd41a. Tests, helpers and docs only; no product
 code, no spec rows, no migration. Owner evidence: comment 7184365037 on PR #722 (26 Nov screen test).
 
-## Status
+### Status
 
 | Screen | Spec file | Tests (x2 viewports) | Expected-fail (ids) | New findings | Pushed head |
 |---|---|---|---|---|---|
@@ -29,7 +120,7 @@ stubs, the way the existing `home.spec.ts` runs; `PW_CHROMIUM_PATH=/opt/pw-brows
 npx playwright test e2e/screen-home.spec.ts --trace off` from `frontend/`. The real-backend mode CI uses (Postgres 16,
 migrated, 2026-10-08 catalogue seeded, uvicorn 8000-8002, previews 4173-4176) also works in this container.
 
-## Totals
+### Totals
 
 | Measure | Value |
 |---|---|
@@ -53,7 +144,7 @@ builder's payoff chart, adjustment drawer, plan editor and target sliders (BUILD
 "Covered before" (279) was measured by a script plus a read of about 10 hits, so it is generous; each "after" row was
 checked against the test body.
 
-## Gate notes (for the next lane)
+### Gate notes (for the next lane)
 
 - Two repo guards run in the prepush preflight and are not in `ci_local.py`: `tests/test_e2e_live_socket_fakes.py`
   (every push on the strategy live socket stamped with `echoSeq`; its `EXPECTED` map lists every file that routes that
@@ -62,7 +153,7 @@ checked against the test body.
   route); fixed in acbadd2 and 4197832. Run `pytest tests -m repo_scan` once before prepush when adding e2e socket stubs.
 - The push hook checks the checked-out HEAD, so a gated older commit cannot be pushed once HEAD has moved on.
 
-## Findings (product defects; steps, spec, actual)
+### Findings (product defects; steps, spec, actual)
 
 | Id | Screen | Steps | Expected (spec) | Actual | Test | Screenshot |
 |---|---|---|---|---|---|---|
@@ -111,47 +202,47 @@ checked against the test body.
 
 Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitignored; regenerated on each run).
 
-## Coverage guard
+### Coverage guard
 
 `screen-inventory-guard.test.js` rebuilds the inventory from the router and the `.vue` templates and fails, naming
 file:line and label, when a route or control has no row in `screen-inventory.json`, or a row's control is gone.
 Matching is on source file + kind + testid-or-label, not the positional id. Proof: a temporary `<button>Lane T probe</button>`
 in `HomeOverviewPage.vue` made it fail with `HomeOverviewPage.vue:81 button "Lane T probe"`; reverted.
 
-## Not covered yet (Alerts)
+### Not covered yet (Alerts)
 
 - Lane P's full Alerts screens are not on this branch: alert text naming the strategy (N-14 fix), leg-stop alert with the NIFTY value (row 2 / S-20), the "Includes N closed strategies" line (S-15 / Q2-14), Compare through an alert link (R-10), expiry settlement rows (trade 173), R-07.
 - A real stop firing (stubbed).
 
-## Not covered yet (Strategy Builder)
+### Not covered yet (Strategy Builder)
 
 - BUILD-18..38 payoff chart, summary and figure widgets, charges, margin; BUILD-39..62 execute, tracking, adjust drawer; BUILD-68..85 adjust compare; BUILD-130..136 ready-made panel contents; BUILD-187..196 scenario and target blocks (partly in existing column-mode, display-format, range-step specs).
 - BUILD-93..95 strategy-type confirm; BUILD-101..108 straddle, strangle, quick select, futures, synthetic; BUILD-116/185 reprice prompt; BUILD-156/157 paper toast after Add to Paper; BUILD-91/92 choosing width or lots mode.
 
-## Not covered yet (Option Chain)
+### Not covered yet (Option Chain)
 
 - Leave dialog x and overlay close (Escape, Stay, Leave are covered); builder-side leave paths (rows 11, 15) belong to the builder screen.
 - Real-backend eligibility path (stubbed; `chain-selection.spec.ts` covers the real outcome route in CI).
 
-## Not covered yet (Live Strategies and Adjustments; 2 rounds used)
+### Not covered yet (Live Strategies and Adjustments; 2 rounds used)
 
 - ADJ-36 "Stop at % of margin" switch; ADJ-37..45 plan-edit block (needs `GET/POST /strategies/{id}/adjustment-plan` stubbed); ADJ-53/54 "Earlier values (N)" and its Change; ADJ-31 rail links; ADJ-48 time-of-day input.
 - Playbook editor approach checkboxes, day-rule inputs, situations step, stage from/to: rendered, not edited.
 - 25 s card give-up timer (D-41).
 
-## Not covered yet (Current positions)
+### Not covered yet (Current positions)
 
 - Live index line in the Stops panel (needs the WebSocket feed); only "Index values unavailable." is tested.
 - Real exit dialog: none on this screen (ADR-281); its absence is tested.
 - Held-at-my-broker form, Add-to-Paper dialog, Greeks panel with data: not reachable from Positions or not exercised.
 - Real-backend round trip (all stubbed).
 
-## Not covered yet (My Strategies)
+### Not covered yet (My Strategies)
 
 - Real-API round trip stays in `my-strategies.spec.ts` (needs the live catalogue); this suite is stubbed.
 - After-charges tap on a Completed row's net figure (SHARED-09); Builder's Saved-list delete (Builder screen).
 
-## Not covered yet (Home)
+### Not covered yet (Home)
 
 - Welcome / trial slot: nothing to click until sign-in exists; only the absent text is asserted (NEW-T01).
 - Header toast for a new adjustment opportunity: needs a second header poll; the record count is covered (BELL-4).

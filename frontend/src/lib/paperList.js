@@ -6,7 +6,7 @@
 import { plainName } from '@/lib/saveDraft'
 import { contractName, CONTRACT_UNAVAILABLE } from '@/lib/displayFormat'
 import { UNREADABLE_TEXT, EXITED_TEXT, afterFigure } from '@/lib/tracking'
-import { istTime, noteShownDate } from '@/lib/displayFormat'
+import { isoMillis, istTime, noteShownDate } from '@/lib/displayFormat'
 import { LAST_CLOSE_LABEL } from '@/lib/paperDrafts'
 import { PAUSED_TEXT as PAPER_PAUSED, NOT_CONNECTED_TEXT as PAPER_NOT_CONNECTED, listIsStale } from '@/lib/priceState'
 
@@ -28,6 +28,8 @@ const text = (v) => (typeof v === 'string' && v.trim() !== '' ? v.trim() : null)
 // REQ-109 AC-5: "<sentence>, as of <time>" when the server sent the time (as_of / totals_as_of); no time (null, not a
 // string the clock can read): the sentence as sent, never a made-up time. Only a PAUSED book carries one.
 export const withAsOf = (sentence, asOf) => (sentence !== null && typeof asOf === 'string' && istTime(asOf).endsWith('IST') ? `${sentence}, as of ${istTime(asOf)}` : sentence)
+// I-199 (F3, Lane RA2 note): a LIVE book with a readable as_of and no broker session is a stored close; its row says so, with the time. New wording, pending owner read.
+export const STORED_CLOSE_PREFIX = 'As of'
 const isCount = (v) => Number.isInteger(v) && v >= 0
 
 // U16 (REQ-151): the same 'NIFTY 3 Nov 22950 CE' text every other screen shows; the server's contract_text (ISO date) is the fallback.
@@ -68,6 +70,9 @@ function readPosition(p, underlying) {
 }
 
 // D-10 (ADR-207 (2)): one CLOSED lifecycle of a contract as the server sent it: entry and exit average, its own booked. Texts as sent.
+/** I-91 (F3): the server's own Unbooked / P&L text of a closed row, or its reason, as sent ('' / blank = absent); never formed here (ADR-008). */
+export const closedExtras = (c) => ({ left: text(c?.unbooked_text), result: text(c?.pnl_text), reason: text(c?.pnl_reason_text) })
+
 function readClosed(c, underlying) {
   if (!c || !Number.isInteger(c.contract_id) || typeof c.contract_text !== 'string' || !Number.isInteger(c.quantity)) return null
   return {
@@ -80,6 +85,8 @@ function readClosed(c, underlying) {
     exitText: text(c.average_exit_text),
     reasonText: text(c.reason_text), // N-47: the server's settlement / stop sentence, as the builder's closed rows print it
     booked: text(c.booked_text),
+    // I-91 (F3): the server's own Unbooked / P&L of a closed leg and its reason, when it sends them; never formed here (ADR-008)
+    ...(({ left, result, reason }) => ({ unbooked: left, pnl: result, pnlReason: reason }))(closedExtras(c)),
   }
 }
 
@@ -126,6 +133,8 @@ export function readPaperStrategy(s, index = 0) {
   if (s.state === 'PAUSED') stateText = withAsOf(PAPER_PAUSED, s.as_of)
   else if (s.state === 'NOT_CONNECTED') stateText = PAPER_NOT_CONNECTED
   else if (s.state === 'EXITED') stateText = EXITED_TEXT
+  const storedAsOf = s.state === 'LIVE' && typeof s.as_of === 'string' && istTime(s.as_of).endsWith('IST') ? s.as_of : null // a stored close: the time of its prices, with its date
+  if (storedAsOf !== null) stateText = `${STORED_CLOSE_PREFIX} ${istTime(storedAsOf)}`
   const pauseReason = s.state === 'PAUSED' || s.state === 'NOT_CONNECTED' ? withAsOf(text(s.pause_reason_text), s.as_of) : text(s.pause_reason_text)
   return {
     readable: true,
@@ -136,6 +145,7 @@ export function readPaperStrategy(s, index = 0) {
     state: s.state,
     statusWord: WORDS.includes(s.status_word) ? s.status_word : null, // ADR-299 (4): the server's word, never derived here
     stateText,
+    storedAsOf,
     openCount: s.open_count,
     positionCount: s.position_count,
     total: text(s.total_text),
@@ -187,7 +197,20 @@ export function readPaperList(data) {
   if (!data || !Array.isArray(data.strategies)) return null
   noteShownDate(data) // ADR-330 (19): before any group label is written
   const groups = data.strategies.map(readPaperStrategy)
-  return { groups, totals: tieClosedLine(readTotals(data.totals), data.totals, groups), today: readToday(data.today) }
+  return { groups, totals: withStoredClose(tieClosedLine(readTotals(data.totals), data.totals, groups), groups), today: readToday(data.today) }
+}
+
+/** Stored close (Lane RA2 / F3 MUST): the total of books priced from a stored close says so, with the OLDEST of their times and its date
+ *  (a time comparison only; no money). null when no row is a stored close. Wording pending owner read. */
+function withStoredClose(totals, groups) {
+  if (!totals) return totals
+  let best = null
+  let bestMs = Infinity
+  for (const g of groups) {
+    const ms = g.readable && g.storedAsOf ? isoMillis(g.storedAsOf) : null
+    if (ms !== null && ms < bestMs) { best = g.storedAsOf; bestMs = ms }
+  }
+  return { ...totals, storedAsOf: best === null ? null : `${STORED_CLOSE_PREFIX} ${istTime(best)}` }
 }
 
 /** Lane L item 2 (ADR-330 (15)): "Includes N closed strategies" must be the count of the closed rows of the SAME reply. The server
