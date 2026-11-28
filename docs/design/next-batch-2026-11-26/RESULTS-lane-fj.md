@@ -1,4 +1,4 @@
-STATUS 13:10 | items 1-6, a-c, TF, R1-R4 (rounds 1-5), not_applicable stops, PC round 1 items A C D, shared slow-read rule (W-13 W-17 W-03), not_read re-ask built; full suite 391 files / 4230 tests; gate running on this head | not done: item 7 browser walk, d (UX-AF2/UX-B03 re-check), W-15, F5 | next push on gate TOTAL PASS | blocker: none
+STATUS 13:50 | pushed 99db7820f, gate TOTAL PASS (--jobs 2), suite 391 files / 4230 tests | built: items 1-6, a-c, TF, R1-R4 (five Opus reviews; round 5 fix for the last finding not re-reviewed, so NOT claimed ready), not_applicable stops, PC items A C D, shared slow-read rule, not_read re-ask | not done: item 7 browser walk, d (UX-AF2/UX-B03), W-15, F5 | budget reached | blocker: none
 
 # RESULTS Lane FJ (frontend joins), branch fix/r3-frontend-joins-1128
 
@@ -101,4 +101,4 @@ Live: repeat with a real unknown reply; check "Prices as of" / "Checked at" on t
 | Opus review items 1-2 | Opus | 11 |
 | round 2 fixes | Sonnet | 15 |
 
-NOT SAFE TO CLOSE: item 7, d, e and group B items not run.
+SAFE TO CLOSE (head 99db7820f, left: item 7 browser walk, d, W-15, F5, Opus review of the group B stop/exit items, round 5 re-review)
