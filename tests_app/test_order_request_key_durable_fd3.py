@@ -239,7 +239,8 @@ async def test_a_claim_lost_to_a_rollback_refuses_and_stores_no_orders(app_engin
 
 async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(db, notified, keys, monkeypatch):
     """Opus review R9: the page gives up at 10 s and may press again; a request that only reaches its commit after the
-    server deadline (8 s) refuses ``store_busy`` with nothing stored, and its key is free again."""
+    server deadline (8 s) refuses with nothing stored, and its key is free again. RA N5: the refusal is its own cause
+    ("took too long"), no longer "busy with another action"."""
     from ofo_app.routes import paper as route  # noqa: PLC0415
     app, stored, *_ = await _setup(db)
     _use(app, keys)
@@ -248,8 +249,192 @@ async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(
     monkeypatch.setattr(route, "_monotonic", lambda: next(clock))
     key = uuid.uuid4()
     late = await _post(app, stored, _body(orders, key))
-    assert late.status_code == HTTPStatus.CONFLICT and "busy with another action" in late.text, late.text[:300]
+    assert late.status_code == HTTPStatus.CONFLICT and "took too long" in late.text, late.text[:300]
+    assert "busy with another action" not in late.text
     assert await _count(db, stored) == 0
     monkeypatch.setattr(route, "_monotonic", lambda: 0.0)  # the same key on time: placed (the late one freed it)
     again = await _post(app, stored, _body(orders, key))
     assert again.status_code == HTTPStatus.CREATED, again.text[:300]
+
+
+async def test_n5_the_deadline_counts_from_the_requests_entry_not_from_after_the_early_work(db, notified, keys,
+                                                                                            monkeypatch):
+    """FD5 N5: the 8 s deadline started after the key lookup and the Redis claim, so a request that spent 3 s there
+    could commit at 11 s, after the page's 10 s timeout. Now the clock starts at the entry: entered at 0, 3 s spent in
+    the early work, the commit check at 9 s is past 8 s from the entry (it would be 6 s from the old start)."""
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    now = {"t": 0.0}
+    real_lookup = request_key.lookup
+
+    async def slow_lookup(*a, **k):
+        now["t"] = 3.0  # the early work took 3 s
+        return await real_lookup(*a, **k)
+
+    from ofo_app import paper_limit  # noqa: PLC0415
+    real_place = paper_limit.place_checked
+
+    async def place_at_nine(*a, **k):
+        now["t"] = 9.0  # the work before the commit took 6 s more: the commit check reads 9 s after the entry
+        return await real_place(*a, **k)
+    monkeypatch.setattr(request_key, "lookup", slow_lookup)
+    monkeypatch.setattr(paper_limit, "place_checked", place_at_nine)
+    monkeypatch.setattr(route, "_monotonic", lambda: now["t"])
+    late = await _post(app, stored, _body(orders, uuid.uuid4()))
+    assert late.status_code == HTTPStatus.CONFLICT and "took too long" in late.text, late.text[:300]
+    assert await _count(db, stored) == 0
+
+
+async def test_ra_n6_a_failed_catalogue_read_keeps_the_request_claim_and_the_strategy_row_lock(
+        app_engine, admin_engine, strategy):
+    """Lane RA N6: ``stored_kind``'s failure path rolled the WHOLE session back: the request-key claim was lost (the
+    user read "could not check") and, without a key, the strategy's row lock went silently (the I-158 guarantee). The
+    read now fails inside its own savepoint: the claim and the lock stay, the read still refuses with its true cause."""
+    import datetime  # noqa: PLC0415
+
+    from ofo_app.adjustment_readers import CatalogueUnreadable, stored_kind  # noqa: PLC0415
+
+    async def broken(db):
+        await db.execute(text("SELECT 1 / 0"))  # a database error: it aborts the transaction unless it is saved
+    key = uuid.uuid4()
+    async with app_engine.connect() as conn:
+        await conn.begin()
+        await request_key.claim_in_transaction(conn, USER, key, strategy, BODY, "paper")
+        from ofo_app import strategy_store  # noqa: PLC0415
+        await strategy_store.lock_strategy(conn, USER, strategy)  # the I-158 row lock (what paper_store.place takes)
+        with pytest.raises(CatalogueUnreadable):  # a failed read still refuses, with its own cause
+            await stored_kind(conn, "NIFTY", datetime.date(2026, 12, 29), load=broken)
+        await request_key.finish_in_transaction(conn, USER, key, {"cancelled_stops": []})  # the claim is still ours
+        async with admin_engine.connect() as other:  # the row lock is still held by the first transaction
+            with pytest.raises(DBAPIError):
+                await other.execute(text("SELECT id FROM public.strategies WHERE id = :i FOR UPDATE NOWAIT"),
+                                    {"i": strategy})
+        await conn.rollback()
+
+
+# ---- Lane RA N8: the narrower INSERT grant and the bounded expiry (migration 0062) ---------------------------------
+
+OLD, YOUNG = 8, 6  # days old
+
+
+async def _plant(admin_engine, strategy, days_old: int) -> uuid.UUID:
+    key = uuid.uuid4()
+    async with admin_engine.begin() as conn:
+        await conn.execute(text(
+            "INSERT INTO public.order_request_keys (user_ref, request_key, strategy_id, body_sha256, door, state, "
+            "created_at) VALUES (:u, :k, :s, :h, 'paper', 'done', now() - make_interval(days => :d))"),
+            {"u": USER, "k": key, "s": strategy, "h": "0" * 64, "d": days_old})
+    return key
+
+
+async def test_ra_n8_the_application_role_inserts_the_six_columns_only_and_never_deletes(app_engine, strategy):
+    base = ("INSERT INTO public.order_request_keys (user_ref, request_key, strategy_id, body_sha256, door, state{x}) "
+            "VALUES (:u, :k, :s, :h, 'paper', 'pending'{v})")
+    args = {"u": USER, "k": uuid.uuid4(), "s": strategy, "h": "1" * 64}
+    async with app_engine.begin() as conn:
+        await conn.execute(text(base.format(x="", v="")), args)  # the six the code writes: allowed
+    for extra, value in (("result", "'{}'::jsonb"), ("created_at", "now()"), ("finished_at", "now()")):
+        async with app_engine.connect() as conn:
+            with pytest.raises(DBAPIError, match="permission denied"):
+                await conn.execute(text(base.format(x=f", {extra}", v=f", {value}")), {**args, "k": uuid.uuid4()})
+    async with app_engine.connect() as conn:
+        with pytest.raises(DBAPIError, match="permission denied"):
+            await conn.execute(text("DELETE FROM public.order_request_keys WHERE user_ref = :u"), {"u": USER})
+
+
+async def test_ra_n8_expiry_removes_only_rows_older_than_the_replay_window(app_engine, admin_engine, strategy):
+    assert request_key.REPLAY_WINDOW_DAYS == 7  # noqa: PLR2004 - the migration's own window
+    old, young = await _plant(admin_engine, strategy, OLD), await _plant(admin_engine, strategy, YOUNG)
+    async with admin_engine.connect() as conn:  # the function carries the same window as the code
+        body = (await conn.execute(text(
+            "SELECT pg_get_functiondef('public.expire_order_request_keys()'::regprocedure)"))).scalar_one()
+    assert f"INTERVAL '{request_key.REPLAY_WINDOW_DAYS} days'" in body
+    async with app_engine.begin() as conn:
+        assert await request_key.expire_old(conn) == 1
+    left = {r.request_key for r in await _rows_of_keys(admin_engine)}
+    assert young in left and old not in left
+
+
+async def _rows_of_keys(admin_engine) -> list:
+    async with admin_engine.connect() as conn:
+        return list((await conn.execute(text(
+            "SELECT request_key FROM public.order_request_keys WHERE user_ref = :u"), {"u": USER})).all())
+
+
+async def test_ra_n8_a_claim_runs_the_expiry_when_due_and_a_failed_expiry_never_fails_the_claim(
+        app_engine, admin_engine, strategy, monkeypatch):
+    old = await _plant(admin_engine, strategy, OLD)
+    monkeypatch.setattr(request_key, "_next_expiry_at", 0.0)
+    async with app_engine.begin() as conn:
+        await request_key.claim_in_transaction(conn, USER, uuid.uuid4(), strategy, BODY, "paper")
+    assert old not in {r.request_key for r in await _rows_of_keys(admin_engine)}
+    again = await _plant(admin_engine, strategy, OLD)
+    async with app_engine.begin() as conn:  # not due again within the hour: nothing more is removed
+        await request_key.claim_in_transaction(conn, USER, uuid.uuid4(), strategy, BODY, "paper")
+    assert again in {r.request_key for r in await _rows_of_keys(admin_engine)}
+    monkeypatch.setattr(request_key, "_next_expiry_at", 0.0)
+    monkeypatch.setattr(request_key, "_EXPIRE", text("SELECT 1 / 0"))  # the expiry itself fails
+    key = uuid.uuid4()
+    async with app_engine.begin() as conn:
+        await request_key.claim_in_transaction(conn, USER, key, strategy, BODY, "paper")
+    assert key in {r.request_key for r in await _rows_of_keys(admin_engine)}  # the claim committed all the same
+
+
+async def test_f_a_failing_catalogue_read_keeps_the_claim_and_stores_orders_with_their_key(
+        db, notified, keys, monkeypatch):
+    """Class fix (``stored_kind``): on the production tracked-reader shape (the request's OWN session,
+    ``get_tracked_reader`` with no test override) a catalogue read that fails must roll back only its savepoint. It used
+    to call ``db.rollback()``, which dropped the caller's order-key claim and strategy lock, and the orders then
+    committed with no key row. Now: 201, the orders stored, and the key row done."""
+    from ofo_app import adjustment_readers as readers  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_tracked_reader  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+
+    app, stored, _ids = await _open(db)  # an open paper position: the reader reaches ``stored_kind``
+    _use(app, keys)
+    app.dependency_overrides.pop(get_tracked_reader)  # production: ``partial(read_tracked, db=<the request>)``
+    monkeypatch.setattr(readers, "current_user_ref", lambda: stored.user_ref)
+
+    async def broken(_db, _name=None):
+        raise OperationalError("SELECT", {}, Exception("catalogue read failed"))
+    monkeypatch.setattr(readers, "load_catalogue", broken)
+    before = await _count(db, stored)
+    _, orders = _prices(stored)
+    key = uuid.uuid4()
+    reply = await _post(app, stored, _body(orders, key))
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert await _count(db, stored) == before + len(orders)
+    state = (await db.execute(text("SELECT state FROM public.order_request_keys WHERE request_key = :k"),
+                              {"k": key})).scalar_one()
+    assert state == "done"
+
+
+async def test_ra_n5_f1_the_deadline_counts_the_dependency_stage_before_the_handler_body(
+        db, notified, keys, monkeypatch):
+    """Opus review F-1: the clock started at the handler's first line, after the dependencies (settings, charge rates,
+    the pool wait). Here the dependency stage takes 3 s and the orders' work 7.5 s more: 10.5 s after ARRIVAL (past the
+    page's 10 s) but 7.5 s after the handler's first line: the old start committed it (201, orders stored). Now it
+    refuses."""
+    from ofo_app import paper_limit  # noqa: PLC0415
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    now = {"t": 0.0}
+    monkeypatch.setattr(route, "_monotonic", lambda: now["t"])
+
+    async def slow_dependency():
+        now["t"] = 3.0  # settings, charge rates and the pool wait before the handler body
+    app.dependency_overrides[route.load_charge_rates] = slow_dependency
+    real_place = paper_limit.place_checked
+
+    async def slow_work(*a, **k):
+        now["t"] = 10.5
+        return await real_place(*a, **k)
+    monkeypatch.setattr(paper_limit, "place_checked", slow_work)
+    late = await _post(app, stored, _body(orders, uuid.uuid4()))
+    assert late.status_code == HTTPStatus.CONFLICT and "took too long" in late.text, late.text[:300]
+    assert await _count(db, stored) == 0

@@ -11,7 +11,10 @@ Answer states of the stored strategy (B4 (d)): same revision -> the plan as toda
 ``execute_plan_changed``; not found -> today's 404; unreadable -> today's 410 (``strategy_stored_unreadable``);
 store failed -> today's error. The last three are unchanged paths covered by ``test_execute_route.py``.
 """
+# ruff: noqa: F811 - the imported fixture is used as a test argument
 from __future__ import annotations
+
+from decimal import Decimal as D
 
 import pytest
 from ofo.errors import render
@@ -27,6 +30,7 @@ from test_execute_route import (
     _session_for,
     _strategy_one,
 )
+from test_order_request_key_r2_fd2 import keys  # noqa: F401 - fixture
 
 pytestmark = pytest.mark.usefixtures("order_path_on")  # W-121
 
@@ -59,9 +63,10 @@ async def _bump_revision(conn, user: str, sid: int, reviewed: int) -> int:
     return await _stored_revision(conn, sid)
 
 
-async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = False):
+async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = False, during=None, keys=None):  # noqa: PLR0913
     """Store strategy 1, optionally move its revision on, POST Execute with ``body_of(revision_read)``; returns the
-    reply, the recorded Kite transport and the plan rows after."""
+    reply, the recorded Kite transport and the plan rows after. ``during(conn, user, sid)`` (R3) runs once, after the
+    margin wait (the LAST wait of the door), as another tab would between the reads and the plan write."""
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
     from test_strategy_store import _app, _client, _user  # noqa: PLC0415
@@ -76,7 +81,25 @@ async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = F
             reviewed = await _stored_revision(conn, sid)  # the version the user reviewed
             if bump:
                 assert await _bump_revision(conn, user, sid, reviewed) == reviewed + 1
-            app = _app(_ConnMaker(conn), user)
+            if during is not None:
+                real_off_loop, fired = route._off_loop, []
+
+                async def off_loop(req, fn, *a, **k):
+                    out = await real_off_loop(req, fn, *a, **k)
+                    if getattr(fn, "__name__", "") == "checked_basket" and not fired:
+                        fired.append(1)
+                        await during(conn, user, sid)
+                    return out
+                monkeypatch.setattr(route, "_off_loop", off_loop)
+            maker = _ConnMaker(conn)
+            if keys is not None:  # a real session over savepoints: its rollback really undoes the request's writes
+                from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker  # noqa: PLC0415
+                maker = async_sessionmaker(bind=conn, class_=AsyncSession, expire_on_commit=False,
+                                           join_transaction_mode="create_savepoint")
+            app = _app(maker, user)
+            if keys is not None:
+                from ofo_app import request_key  # noqa: PLC0415
+                app.dependency_overrides[request_key.get_key_store] = lambda: keys
             app.dependency_overrides[route.get_quote_reader] = _Quotes
             app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
             app.dependency_overrides[route.load_charge_rates] = lambda: RATES
@@ -247,3 +270,59 @@ async def test_a_missing_or_malformed_revision_is_a_malformed_request(body, monk
     resp = await _post(app, "/strategies/1/execute", body)
     assert resp.status_code == 422, resp.text  # noqa: PLR2004
     assert resp.json()["code"] == INPUT_REFUSED
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_r3_a_holding_adopted_during_the_waits_refuses_the_plan_and_stores_nothing(app_engine, admin_engine,
+                                                                                         monkeypatch):
+    """R3 (W-151): the adopted holdings were read before the Zerodha and margin waits; another tab adopts a holding
+    during them -> 409 ``execute_plan_changed`` under the lock, no plan row (the plan was priced without it)."""
+    from ofo_app import order_book_store as books  # noqa: PLC0415
+    from test_execute_route import CORE_ID  # noqa: PLC0415
+
+    async def adopt(conn, user, sid):
+        await books.record_adopted(conn, user, sid, books.AdoptedHolding(
+            f"{CORE_ID.exchange_segment}:{CORE_ID.exchange_token}", "BUY", 65, "NRML", D("7.00"), "adopt:r3:1"))
+    resp, _kite, rows = await _run(app_engine, admin_engine, monkeypatch,
+                                   lambda rev: {"action": "ENTRY", "revision": rev}, during=adopt)
+    assert resp.status_code == 409, resp.text  # noqa: PLR2004
+    assert resp.json()["what_happened"] == PLAN_CHANGED
+    assert rows == 0
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_r3_a_strategy_saved_during_the_waits_refuses_the_plan_and_stores_nothing(app_engine, admin_engine,
+                                                                                        monkeypatch):
+    """R3 (W-151): the revision matched at the start; a save from another tab during the waits moves it -> 409, no
+    plan row."""
+    async def save(conn, user, sid):
+        reviewed = await _stored_revision(conn, sid)
+        assert await _bump_revision(conn, user, sid, reviewed) == reviewed + 1
+    resp, _kite, rows = await _run(app_engine, admin_engine, monkeypatch,
+                                   lambda rev: {"action": "ENTRY", "revision": rev}, during=save)
+    assert resp.status_code == 409, resp.text  # noqa: PLR2004
+    assert resp.json()["what_happened"] == PLAN_CHANGED
+    assert rows == 0
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_g_a_request_past_the_server_deadline_refuses_store_busy_stores_nothing_and_frees_its_key(
+        app_engine, admin_engine, monkeypatch, keys):
+    """R9 on the real door (as the paper door): the page gives up at 10 s; a request that reaches its commit after the
+    8 s server deadline refuses ``store_busy`` (409), stores no plan, and frees its key, so the same key on time then
+    prepares the plan (a fake slow clock; the second run proves the late one released the key)."""
+    import uuid  # noqa: PLC0415
+
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    key = str(uuid.uuid4())
+    clock = iter([0.0] + [route.COMMIT_DEADLINE_S + 1.0] * 20)
+    monkeypatch.setattr(route, "_monotonic", lambda: next(clock))
+    late, _kite, rows = await _run(app_engine, admin_engine, monkeypatch, keys=keys,
+                                   body_of=lambda rev: {"action": "ENTRY", "revision": rev, "client_request_id": key})
+    assert late.status_code == 409 and "busy with another action" in late.text, late.text[:300]  # noqa: PLR2004
+    assert rows == 0
+    monkeypatch.setattr(route, "_monotonic", lambda: 0.0)
+    again, _kite, rows = await _run(app_engine, admin_engine, monkeypatch, keys=keys,
+                                    body_of=lambda rev: {"action": "ENTRY", "revision": rev, "client_request_id": key})
+    assert again.status_code == 200 and rows == 1, again.text[:300]  # noqa: PLR2004

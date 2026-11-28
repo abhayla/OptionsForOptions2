@@ -10,7 +10,7 @@ import { levelShown, paperPriceOk, paperPriceReason } from '@/lib/tracking'
 import { expiryText, istClock } from '@/lib/displayFormat'
 import { PAPER_STOP_RISK_LOADING_TEXT } from '@/lib/sharedStateText'
 import { CLOSED_REFERENCE_TEXT, NOT_LIVE_LABEL, lastCloseUnavailableText, useIndexAnswer } from '@/composables/useIndexLive'
-import { NOT_APPLICABLE_REAL_TEXT, isNotApplicable, triggerListOf, triggersPath } from '@/lib/paperTriggers'
+import { isNotApplicable, notApplicableTextOf, triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   strategyId: { type: Number, required: true },
@@ -286,7 +286,7 @@ async function keep(t) {
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row" :data-trigger-id="t.id">
           <!-- ADR-330 (64): an old armed paper stop on a real position is not live: no badge, no Cancel, no Keep -->
-          <span v-if="isNotApplicable(t)" class="text-ink-muted" data-testid="trigger-not-applicable">{{ NOT_APPLICABLE_REAL_TEXT }}</span>
+          <span v-if="isNotApplicable(t)" class="text-ink-muted" data-testid="trigger-not-applicable">{{ notApplicableTextOf(t) }}</span>
           <template v-else>
           <span>{{ t.kind === 'leg_stop' ? (legNames[t.contract_id] ?? serverLegText(t.contract_text) ?? 'Leg stop') : 'Conditional exit' }}</span>
           <span class="font-medium" data-testid="trigger-direction">{{ t.direction === 'above' ? 'Above' : t.direction === 'below' ? 'Below' : '' }}</span>

@@ -12,6 +12,7 @@ no held entry -> paper; no order -> none (a draft: no row to protect); any fact 
 """
 from __future__ import annotations
 
+from collections.abc import Iterable
 from typing import Final, Literal
 
 from ofo.errors.explanations import ExplanationText, render_explanation
@@ -44,3 +45,18 @@ def line_of(kind: str) -> ExplanationText | None:
     if kind == UNKNOWN:
         return render_explanation("position_kind_unknown")
     return None
+
+
+#: RA F4 (Lane FD5 review): the refusal of a paper order on a real or unreadable position says which action it was
+#: (the log and the support read the code); the sentence is the same for all three (the owner's wording, ADR-330 (64)).
+EXIT_REFUSED: Final = "real_position_exit_refused"
+OPEN_REFUSED: Final = "real_position_open_refused"
+ADD_REFUSED: Final = "real_position_add_refused"
+
+
+def refusal_code(order_kinds: Iterable[str]) -> str:
+    """The one place the code of a refused order is chosen: any exit or stop -> exit, else any add -> add, else open."""
+    kinds = set(order_kinds)
+    if kinds & {"exit", "stop"}:
+        return EXIT_REFUSED
+    return ADD_REFUSED if "add" in kinds else OPEN_REFUSED

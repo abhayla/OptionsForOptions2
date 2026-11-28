@@ -614,6 +614,11 @@ def _t09(c: _Ctx) -> Hit:
     return _compare(c, "T-09", short_premium(_shorts(c.state)))
 
 
+def _any_stage_value(trigger: Mapping) -> bool:
+    """True when the trigger holds a value in at least one stage of either expiry kind."""
+    return any(x not in ("", None) for kind in ("weekly", "monthly") for x in (trigger.get(kind) or ()))
+
+
 def _t10b(c: _Ctx) -> Hit:
     hhmm = _need(c.state.hhmm, "clock")
     today, expiry = _need(c.state.today, "today"), _need(c.state.expiry, "expiry")
@@ -622,6 +627,8 @@ def _t10b(c: _Ctx) -> Hit:
         if parts[1] == ON_EXPIRY:
             if c.state.days_left is not None:  # #860: the plan's own time is the limit; an unknown kind (no days left)
                 _limit(c, "T-10b")  # must not hold it back. A stage with no T-10b value does not apply the rule
+            elif not _any_stage_value(c.body["triggers"]["T-10b"]):  # FR F3 nit: an unknown kind still answers
+                raise _Missing(f"{P}no_expiry_values")  # "not checked" when the trigger holds no value in ANY stage
             if not is_expiry_day(today, expiry):  # ADR-310 (2)
                 raise _Missing(f"{P}waits_expiry_day", day=expiry)
         return Hit("T-10b", hhmm, parts[0], "ge", time_exit_due(today, hhmm, resolve_on(parts[1], expiry), parts[0]))
