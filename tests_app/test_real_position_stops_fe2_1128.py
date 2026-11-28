@@ -80,3 +80,46 @@ async def test_a_position_whose_kind_cannot_be_read_is_not_stopped_either(db, mo
     assert await monitor.step() + await monitor.step() == 0
     assert await _trigger_state(db, tid) == (False, False)
     assert monitor.not_applicable == {tid: "unknown"}
+
+
+async def test_review_f2_a_trade_whose_stop_is_not_judged_here_never_reads_watched(db, monkeypatch):  # noqa: F811
+    from ofo_app import monitoring_state  # noqa: PLC0415
+    from test_monitoring_state import _Client, _fresh  # noqa: PLC0415
+
+    async def unreadable(_conn, ids):
+        return dict.fromkeys(ids, "unknown")  # one failed read of the kinds: nothing is judged, and it must be said
+    monkeypatch.setattr(strategy_store, "kinds_of", unreadable)
+    market = Market()
+    stored, _ids, keys = await _strategy(db)
+    await _exit_below(db, stored.id)
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    market.tick(INDEX, CROSSED)
+    client = _Client()
+    monkeypatch.setattr(paper_monitor, "_bus_client", lambda: client)
+    monitor = _monitor(db, market)
+    assert await monitor.step() + await monitor.step() == 0
+    now = market.at
+    client.data[monitoring_state.key()] = monitoring_state.encode(
+        [monitoring_state.Entry(stored.id, monitoring_state.ACTIVE, "", "", now)], now)  # the worker says: watched
+    got = (await monitoring_state.read_states(client, [stored.id], now, heartbeat=_fresh))[stored.id]
+    print("READ", got)
+    assert got.status == monitoring_state.PAUSED, got
+
+
+async def test_review_f4_a_trigger_that_reads_paper_again_is_no_longer_not_applicable(db, monkeypatch):  # noqa: F811
+    state = {"kind": "unknown"}
+
+    async def kinds(_conn, ids):
+        return dict.fromkeys(ids, state["kind"])
+    monkeypatch.setattr(strategy_store, "kinds_of", kinds)
+    market = Market()
+    stored, _ids, _keys = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+    monitor = _monitor(db, market)
+    await monitor.step()
+    assert monitor.not_applicable == {tid: "unknown"}
+    state["kind"] = "paper"
+    monitor.notify()
+    await monitor.step()
+    assert monitor.not_applicable == {}

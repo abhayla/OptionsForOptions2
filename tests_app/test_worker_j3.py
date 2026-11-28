@@ -64,7 +64,9 @@ async def test_the_percent_stop_of_an_unknown_kind_is_reported_not_checked_with_
     watched = [dataclasses.replace(w, body=body) for w in _watched(scn)]
     w = _worker(prov, watched, now, calls, gate_store=FakeGate())
     await w.cycle()
-    assert w.status[FIRST_ID] is background.MonitoringStatus.ACTIVE  # watched, not paused
+    # FE2 (FD2 hand-over): no exit rule can be checked here, so the trade is published paused, not watched
+    assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
+    assert w.paused_reason[FIRST_ID] is background.PriceState.EXPIRY_KIND_UNKNOWN
     state = calls.states[0][1]
     assert state.days_left is None and state.stops is None
     ev = pe.evaluate(body, state, None, None, gap_until=PREFS.gap_until)

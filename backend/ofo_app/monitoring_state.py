@@ -59,6 +59,7 @@ INDEX_STALE_REASON: Final = "stale"  # the existing code and sentence (``monitor
 INDEX_READING_TTL_S: Final = 120
 LEG_NOT_LIVE: Final = "leg_not_live"  # the ``why`` of a trade whose leg-price exit has no live leg reading
 LEG_READING_MAX_AGE_S: Final = 90  # current while the worker re-reads (its tick key turns over every IST minute)
+EXIT_NOT_APPLICABLE: Final = "exit_not_applicable"  # the why of a real position's old armed paper stop (ADR-330 (64))
 EXIT_NOT_PRICED: Final = "exit_not_priced"  # the why of a crossed exit that could not run (no live leg price)
 MAX_READING_VALUE: Final = Decimal(10) ** 9  # no index or option price is this large: such a value is no reading
 WATCH_FRESH_S: Final = 30  # a monitor's claim "I judge this exit" counts this long (it renews every ``REFRESH_S``)

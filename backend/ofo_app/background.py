@@ -1499,6 +1499,15 @@ class Worker:
         """A check ran for ``sid``: forget its last skip reason, so the next skip is logged."""
         self._last_skip.pop(sid, None)
 
+    def _fresh_read(self, sid: int) -> None:
+        """A fresh price read makes a trade watched again, except one paused for its unknown expiry kind: only a check
+        that finds an exit that can run clears that pause (second review F1)."""
+        if self.paused_reason.get(sid) is PriceState.EXPIRY_KIND_UNKNOWN:
+            return
+        self.status[sid] = MonitoringStatus.ACTIVE
+        self.paused_reason.pop(sid, None)
+        self.paused_why.pop(sid, None)
+
     def _record_kind(self, w: Watched, market: MarketInputs) -> None:
         """FE2 item 7: the kind this check uses (``state_of``'s rule) is kept for the lister; a kind that is not known
         ("") is never recorded (the reader then reads the catalogue)."""
@@ -1534,9 +1543,7 @@ class Worker:
             self._pause(sid, read.state, now)
             self.paused_why[sid] = read.why  # the REST stand-in's reason (set after _pause, which clears it)
             return self._skipped(sid, f"prices_{read.state.name.lower()}")  # never silent: one line with the reason
-        self.status[sid] = MonitoringStatus.ACTIVE
-        self.paused_reason.pop(sid, None)
-        self.paused_why.pop(sid, None)
+        self._fresh_read(sid)
         self._leg_ids[sid] = (w.tracked.position.legs,
                               (read.spot.instrument_id, *(read.legs[i].instrument_id for i in sorted(read.legs))))
         tick = self._tick_key(provider, w, now)  # read with the prices, before any await (a later tick is new)
@@ -1781,6 +1788,9 @@ class Worker:
             self.status[sid] = MonitoringStatus.PAUSED
             self.paused_reason[sid] = PriceState.EXPIRY_KIND_UNKNOWN
             self.paused_why.pop(sid, None)
+        elif self.paused_reason.get(sid) is PriceState.EXPIRY_KIND_UNKNOWN:  # this check found an exit that can run
+            self.status[sid] = MonitoringStatus.ACTIVE
+            self.paused_reason.pop(sid, None)
 
     async def _publish_rule_values(self) -> None:
         """Once per cycle (FD2 item 4): every monitored strategy's rule values, when they changed or 10 s have passed
@@ -1790,7 +1800,8 @@ class Worker:
         from ofo_app import rule_readings  # noqa: PLC0415 - the bus is optional
         now = self._clock()
         monitored = {w.strategy_id for w in self.monitors}
-        values = {(sid, rid): v for sid, d in self._rule_values.items() if sid in monitored for rid, v in d.items()}
+        values = {(sid, rid): v for sid, d in self._rule_values.items()  # a trade not watched has no current value
+                  if sid in monitored and self.status.get(sid) is MonitoringStatus.ACTIVE for rid, v in d.items()}
         shown = tuple(sorted((k, str(v)) for k, v in values.items()))
         last, sent_at = self._rule_values_sent
         if shown == last and sent_at is not None and (now - sent_at).total_seconds() < monitoring_state.REFRESH_S:

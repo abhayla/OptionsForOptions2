@@ -14,7 +14,17 @@ from decimal import Decimal
 
 from ofo.adjustment import stop_lines as sl
 from ofo_app import background, monitoring_state, rule_readings
-from test_background_cycle import FIRST_ID, Calls, FakeGate, Prov, _system_body, _watched, _worker, scn  # noqa: F401
+from test_background_cycle import (  # noqa: F401
+    DEFAULTS,
+    FIRST_ID,
+    Calls,
+    FakeGate,
+    Prov,
+    _system_body,
+    _watched,
+    _worker,
+    scn,
+)
 from test_monitoring_state import _Client, _fresh
 from test_worker_j3 import _rupee_body, _state_without_kind
 
@@ -67,3 +77,41 @@ async def test_a_strategy_that_left_the_list_is_no_longer_in_the_rule_values(scn
     await w.cycle()
     got = await rule_readings.read(client, now)
     assert all(sid != FIRST_ID for sid, _r in got), got
+
+
+# ---- second Opus review: F1 and F3 ----------------------------------------------------------------------------
+
+async def test_review_f1_a_fresh_read_does_not_undo_the_kind_pause_but_clears_any_other(scn):  # noqa: F811
+    """The worker wakes every second and checks every 10 s: a fresh price read in a cycle that runs no check must
+    not turn a trade paused for its unknown expiry kind into "watched" (only a check clears it); any other pause is
+    cleared by a fresh read as before."""
+    w = _worker(Prov(scn), _watched(scn), [scn.clock_at], Calls())
+    w.status[FIRST_ID] = background.MonitoringStatus.PAUSED
+    w.paused_reason[FIRST_ID] = background.PriceState.EXPIRY_KIND_UNKNOWN
+    w._fresh_read(FIRST_ID)
+    assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
+    assert w.paused_reason[FIRST_ID] is background.PriceState.EXPIRY_KIND_UNKNOWN
+    w.paused_reason[FIRST_ID] = background.PriceState.LEG_MISSING
+    w._fresh_read(FIRST_ID)
+    assert w.status[FIRST_ID] is background.MonitoringStatus.ACTIVE and FIRST_ID not in w.paused_reason
+
+
+async def test_review_f1_a_check_that_finds_an_exit_that_can_run_clears_the_kind_pause(scn, monkeypatch):  # noqa: F811
+    w, _client, _now = await _published(scn, monkeypatch, _system_body("ic"), unknown=True)
+    assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
+    state = dataclasses.replace(w._gate_ctx[FIRST_ID].state, days_left=3)  # the kind became known
+    w._note_rules(w.monitors[0], state, {sl.RUPEE_LOSS_RULE: (None, Decimal(5))})
+    assert w.status[FIRST_ID] is background.MonitoringStatus.ACTIVE and FIRST_ID not in w.paused_reason
+
+
+async def test_review_f3_a_value_of_an_unwatched_trade_is_not_republished(scn, monkeypatch):  # noqa: F811
+    import datetime  # noqa: PLC0415
+    w, client, now = await _published(scn, monkeypatch, _rupee_body("1"), unknown=False)
+    assert (FIRST_ID, sl.RUPEE_LOSS_RULE) in await rule_readings.read(client, now)
+    w._provider_for(w.monitors[0].feed_owner).health = background.DataHealth.STALE  # the feed goes stale
+    later = now + datetime.timedelta(seconds=66)
+    w._clock = lambda: later
+    await w.cycle()
+    assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
+    got = await rule_readings.read(client, later)
+    assert (FIRST_ID, sl.RUPEE_LOSS_RULE) not in got, got

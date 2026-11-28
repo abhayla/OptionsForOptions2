@@ -1,4 +1,4 @@
-STATUS 08:10 | items 1-9 pushed at 437891e (gate TOTAL PASS); coordinator (a) no report = not watched: Passed in cloud; coordinator (b) no stop for a real position: Passed in cloud; both on the next push | next push: after the gate on the head | blocker: none
+STATUS 09:00 | items 1-9 and coordinator (a), (b) pushed at 6b409ab; hand-overs 2 (kind pause + rule values), 4 (fired row pinned), 5 (report write verified), 6 (10 s pinned): Passed in cloud; hand-over 3: Blocked (needs Lane FC3's catalogue key); second Opus review done, F1-F4 fixed | next push: after the gate on the head | blocker: none
 
 # Lane FE2: the stop worker's open issues, on top of Lane FE's index-exit fix
 
@@ -37,6 +37,30 @@ GREEN after the fix: trade 1 active (monitor B judges it), trade 2 `paused` / `s
 | (b) | `paper_monitor.py` fired old armed paper stops on REAL positions | ADR-330 (64): `PaperMonitor._paper_only` (one `strategy_store.kinds_of` read per reload) keeps only triggers of strategies whose position kind is `paper`; a real or unreadable kind is never evaluated or fired, is left armed and told once (`PaperMonitor.not_applicable`, one log line). Test first: `tests_app/test_real_position_stops_fe2_1128.py`: a strategy held at the broker (ADR-292) with an old armed index exit, index below the level: red on the unfiltered code (`FIRED 1`, two stop orders written: a BUY 65 at 41.00 and a SELL 65 at 12.50), green with the filter (0 fires, trigger not fired and not cancelled, no stop order, told once). Controls: a paper strategy still fires; an unreadable kind is not stopped either. |
 
 **Old tests edited (outside this lane's list, forced by (a))**: six existing tests assumed "no report = the worker's answer" and now start from a live monitor's empty report: `test_monitoring_state.py` (4 tests, one helper `_monitor_reports`), `test_monitoring_status_route.py` (1 test), `test_index_exit_watch_fe_1128.py::test_core_b` (1 line). Each edit only adds the report; no assertion was weakened. They are listed so the owner can see them.
+
+## Coordinator hand-overs of 08:30 (taken in the coordinator's order after (a) and (b))
+| # | Hand-over | Result |
+|---|---|---|
+| 1 | no report reads not watched | Done as (a) above (it is the same item). |
+| 2 | FD2: publish `paused / expiry_kind_unknown`; call `rule_readings.publish` each cycle | `Worker._note_rules`: a trade whose `days_left` is None (kind not known) and whose plan has NO exit rule that was checked is published paused, reason `expiry_kind_unknown`; one with an exit that can run (a typed rupee stop, Lane J3) stays watched; a fresh read does not undo the pause (`_fresh_read`), only a check clears it. `Worker._publish_rule_values` publishes every watched trade's rule values once per cycle (changed or every 10 s) through `ofo_app/rule_readings.py` (a verbatim copy of Lane FD2's file `origin/fix/r2-backend-2-1128`; identical content merges cleanly). Two old assertions changed (J3's `test_the_percent_stop_of_an_unknown_kind...` and my own style test): the unknown-kind trade with no exit now reads paused, not watched, as the coordinator and FD2 ordered. |
+| 3 | `stop_lines.NOT_CHECKED[EXPIRY_KIND_UNKNOWN]` -> the trigger reason `expiry_kind_unknown` | **Not done**: that key is Lane FC3's `ofo/errors/templates.py` entry and is not in this branch; pointing at it now would make every render of the reason fail. One line once FC3's branch is merged: `EXPIRY_KIND_UNKNOWN: f"{_T}expiry_kind_unknown"` in `stop_lines.NOT_CHECKED`, and `test_stop_lines_fe2_1128.py` line 1 of the first test (expects `adjust_trigger_missing_days_left` today). |
+| 4 | FB2 (UX-A03): the fired-stop message reads in the future tense | On this head the stored row already says what happened ("Stop-loss: ... exited at 141.00", no "If this stop fires", no "max loss"): `tests_app/test_stop_fired_message.py` (never run before) passes, 4 tests; `tests_app/test_stop_fired_fe2_1128.py` (2 tests) pins the figure at firing for a normal and a gapped fill. If the PC still saw the future tense, it ran code that is not this head. No sentence change needed. |
+| 5 | F4/F6/F8: the merged report is not atomic | F4 fixed: `ExitsPublisher.publish` re-reads after its write and writes again until its own slot is there (`WRITE_TRIES` = 3); a store that never keeps it is a failed publish (not recorded, tried again next pass). F6 (a failed restart write) and F8 (the 24 h key expiry): unchanged, reasons in the review table. |
+| 6 | test: the re-read period is 10 s | `test_report_race_fe2_1128.py::test_the_saved_plan_reread_period_is_ten_seconds_exactly`: `REBUILD_SECONDS == 10` and the loop sleeps exactly `[10]`. |
+
+## Second Opus review (the part added after the first review; read-only; verdict REVISE; all dispositioned)
+| # | Finding | Disposition |
+|---|---|---|
+| F1 major | the `expiry_kind_unknown` pause was undone by the next cycle that skipped the check (a fresh read set ACTIVE) | Fixed: `_fresh_read` keeps that pause; `_note_rules` clears it only when a check finds an exit that can run. Pinned by two unit tests (a full-cycle test was dropped: the test provider's token error pauses the trade with another reason between cycles). The same class for `CHECK_FAILED` (`_write_one`) is older and listed under "To file". |
+| F2 major | a trigger dropped by the kind filter was never named in the report, so the trade still read watched (and a failed `kinds_of` read dropped every watch for 60 s) | Fixed in the report: every strategy whose armed exit is not judged here is named `not_run` (why `exit_not_applicable` for a real position, `index_exits_not_run` for an unreadable kind), so the reader pauses it (`test_review_f2_*`). Not fixed: after a FAILED kinds read the monitor still drops its watch until the next reload (60 s); `strategy_store.kinds_of` swallows the error (it must report the failure: Lane FD2's file `strategy_store.py`, "For the owner lane" 9). |
+| F3 major | a stale rule value was republished with a fresh time | Fixed: values are published only for trades whose status is ACTIVE (`test_review_f3_*`). |
+| F4 minor | `not_applicable` kept an entry after the trigger read paper again | Fixed (`test_review_f4_*`). |
+| F5 minor | `_WHY` in `routes/monitoring_status.py` has no sentence for `expiry_kind_unknown` | FD2/FC3 (their lane): the FD2 note names the exact sentence. |
+| F6 minor | a plan with no exit rule at all reads paused `expiry_kind_unknown` when the kind is unknown | Kept: fail closed, nothing to judge; stated in the docstring. |
+
+## For the owner lane (additions)
+9. `strategy_store.kinds_of` (Lane FD2's file) catches a database error and answers "unknown" for every id, which the monitor can not tell from a real unknown; let it raise (or return a failure flag) so `PaperMonitor.reload` can keep its last watch instead of dropping every exit for up to 60 s.
+10. `CHECK_FAILED` set by `Worker._write_one` is undone by the next fresh read in a cycle that skips the check (the same class as F1); keep the pause until a check clears it.
 
 ## Evidence
 | Claim | Evidence (command run this turn + result line) |

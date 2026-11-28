@@ -176,6 +176,7 @@ class PaperMonitor:
         self._exits_publisher: tuple[Any, monitoring_state.ExitsPublisher] | None = None
         self._dirty = True
         self._loaded_at: float | None = None
+        self._na_strategies: dict[int, str] = {}  # strategy -> kind whose armed exits are not judged here (review F2)
         self.not_applicable: dict[int, str] = {}  # trigger id -> the position kind that has no stops here (told once)
         self._ever_loaded = False  # review F3: no armed exit is known until a reload has succeeded; no claim is made
         self.fires = 0
@@ -235,11 +236,15 @@ class PaperMonitor:
         from ofo_app import position_kind, strategy_store  # noqa: PLC0415 - late: the one kind rule and its reader
         kinds = await strategy_store.kinds_of(session, sorted({a.trigger.strategy_id for a in armed}))
         keep: list[triggers.ArmedTrigger] = []
+        self._na_strategies = {}
         for a in armed:
             kind = kinds.get(a.trigger.strategy_id, position_kind.UNKNOWN)
             if kind == position_kind.PAPER:
                 keep.append(a)
-            elif a.trigger.id not in self.not_applicable:
+                self.not_applicable.pop(a.trigger.id, None)  # review F4: it reads paper again
+                continue
+            self._na_strategies[a.trigger.strategy_id] = kind
+            if a.trigger.id not in self.not_applicable:
                 self.not_applicable[a.trigger.id] = kind
                 log.info("paper trigger %s of strategy %s not applicable: the position is %s (ADR-330 (64))",
                          a.trigger.id, a.trigger.strategy_id, kind)
@@ -479,11 +484,19 @@ class PaperMonitor:
                     not_run.update({w.armed.trigger.strategy_id: _why_of(w) for w in group})
                 elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once
                     fired += await self._exits_with_reading(group, reading, now, polled=True)
+            self._report_not_applicable(not_run)
             for w in judged:  # crossed on a reading but not run: the trade is not being checked through to the exit
                 if w.armed.trigger.id in self._blocked:
                     not_run.setdefault(w.armed.trigger.strategy_id, monitoring_state.EXIT_NOT_PRICED)
         await self._report_exits(judged, not_run, now)
         return fired
+
+    def _report_not_applicable(self, not_run: dict[int, str]) -> None:
+        """Review F2: a strategy whose armed exit is not judged here (a real position, or a kind that could not be read)
+        is named in the report, so the trade never reads "watched" because of silence."""
+        for sid, kind in self._na_strategies.items():
+            not_run.setdefault(sid, monitoring_state.EXIT_NOT_APPLICABLE if kind == "real"
+                               else monitoring_state.INDEX_EXITS_NOT_RUN)
 
     async def _report_exits(self, judged: Sequence[_Watch], not_run: Mapping[int, str],
                             now: datetime.datetime) -> None:
