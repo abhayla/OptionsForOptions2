@@ -350,6 +350,7 @@ LINES: dict[str, tuple[str, ...]] = {
         "const MIXED_BANNER = 'Paper trades are not real money. A real position here only stores your actions; nothing is sent to Zerodha.' // pending owner read",
     ),
     'frontend/src/lib/positionKind.js': (
+                "export const REAL_UNKNOWN_AFTER_WINDOW_TEXT = 'The record is still not confirmed. Nothing was sent to Zerodha. Check the position before trying again.'",
         # owner 28 Nov: the one set of sentences saying a real action is only stored and "Not sent to Zerodha. Place it in Kite." (user wording, no branch on the broker)
         "export const NOT_SENT_LINE = 'Not sent to Zerodha. Place it in Kite.'",
         "export const REAL_EXIT_DIALOG_TEXT = 'This stores your exit in the app as a record and a reminder. It does not place an order and does not change your Zerodha position. Place it in Kite.'",
