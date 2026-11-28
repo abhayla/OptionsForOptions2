@@ -109,7 +109,7 @@ describe('a refused record is dropped, with the server sentence', () => {
       const { w, router } = await openBuilder({ strategy: '63', acted: '41' })
       answers[ORDERS] = refusal(status, NOT_OPEN)
       await confirmOneExit(w)
-      expect(t(w, 'paper-error').text()).toBe(NOT_OPEN)
+      expect(t(w, 'paper-error').text()).toBe(`${NOT_OPEN} x`) // Lane FJ r3 (F6): every part of the reply (the refusal here carries 'impact: x')
       expect(router.currentRoute.value.query).toEqual({ strategy: '63' })
       answers[ORDERS] = { ok: true }
       await t(w, 'paper-confirm-button').trigger('click')
@@ -142,7 +142,7 @@ describe('D-25 (ADR-326 (1)): a Take profit basket carries its approach id to th
     const { w, router } = await openBuilder({ strategy: '63', approach: 'A-25' })
     answers[ORDERS] = refusal(409, 'Not in profit after charges: -₹223')
     await confirmOneExit(w)
-    expect(t(w, 'paper-error').text()).toBe('Not in profit after charges: -₹223')
+    expect(t(w, 'paper-error').text()).toBe('Not in profit after charges: -₹223 x') // Lane FJ r3 (F6): every part
     expect(posts()[0].body.approach_id).toBe('A-25')
     expect(router.currentRoute.value.query).toEqual({ strategy: '63', approach: 'A-25' }) // kept: a retry is asked again
   })

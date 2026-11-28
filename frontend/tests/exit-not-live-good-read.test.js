@@ -105,7 +105,7 @@ describe('builder: the Exit dialog on a GOOD read whose legs are not live (A-H #
     await flushPromises()
     expect(t(w, 'paper-confirm').exists()).toBe(true)
     expect(names(w)).not.toBe('')
-    expect(t(w, 'paper-error').text()).toBe(`${names(w)}: ${NOT_LIVE}`)
+    expect(t(w, 'paper-error').text()).toBe(`No price for ${names(w)}`) // Lane FJ r3 (TD O-3): every leg without a price is named
     expect(confirmOff(w)).toBe(true)
     await w.vm.$.setupState.confirmPending(w.vm.$.setupState.paperRows) // a Confirm that reaches the page posts nothing
     expect(orderPosts()).toHaveLength(0)
@@ -129,7 +129,7 @@ describe('builder: the Exit dialog on a GOOD read whose legs are not live (A-H #
     expect(confirmOff(w)).toBe(false)
     await read(NOT_LIVE_BOOK)
     expect(t(w, 'paper-confirm').exists()).toBe(true)
-    expect(t(w, 'paper-error').text()).toBe(`${names(w)}: ${NOT_LIVE}`)
+    expect(t(w, 'paper-error').text()).toBe(`No price for ${names(w)}`) // Lane FJ r3 (TD O-3): every leg without a price is named
     expect(confirmOff(w)).toBe(true)
     expect(orderPosts()).toHaveLength(0)
   })
@@ -138,7 +138,7 @@ describe('builder: the Exit dialog on a GOOD read whose legs are not live (A-H #
     const w = await builder(MISSING_FIELD_BOOK)
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
-    expect(t(w, 'paper-error').text()).toBe(`${names(w)}: ${NOT_LIVE}`)
+    expect(t(w, 'paper-error').text()).toBe(`No price for ${names(w)}`) // Lane FJ r3 (TD O-3): every leg without a price is named
     expect(confirmOff(w)).toBe(true)
   })
 
@@ -147,7 +147,7 @@ describe('builder: the Exit dialog on a GOOD read whose legs are not live (A-H #
     await t(w, 'paper-exit-all').trigger('click')
     await flushPromises()
     expect(confirmOff(w)).toBe(true)
-    expect(t(w, 'paper-error').text()).toContain(NOT_LIVE)
+    expect(t(w, 'paper-error').text()).toMatch(/^No price for /)
   })
 
   it('a "Review and add" dialog of an ADD only, on a not-live read, is not an Exit: ADR-330 (28) owns its line, Confirm is not blocked by this rule', async () => {
@@ -197,9 +197,9 @@ describe('Positions: the Exit dialog on a GOOD list read whose legs are not live
     expect(dlg(w).props('open')).toBe(true)
     expect(dlg(w).props('blocked')).toBe(true)
     const err = dlg(w).props('error')
-    expect(err.endsWith(`: ${NOT_LIVE}`)).toBe(true)
+    expect(err.startsWith('No price for ')).toBe(true) // Lane FJ r3 (TD O-3)
     for (const o of dlg(w).props('orders')) expect(err).toContain(o.text) // every ticked leg is named
-    expect(w.text() + document.body.textContent).toContain(NOT_LIVE)
+    expect(w.text() + document.body.textContent).toContain(err)
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
   })
 
@@ -218,14 +218,14 @@ describe('Positions: the Exit dialog on a GOOD list read whose legs are not live
     await listRead(LIST_DOWN)
     expect(dlg(w).props('open')).toBe(true)
     expect(dlg(w).props('blocked')).toBe(true)
-    expect(dlg(w).props('error')).toContain(NOT_LIVE)
+    expect(dlg(w).props('error')).toMatch(/^No price for /)
   })
 
   it('a leg\'s price_state missing (unknown): fail closed', async () => {
     const w = await positions(LIST_NO_FIELD)
     expect(dlg(w).props('open')).toBe(true)
     expect(dlg(w).props('blocked')).toBe(true)
-    expect(dlg(w).props('error')).toContain(NOT_LIVE)
+    expect(dlg(w).props('error')).toMatch(/^No price for /)
   })
 
   it('doExit called directly (not via the button) while a ticked leg is not live on a GOOD read: no POST, the not-live sentence stays', async () => {
@@ -234,7 +234,7 @@ describe('Positions: the Exit dialog on a GOOD list read whose legs are not live
     await w.vm.$.setupState.doExit(dlg(w).props('orders'))
     await flushPromises()
     expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
-    expect(dlg(w).props('error')).toContain(NOT_LIVE)
+    expect(dlg(w).props('error')).toMatch(/^No price for /)
   })
 
   it('failed read keeps the existing behaviour: no dialog is opened from old prices', async () => {

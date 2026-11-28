@@ -194,21 +194,22 @@ describe('O-1 the paused line has its as-of time', () => {
 
 // UX-A02 (R2 FC2; the Stop price box half is Lane FA2's PaperStops.vue): the list hands each open leg's current price text as `currentPriceText`.
 describe('UX-A02 current price text for the Stops form', () => {
-  it('passes { contractId: ltp text } for the live open legs only', async () => {
+  it('Lane FJ r3: passes each open leg with its own ltpText (null when not live) and no side map', async () => {
     answers['GET /paper/strategies'] = () => Promise.resolve({ data: clone() })
     const seen = []
     const router = createRouter({ history: createMemoryHistory(), routes: [{ path: '/', component: PaperStrategies }, { path: '/strategy/builder', component: { template: '<div/>' } }] })
     router.push('/')
     await router.isReady()
-    const Stub = { name: 'PaperStops', props: ['strategyId', 'currentPriceText'], setup(p) { seen.push(p) }, template: '<div data-testid="stops-stub" />' }
+    const Stub = { name: 'PaperStops', props: ['strategyId', 'legs'], setup(p) { seen.push(p) }, template: '<div data-testid="stops-stub" />' }
     const w = mount(PaperStrategies, { global: { plugins: [router], stubs: { PaperStops: Stub } } })
     await flushPromises()
     await w.get('[data-testid="stops-open-1"]').trigger('click')
     await flushPromises()
     const p = seen.at(-1)
     const d = clone().strategies.find((x) => x.strategy_id === 1)
-    const want = Object.fromEntries(d.positions.filter((x) => x.net_quantity !== 0 && x.price_state === 'live').map((x) => [String(x.contract_id), x.ltp_text]))
-    expect(Object.keys(want).length).toBeGreaterThan(0)
-    expect(p.currentPriceText).toEqual(want)
+    const open = d.positions.filter((x) => x.net_quantity !== 0)
+    expect(open.length).toBeGreaterThan(0)
+    expect(p.legs.map((l) => [l.contractId, l.ltpText])).toEqual(open.map((x) => [String(x.contract_id), x.price_state === 'live' ? x.ltp_text : null]))
+    expect(p.currentPriceText).toBeUndefined()
   })
 })

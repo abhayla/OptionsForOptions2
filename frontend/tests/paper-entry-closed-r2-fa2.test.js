@@ -14,7 +14,7 @@ const off = (w) => w.get('[data-testid="paper-confirm-button"]').element.disable
 
 describe('Add to Paper after the close', () => {
   it('closed: the leg is listed, the sentence shows, Confirm is greyed, a click emits nothing', async () => {
-    answer = () => Promise.resolve({ data: { closed: true, sentence: SENT } })
+    answer = () => Promise.resolve({ data: { closed: true, sentence: 'The market is closed. Exits can be placed from 09:15 on Monday 30 Nov.', entries_sentence: SENT } }) // Lane FJ r3: the entries wording
     const w = open(); await flushPromises()
     expect(w.findAll('[data-testid="paper-order"]')).toHaveLength(1)
     expect(w.get('[data-testid="paper-market-closed"]').text()).toBe(SENT)

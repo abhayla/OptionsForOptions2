@@ -206,7 +206,7 @@ export async function draftFromReply(client, body) {
   }
   const legs = legsFromSaved(def, contracts)
   if (!legs) throw new Error('unreadable draft') // fail closed: the caller keeps what is on screen
-  return { legs, id: Number.isInteger(body.id) ? body.id : null, revision: Number.isInteger(body.revision) ? body.revision : null, name: typeof body.name === 'string' ? body.name : null }
+  return { legs, id: Number.isInteger(body.id) ? body.id : null, revision: Number.isInteger(body.revision) ? body.revision : null, name: typeof body.name === 'string' ? body.name : null, statusWord: typeof body.status_word === 'string' ? body.status_word : null }
 }
 
 /** ADR-330 (34), LR-Q16: the one line under the builder's unsaved-legs bar. Remove with its use when REQ-154 (unsaved strategy kept across a reload) ships. */

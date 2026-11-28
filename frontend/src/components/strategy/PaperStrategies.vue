@@ -153,20 +153,20 @@
                 <!-- ADR-330 (54): the Plan button, beside Stops and Exit; the same plan sheet as the builder's Edit plan -->
                 <PlanDoor v-if="g.openCount" :strategy-id="g.id" tag="paper" />
                 <button v-if="g.openCount" type="button" class="rounded border border-line px-2 py-1" :aria-expanded="!!stopsOpen[g.id]" :data-testid="`stops-open-${g.id}`" @click="stopsOpen = { ...stopsOpen, [g.id]: !stopsOpen[g.id] }">Stops</button>
-                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value" :reason="exitGate.reason.value ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
+                <ExitButton v-if="g.openCount" :blocked="exitGate.blocked.value || !!noPriceNames(g)" :reason="exitGate.reason.value ?? noPriceLine(g) ?? (tickedOpen(g).length ? null : EXIT_TICK_TEXT)" :extra-disabled="!tickedOpen(g).length" class="rounded border border-line px-2 py-1" :data-testid="`exit-selected-${g.id}`" @click="ask(g, tickedOpen(g))">Exit ({{ tickedOpen(g).length }})</ExitButton>
                 <p v-if="exitGate.reason.value === NOT_LIVE_EXIT && lastGoodClock" class="text-xs text-ink-muted" data-testid="paper-exit-asof">Last prices: {{ lastGoodClock }} IST.</p>
               </div>
             </div>
             <!-- P10 (ADR-330 (13)): the Plan watch of an open strategy; it re-reads on this list's own good-read token -->
             <MonitoringBadge v-if="g.openCount" :entry="monitoring.entryOf(g.id)" class="mt-2" />
-            <PlanWatch v-if="g.openCount" :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" :view="planViews.get(String(g.id)) ?? null" compact class="mt-2" />
-            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :current-price-text="currentPriceTextOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
+            <PlanWatch :strategy-id="g.id" :read-tick="goodReadToken" :stale="stale" :view="g.openCount ? planViews.get(String(g.id)) ?? null : undefined" :closed="!g.openCount" compact class="mt-2" />
+            <PaperStops v-if="stopsOpen[g.id]" :strategy-id="g.id" :underlying="g.underlying" :legs="stopLegs(g)" :leg-names="legNamesOf(g)" :good-read-token="goodReadToken" @changed="onStopsChanged" />
           </template>
         </div>
       </template>
     </template>
     <!-- GC-TP step 4b round 2 (REQ-109 AC-4; Sensibull 166-173): every exit goes through the shared confirm list, in lots -->
-    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="exitGate.notLive.value" :error="dialogError || (confirm && exitGate.notLive.value ? exitEndText('not_live', confirm.names) : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" :locked-at-ms="confirm && isUnknown(confirm.id) ? (exitRec.cur(confirm.id)?.at ?? 0) : 0" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
+    <PaperConfirmDialog :open="!!confirm" :orders="confirm ? confirm.orders : []" :strategy-id="confirm ? confirm.id : ''" :busy="busy" :blocked="exitGate.notLive.value" :error="dialogError || (confirm && exitGate.notLive.value ? dialogNotLiveText() : '')" :state="dialogState" :locked="!!(confirm && isUnknown(confirm.id))" :locked-at-ms="confirm && isUnknown(confirm.id) ? (exitRec.cur(confirm.id)?.at ?? 0) : 0" @confirm="doExit" @cancel="cancelExit" @orderbook="openOrderbook" />
   </section>
 </template>
 
@@ -193,7 +193,7 @@ import { ALL_CLOSED_TEXT, DECAY_LEFT_TODAY_HEADING, GREEK_COLUMNS, PAPER_NO_FIGU
 import { usePriceFreshness } from '@/lib/priceState'
 import { createExitRecords } from '@/lib/exitRecord'
 import { NOT_LIVE_EXIT } from '@/lib/priceState'
-import { EXIT_TICK_TEXT, exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
+import { EXIT_TICK_TEXT, exitEndText, exitLegsNotLive, legsNoPrice, usePaperExit } from '@/lib/usePaperExit'
 import ExitButton from '@/components/strategy/ExitButton.vue'
 import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
@@ -297,6 +297,17 @@ const dialogLegsNotLive = () => {
   const g = (items.value ?? []).find((x) => String(x.id) === String(c.id))
   return exitLegsNotLive(g?.state, g?.positions?.map((p) => ({ id: p.contractId, live: p.live })), c.orders.map((o) => o.contract_id))
 }
+// TD O-3: the ticked legs of a group (or of the open dialog) that have no price, by name; null when the block is not about named legs (a failed read keeps the general sentence)
+const noPriceIdsOf = (g, ids) => (stale.value ? null : legsNoPrice(g?.state, g?.positions?.map((p) => ({ id: p.contractId, live: p.live })), ids))
+const namesOfIds = (g, ids) => ids.map((id) => g.positions.find((p) => p.contractId === id)?.name).filter(Boolean)
+const noPriceNames = (g) => { const ids = noPriceIdsOf(g, tickedOpen(g).map((p) => p.contractId)); return ids ? namesOfIds(g, ids) : null }
+const noPriceLine = (g) => { const n = noPriceNames(g); return n ? exitEndText('no_price', n) : null }
+function dialogNotLiveText() {
+  const c = confirm.value
+  const g = (items.value ?? []).find((x) => String(x.id) === String(c?.id))
+  const ids = g ? noPriceIdsOf(g, c.orders.map((o) => o.contract_id)) : null
+  return ids ? exitEndText('no_price', namesOfIds(g, ids)) : exitEndText('not_live', c.names)
+}
 const exitGate = usePaperExit({ readFailed: errorParts, held: items, busy: () => busy.value, changed: false, notLive: dialogLegsNotLive })
 const loading = ref(true)
 const summary = computed(() => ({
@@ -333,11 +344,8 @@ watch([() => planIds.value.join(','), goodReadToken], readPlanBatches, { immedia
 onBeforeUnmount(() => { while (batchKeys.length) cancelPlanWatchRead(batchKeys.pop()) })
 const stopsOpen = ref({})
 // R-10: a Stop row for each OPEN contract, keyed by the contract id the reply carries (a digit string sent as is)
-// UX-A02 (R2 FC2; Lane FA2 builds the Stop price box half): what each open leg costs NOW, as the server's own text, keyed by the contract id
-// string (the key `legs[].contractId` uses). A leg with no live price is absent from the map: the Stop box shows nothing for it, never a made-up figure.
-const currentPriceTextOf = (g) => Object.fromEntries(g.positions.filter((p) => p.open && p.ltpText !== null && p.live).map((p) => [String(p.contractId), p.ltpText]))
 const legNamesOf = (g) => Object.fromEntries(g.positions.map((p) => [p.contractId, p.name])) // D-44: the one leg label, for the form and the list
-const stopLegs = (g) => g.positions.filter((p) => p.open).map((p) => ({ index: p.contractId, label: legNamesOf(g)[p.contractId], contractId: String(p.contractId) }))
+const stopLegs = (g) => g.positions.filter((p) => p.open).map((p) => ({ index: p.contractId, label: legNamesOf(g)[p.contractId], contractId: String(p.contractId), ...(stale.value ? {} : { ltpText: p.ltpText }) })) // a failed read shows no leg cost (no field, no line)
 
 const ticks = ref({})
 const isTicked = (id, c) => !!ticks.value[id]?.includes(c)

@@ -47,7 +47,7 @@ describe('Add to Paper refuses a kept duplicate with the gate sentence', () => {
     const posts = calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/7/orders')
     expect(posts).toHaveLength(1)
     expect(posts[0].body.orders.map((o) => [o.contract_id, o.side, o.quantity])).toEqual([[103, 'SELL', 65], [103, 'SELL', 65]])
-    expect(t(w, 'paper-error').text()).toBe(SENTENCE)
+    expect(t(w, 'paper-error').text()).toBe(Object.values(REFUSED.parts).join(' ')) // Lane FJ r3 (F6): every part, as sent; the gate sentence leads
     w.unmount()
   })
 })

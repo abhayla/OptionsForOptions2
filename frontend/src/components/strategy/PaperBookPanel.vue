@@ -25,7 +25,8 @@
     <p v-if="asOfLine" class="mt-2 text-xs text-ink-muted" data-testid="book-as-of">{{ asOfLine }}</p>
     <!-- u126 (REQ-109 AC-5): the read time of the answer these figures come from (the reply's answered_at, never the browser clock) -->
     <p v-if="contractsChanged" class="mt-2 text-xs text-red-700" data-testid="book-contracts-changed">{{ CONTRACTS_CHANGED_TEXT }}</p>
-    <p v-if="readAt" class="mt-2 text-xs text-ink-muted" data-testid="book-read-at">{{ readAtLabel }} {{ readAt }} IST</p>
+    <p v-if="pricesAsOf" class="mt-2 text-xs text-ink-muted" data-testid="book-prices-as-of">Prices as of {{ pricesAsOf }}</p>
+    <p v-if="checkedAt" class="mt-2 text-xs text-ink-muted" data-testid="book-read-at">Checked at {{ checkedAt }}</p>
     <dl class="mt-2 flex gap-6 text-xs" data-testid="book-strip">
       <!-- GC-ICFIX u123 (ADR-263): the headline total is the server's after-charges text, labelled; else the before text, labelled, with the reason -->
       <div>
@@ -100,7 +101,7 @@
 
 <script setup>
 import { computed, ref, watch } from 'vue'
-import { istClock } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, istClock, istStamp, istTime } from '@/lib/displayFormat'
 import { CONTRACTS_CHANGED_TEXT, afterFigure } from '@/lib/tracking'
 import { bookNotLive, pausedText } from '@/lib/priceState'
 import { usePaperExit } from '@/lib/usePaperExit'
@@ -134,10 +135,15 @@ const asOfLine = computed(() => {
 // Phase 4 (F2): the Exit gate of this panel (a failed read: no exit from old prices; the contracts changed: no exit from an old net)
 const exitGate = usePaperExit({ readFailed: () => props.readFailed, held: () => props.book, changed: () => props.contractsChanged, unresolved: () => props.exitUnresolved })
 
-// ADR-330 (56): the PRICE's time (last_price_at) reads "As of"; the time of the read is only ever "Checked at" (same rule as tracking.js sharedTotal)
-const priceReadAt = computed(() => istClock(props.book.last_price_at ?? null))
-const readAt = computed(() => priceReadAt.value ?? istClock(props.book.answered_at ?? null))
-const readAtLabel = computed(() => (priceReadAt.value ? 'As of' : 'Checked at'))
+// ADR-330 (56), FJ r3 (b): the PRICE's time (last_price_at) reads "Prices as of", the time of the read (answered_at) only "Checked at"; both through the one stamp formatter
+// (istStamp: the clock alone on the day of the answer, the whole date otherwise); a time that cannot be read prints no line
+const pricesAsOf = computed(() => { // no answer time to name "today": the whole date (never the browser's day)
+  const at = props.book.last_price_at ?? null
+  if (props.book.answered_at) return istStamp(at, props.book.answered_at)
+  const full = typeof at === 'string' ? istTime(at) : TIME_UNAVAILABLE
+  return full === TIME_UNAVAILABLE ? null : full
+})
+const checkedAt = computed(() => (props.book.answered_at ? istStamp(props.book.answered_at, props.book.answered_at) : null))
 
 const pausedSentence = () => { const s = props.book.pause_reason_text; return typeof s === 'string' && s.trim() !== '' ? withAsOf(s.trim(), props.book.as_of) : null }
 const total = computed(() => afterFigure(props.book, props.book.total_text ?? null, pausedSentence()))

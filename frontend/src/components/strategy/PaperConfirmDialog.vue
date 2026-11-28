@@ -99,7 +99,7 @@ import {
 import { paperDialogTitle, paperKindLabel } from '@/lib/paperDrafts'
 import api from '@/services/api'
 import { EXIT_PLACING_TEXT } from '@/lib/usePaperExit'
-import { istClock } from '@/lib/displayFormat'
+import { isoMillis, istClock } from '@/lib/displayFormat'
 import { priceAgeLine } from '@/lib/priceState'
 
 const props = defineProps({
@@ -136,7 +136,17 @@ const quoteClock = (row) => (row.price_at ? istClock(row.price_at) ?? '' : '')
 // I-17: the age line, told against the time the dialog opened (or the `nowMs` prop)
 const openedAtMs = ref(Date.now())
 watch(() => props.open, (o) => { if (o) openedAtMs.value = Date.now() })
-const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: props.nowMs || openedAtMs.value, notLive: !!props.notLiveLine }))
+// fd2: the server's own clock (`server_time` on the market, exit-risk and armed-exits answers) is the one the age is told against; the browser's
+// clock only measures the time since that answer. A server_time that is absent or not a time changes nothing (the browser clock, as before).
+const serverClock = ref(null) // { serverMs, localMs }
+function noteServerTime(data) {
+  const ms = typeof data?.server_time === 'string' ? isoMillis(data.server_time) : null
+  if (ms === null) return
+  serverClock.value = { serverMs: ms, localMs: Date.now() }
+  openedAtMs.value = Date.now()
+}
+const ageNowMs = computed(() => props.nowMs || (serverClock.value ? serverClock.value.serverMs + (openedAtMs.value - serverClock.value.localMs) : openedAtMs.value))
+const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: ageNowMs.value, notLive: !!props.notLiveLine }))
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => paperDialogTitle(props.orders, props.kind))
@@ -160,6 +170,7 @@ const orderOf = (r) => ({ contract_id: r.contract_id, side: r.side, quantity: un
 // server's ONE market-state answer when it opens. Closed: the server's sentence is shown and Confirm is off (it wins over the not-live line).
 // The answer cannot be read: Confirm stays off with MARKET_UNREADABLE_TEXT (fail closed; the server still refuses a closed-market exit, ADR-212).
 const MARKET_UNREADABLE_TEXT = 'The market status could not be read. Try again in a moment.'
+const MARKET_CLOSED_PLAIN = 'The market is closed.' // new wording, pending owner read: used only when the server sent no entries_sentence
 const marketState = ref('') // '' (no exit row) | 'checking' | 'open' | 'closed' | 'unreadable'
 const marketSentence = ref('')
 let marketSeq = 0
@@ -175,7 +186,12 @@ async function askMarket(background = false) {
   try {
     const { data } = await api.get('/market/exit-state')
     if (seq !== marketSeq) return
+    noteServerTime(data)
     if (data?.closed === false) { marketState.value = 'open'; marketSentence.value = '' }
+    else if (data?.closed === true && !rows.value.some((r) => r.kind === 'exit')) { // FD3: an entry-only dialog (Add to Paper) says the ENTRIES wording; absent, the plain sentence (never the exits wording)
+      marketState.value = 'closed'
+      marketSentence.value = typeof data.entries_sentence === 'string' && data.entries_sentence.trim() ? data.entries_sentence : MARKET_CLOSED_PLAIN
+    }
     else if (data?.closed === true && typeof data.sentence === 'string' && data.sentence) { marketState.value = 'closed'; marketSentence.value = data.sentence }
     else if (!background || marketState.value === 'checking') marketState.value = 'unreadable' // ambiguous or without its sentence: never a guess
   } catch { if (seq === marketSeq && (!background || marketState.value === 'checking')) marketState.value = 'unreadable' }
@@ -201,6 +217,7 @@ async function askExitRisk() {
   let line = ''
   try {
     const { data } = await api.get(`/paper/strategies/${props.strategyId}/exit-risk`, { params: { orders: JSON.stringify(basket.map(orderOf)) } })
+    noteServerTime(data)
     if (data?.state === 'no') state = ''
     else if (data?.state === 'yes' && typeof data.warning_text === 'string' && data.warning_text) { state = 'risk'; line = data.warning_text }
   } catch { state = 'unchecked' }
@@ -224,6 +241,7 @@ async function askArmedExits() {
   if (basket.length) {
     try {
       const { data } = await api.get(`/paper/strategies/${props.strategyId}/armed-exits`, { params: { orders: JSON.stringify(basket.map(orderOf)) } })
+      noteServerTime(data)
       if (Array.isArray(data?.lines)) lines = data.lines.filter((l) => typeof l === 'string' && l)
       else unchecked = true
     } catch { lines = []; unchecked = true }
@@ -232,13 +250,18 @@ async function askArmedExits() {
 }
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askArmedExits, { immediate: true })
 
-// the rows as they were when the server refused them: Confirm unlocks only once the user has changed something
+// the rows as they were when the server refused them: Confirm unlocks only once the user has changed something. FJ r3 (FB2 F6): EVERY refused state of this opening is
+// remembered (not only the last), so a second refusal keeps Confirm off and going back to an earlier refused list does not offer it again. A refusal is taken when the page's
+// post ends (`busy` falls) with the state still 'refused'; a new opening, or any other state, starts again.
 const snapshot = () => JSON.stringify([rows.value.map((r) => [r.lots, r.price]), notLiveAck.value]) // the tick changes the request too
-const refusedAt = ref(null)
+const refusedSet = ref(new Set())
+watch(() => props.busy, (b, was) => { if (was && !b && props.state === 'refused') refusedSet.value = new Set([...refusedSet.value, snapshot()]) }) // a post ended and the state is still refused: a refusal of THIS list
+watch(() => props.open, (o) => { if (o) refusedSet.value = props.state === 'refused' ? new Set([snapshot()]) : new Set() }) // an opening that comes back as refused: this very list is the refused one
 const held = ref(false)
 let holdTimer = null
 watch(() => props.state, (s) => {
-  refusedAt.value = s === 'refused' ? snapshot() : null
+  if (s === 'refused') refusedSet.value = new Set([...refusedSet.value, snapshot()])
+  else refusedSet.value = new Set()
   clearTimeout(holdTimer)
   held.value = s === 'unknown'
   if (held.value) holdTimer = setTimeout(() => { held.value = false }, props.holdMs)
@@ -265,7 +288,7 @@ watch(() => [props.state, props.error], async ([s, e]) => {
 })
 const canConfirm = computed(() => {
   if (props.busy || props.blocked || marketState.value === 'checking' || marketState.value === 'closed' || marketState.value === 'unreadable' || exitState.value === 'checking' || (props.notLiveLine && !notLiveAck.value) || !ready.value || props.state === 'placed' || held.value || props.locked) return false
-  return props.state !== 'refused' || refusedAt.value === null || snapshot() !== refusedAt.value
+  return !(props.state === 'refused' && refusedSet.value.has(snapshot()))
 })
 
 // a UUID (version 4) from the browser's crypto; never a typed or guessed value

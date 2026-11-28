@@ -54,8 +54,8 @@ export function priceScope(rows, isAffected, idOf = (r) => r.id) {
 /** Does the page's PriceNotice (components/states/PriceNotice.vue) show anything for this index answer and affected count? The same rule
  *  as that component (closed banner always; not-live line only when 2+ strategies are affected or the count is unknown), so a list
  *  can stay quiet exactly when the notice speaks. */
-export function priceNoticeUp(answer, affected = null) {
-  const now = priceNow({ answer, pageState: 'loading' })
+export function priceNoticeUp(answer, affected = null, { reply = null, pageState = 'loading', reconnecting = false } = {}) {
+  const now = priceNow({ reply, answer, pageState: reply ? pageState : 'loading', reconnecting })
   if (now.kind === 'last_close') return true
   const down = now.kind === 'stale' || (!!answer && answer.state !== 'LIVE')
   return down && !(affected !== null && affected < 2)

@@ -43,7 +43,7 @@ import { withAsOf } from '@/lib/paperList'
 import PaperBookPanel from '@/components/strategy/PaperBookPanel.vue'
 import { paperLegsOf, paperPnlBlock, usePaperBookRead } from '@/lib/usePaperBookRead'
 import { notLiveEntryLine, usePriceFreshness } from '@/lib/priceState'
-import { exitEndText, exitLegsNotLive, usePaperExit } from '@/lib/usePaperExit'
+import { exitEndText, exitLegsNotLive, legsNoPrice, refusalText, usePaperExit } from '@/lib/usePaperExit'
 import { createExitRecords } from '@/lib/exitRecord'
 import { dropExitLock, dropOrderKey, exitLockFor, onExitLocksChanged, orderKeyFor, saveExitLock } from '@/lib/unknownLocks'
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
@@ -392,6 +392,9 @@ const savedRevision = ref(heldBack?.savedRevision ?? null)
 // Unlike savedId it SURVIVES edits, so Save after an edit updates that strategy (PUT with this revision) instead of creating a
 // second row (RD-106). It is replaced on open/save, and dropped by Clear all (held for Undo).
 const openStrategy = ref(heldBack?.openStrategy ?? null)
+// ADR-330 (58): the saved strategy whose orders are real (the server says Running and it has no paper book); only the page's own read of THIS strategy sets it
+const realTradeId = ref(null)
+const tradeMode = computed(() => (!paper.value && realTradeId.value !== null && realTradeId.value === savedId.value ? 'real' : 'paper'))
 const openError = ref(null) // the catalogue message when ?strategy= cannot be opened; the screen is kept
 const openNotFound = ref(null) // the openError that said "strategy not found" (the Open My Strategies button shows only while it is the one on screen)
 // REQ-134 AC-5: the URL names the strategy (?strategy=<id>) so a reload opens it again; a `draft` link is dropped from it.
@@ -662,7 +665,19 @@ const paperLegNames = () => paperRows.value.map((r) => r.text).filter(Boolean)
 const EXIT_KEY = 'builder'
 const exitRec = createExitRecords()
 const paperExitNote = computed(() => exitRec.cur(EXIT_KEY)?.text ?? '') // the sentence of the record (hotfix 27 Nov T2-08)
-const paperNotLiveLine = computed(() => (paperDialog.value && exitBlocked.value && !paperContractsChanged.value ? exitEndText(exitUnknown.value ? 'checking' : 'not_live', paperLegNames()) : ''))
+// TD O-3: when the block is the exit rows' own legs having no live price (a good read), the sentence names them; a failed read, an unreadable state or a mixed block keeps the general sentence
+const paperNoPriceNames = () => {
+  const b = paper.value?.book
+  const exits = paperRows.value.filter((r) => r.kind === 'exit')
+  const ids = paperReadFailed.value || !b ? null : legsNoPrice(b.state, b.positions?.map((p) => ({ id: p.contract_id, live: p.price_state === 'live' })), exits.map((r) => r.contract_id))
+  return ids ? exits.filter((r) => ids.includes(r.contract_id)).map((r) => r.text).filter(Boolean) : null
+}
+const paperNotLiveLine = computed(() => {
+  if (!(paperDialog.value && exitBlocked.value && !paperContractsChanged.value)) return ''
+  if (exitUnknown.value) return exitEndText('checking', paperLegNames())
+  const named = paperNoPriceNames()
+  return named?.length ? exitEndText('no_price', named) : exitEndText('not_live', paperLegNames())
+})
 function closeChanged() {
   exitRec.put(EXIT_KEY, 'changed', exitEndText('changed', paperLegNames()))
   cancelPaperDialog()
@@ -704,12 +719,14 @@ const clearStopOffer = () => { stopOffer.value = null; stopOfferLeg.value = null
 async function readStops(id) {
   try { return triggerListOf((await api.get(triggersPath(id))).data) } catch { return null } // a failed read is "unknown", never "empty"
 }
+// UX-A02: a leg's price as the book sent it, only while that leg's price is live (the Stops box says "not priced" for null; no field, no line)
+const ltpTextOf = (contractId) => { const p = paper.value?.book?.positions?.find((x) => x.contract_id === contractId); return p?.price_state === 'live' && typeof p.ltp_text === 'string' && p.ltp_text.trim() !== '' ? p.ltp_text.trim() : null }
 async function offerAfterMove(check) {
   if (!check?.stops?.length || !paper.value || paper.value.id !== check.id) return
   const now = await readStops(check.id)
   if (!now || !legStopsGone(check.stops, now).length) return
   const legs = paper.value.net.filter((l) => !check.net.includes(l.contract_id) && l.lots > 0)
-    .map((l) => ({ index: l.contract_id, label: contractName(l), contractId: String(l.contract_id) }))
+    .map((l) => ({ index: l.contract_id, label: contractName(l), contractId: String(l.contract_id), ltpText: ltpTextOf(l.contract_id) }))
   if (legs.length) stopOffer.value = { strategyId: check.id, legs }
 }
 async function confirmPending(orders, _held = null, notLiveTicked = false, dialogKey = null) {
@@ -750,7 +767,7 @@ async function confirmPending(orders, _held = null, notLiveTicked = false, dialo
     if (outcome === PAPER_STATE.REFUSED) dropOrderKey(id) // the server itself refused (580 / 581 / 583 too): nothing stored, the key is free
     if (sendsExit && outcome === PAPER_STATE.REFUSED) dropExitLock(id)
     if (outcome === PAPER_STATE.REFUSED) { // 4xx: the server stored nothing (one transaction or none)
-      paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened
+      paperError.value = refusalText(e?.parts, NEUTRAL_PARTS.what_happened) // F6: every part of the reply
     }
     if (outcome === PAPER_STATE.UNKNOWN) {
       if (!orders.some((o) => o?.kind === 'exit')) addUnknown = { net: netKey(paper.value?.net) }
@@ -983,12 +1000,14 @@ async function readUrlStrategy() {
   if (String(route.query.strategy ?? '') !== id || legs.value !== before) return
   // the book names its own strategy id (an integer); it must be the one in the URL
   if (read.kind === 'paper') return String(read.book.strategy_id) === id ? enterDrafts(read.book.strategy_id, read) : (openError.value = unreadableParts(null))
+  realTradeId.value = null
   leaveDrafts()
   try {
     const saved = await fetchSavedDraft(api, id)
     if (String(route.query.strategy ?? '') !== id) return // F-4: the URL moved on while the read was out
     if (legs.value !== before) return // the user changed the legs while the read was out: never overwrite them
     openSaved(saved.legs, saved.id, saved.revision, saved.name)
+    if (saved.statusWord === 'Running' && saved.id === savedId.value) realTradeId.value = saved.id // ADR-330 (58): orders exist (Running) and the paper book has none: a real trade
   } catch (e) {
     openError.value = e?.parts ?? NEUTRAL_PARTS // not found, unreadable, request failed: the screen stays as it is
     openNotFound.value = e?.error_code === STRATEGY_NOT_FOUND_CODE ? openError.value : null
@@ -1073,6 +1092,7 @@ const setLegs = (next) => {
 }
 // REQ-076 AC-8: the shape name and Hedge marks come from the server on load and after Done, before any edit.
 function readShape() {
+  if (legs.value.some((l) => l.capturing === true && l.planned_entry == null)) return // FB2 deferred: a leg still waiting for its entry is not read; the read goes out once, when the entry is in
   if (!linkRefused.value && legs.value.length >= 2) editLeg({ control: 'read' })
 }
 
@@ -1798,19 +1818,14 @@ const leaveGuard = useLeaveBuilder({
           </ChartCard>
           <LowerCard :table="data.table" :legs="data.legs ?? null" :sd="data.standard_deviation ?? null" />
           <StrategyActions :saved-id="savedId" :execute-refusal="refusal" />
-          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperBookFailed" />
+          <TrackingPanel :saved-id="savedId" :legs="data.legs ?? null" :shared="paper?.book ?? null" :shared-failed="paperBookFailed" :trade-mode="tradeMode" />
         </div>
-        <!-- ADR-330 (57): a fully closed trade has no Plan watch (its plan line is in the book panel). P10 (ADR-330 (13)): the Plan watch under the live P&L column, whatever the numbers state is (it is its own server read); it re-reads on the page's own book read (paper.book is replaced by each good read) -->
+        <!-- ADR-330 (57): a fully closed trade has no monitoring badge (its plan line is in the book panel). P10 (ADR-330 (13)): the Plan watch under the live P&L column, whatever the numbers state is (it is its own server read); it re-reads on the page's own book read (paper.book is replaced by each good read) -->
         <MonitoringBadge v-if="planWatchId && !paperCompleted" :entry="monitoring.entryOf(planWatchId)" class="mt-4" />
-        <!-- UX-C3: while the page's own "Working out the outcome..." is the one loading line, the box keeps its rows but not its own "Loading the rule check..." line (the style below) -->
-        <div v-if="planWatchId && !paperCompleted" class="plan-watch-host" data-testid="plan-watch-host" :data-outcome-loading="state === 'loading' && !showNumbers ? 'true' : 'false'">
-          <PlanWatch :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" class="mt-4" />
-        </div>
+        <!-- UX-A06: a settled trade keeps the box with the closed fact (nothing is read). UX-C3: while the page's own "Working out the outcome..." is the one loading line, the box keeps its rows but says nothing of loading (outcomeLoading) -->
+        <PlanWatch v-if="planWatchId" :strategy-id="planWatchId" :read-tick="paper?.book ?? null" :stale="paperBookFailed" :closed="paperCompleted" :outcome-loading="state === 'loading' && !showNumbers" class="mt-4" />
       </div>
     </div>
   </section>
 </template>
 
-<style>
-.plan-watch-host[data-outcome-loading='true'] [data-testid='plan-watch-loading'] { display: none; }
-</style>

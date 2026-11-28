@@ -22,6 +22,7 @@ export function exitEndText(reason, legNames = [], parts = null, neutral = 'Some
   const names = (legNames ?? []).filter((n) => typeof n === 'string' && n).join(', ')
   let sentence
   if (reason === 'not_live') sentence = NOT_LIVE_EXIT
+  else if (reason === 'no_price') return `No price for ${names}` // TD O-3 (new wording, pending owner read): names the contract(s); no "<names>:" prefix
   else if (reason === 'changed') sentence = CHANGED_ELSEWHERE_EXIT
   else if (reason === 'busy') sentence = EXIT_BUSY_TEXT
   else if (reason === 'checking') sentence = EXIT_CHECKING_TEXT
@@ -38,6 +39,9 @@ export function exitEndText(reason, legNames = [], parts = null, neutral = 'Some
   return names ? `${names}: ${sentence}` : sentence
 }
 
+/** F6 (Lane FJ r3): the server's refusal of an order, every part as sent (what happened, impact, what is blocked, next action), one line; the neutral sentence when it sent none. */
+export const refusalText = (parts, neutral = 'Something went wrong. Please try again.') => exitEndText('refused', [], parts, neutral)
+
 /**
  * Lane U hotfix 27 Nov 2026 (A-H #209: feed stopped, API up; ADR-016..019, ADR-328 (4), REQ-109 AC-5 / ADR-322 (3)): the ONE judgement of "may
  * these ticked legs exit at the prices the LATEST GOOD read shows?", read by the builder's dialog and the Positions dialog alike. `state` is the
@@ -51,6 +55,20 @@ export function exitLegsNotLive(state, positions, ids) {
   if (state !== 'LIVE' && state !== 'PAUSED' && state !== 'EXITED') return true
   if (!Array.isArray(positions)) return true
   return ids.some((id) => positions.find((p) => p?.id === id)?.live !== true)
+}
+
+/**
+ * TD O-3 (Lane FJ r3): which TICKED legs have no live price, when that is what blocks the exit. Returns the ids (a subset of `ids`), or null when the block
+ * is not about named legs (no ticked leg, the state is not one the server names, `positions` is not a list, a ticked leg is not listed, every ticked leg is live):
+ * the caller then keeps the general sentence (NOT_LIVE_EXIT). A leg's live flag that is not exactly true counts as no price; NOT_CONNECTED means none has one.
+ */
+export function legsNoPrice(state, positions, ids) {
+  if (!Array.isArray(ids) || !ids.length || !Array.isArray(positions)) return null
+  if (!['LIVE', 'PAUSED', 'EXITED', 'NOT_CONNECTED'].includes(state)) return null
+  const listed = ids.map((id) => positions.find((p) => p?.id === id))
+  if (listed.some((p) => !p)) return null
+  const bad = ids.filter((_, i) => state === 'NOT_CONNECTED' || listed[i].live !== true)
+  return bad.length ? bad : null
 }
 
 // `notLive`: the caller's `exitLegsNotLive(...)` of the dialog that is open (false when none): one more way to be blocked, with the same sentence.

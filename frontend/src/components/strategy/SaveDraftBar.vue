@@ -53,6 +53,7 @@ import { useSettingsValues } from '@/stores/settingsValues'
 import { newestEntry, newestSeq, restoreEntry, useDeleteFlow } from '@/lib/strategyActivity'
 import { isCompleted, strategyStatusWord } from '@/lib/strategyStatus'
 import { ADD_UNKNOWN_TEXT, RUNNING_TAB_EMPTY_MESSAGE, RUNNING_TAB_EMPTY_TITLE, UNKNOWN_EXIT_READ_AFTER_MS } from '@/lib/sharedStateText'
+import { refusalText } from '@/lib/usePaperExit'
 import {
   STRATEGY_NAME_DEFAULT, STRATEGY_NAME_MAX, buildSaveBody, nameLimitText, noMatchText, buildUpdateBody, canSaveLegs, fetchSavedDraft, legsLine, plainName, renameStrategy, saveAsName, strategyLabel,
 } from '@/lib/saveDraft'
@@ -159,6 +160,8 @@ const hasLegs = computed(() => !props.paperMode && canSaveLegs(props.legs)) // S
 // The "..." button is disabled only when the menu would be empty (nothing to save, no saved strategy); each item shows by its own condition.
 const hasMenu = computed(() => hasLegs.value || !!props.current)
 const canSave = computed(() => !props.paperMode && !busy.value && canSaveLegs(props.legs))
+// FB2 F9: Save As of a strategy whose add has no answer would give an unlocked copy of the same legs (a second add of what may be stored): off while the lock stands
+const canSaveAs = computed(() => canSave.value && !addLocked.value)
 // GC-ICFIX P3 u502 (REQ-134 AC-2): Save is on only when there is something to save. The comparison is against the legs the SERVER holds
 // for the open strategy (current.serverLegs: set by the page only from a successful load and from the legs a successful Save SENT).
 // FAIL-SAFE: when the page cannot tell whether the legs differ (no server legs, an unreadable value, a comparison error) Save is ON:
@@ -249,7 +252,7 @@ async function undoSave() {
 }
 
 function saveAs() {
-  if (!canSave.value) return
+  if (!canSaveAs.value) return
   asking.value = 'save-as'
   nameText.value = saveAsName(props.current?.name) // an unsaved strategy has no name: the default plus the suffix (ADR-192)
 }
@@ -414,7 +417,8 @@ function lockAddUnknown(id) {
 onMounted(startUnknownTimer)
 onBeforeUnmount(() => { clearInterval(unknownTimer); unknownTimer = null })
 // REQ-163 / Opus review F4: the refused request is remembered per strategy, so Cancel and reopen still ask for an edit
-let refusedFor = null // { id, sig, edited, error }
+const refusedLists = new Map() // FJ r3 (FB2 F6): `${id}|${sig}` -> the refusal sentence, for EVERY refused list that was sent unedited (not only the last one)
+const refusalKey = (id, rows) => `${id}|${rowSig(rows)}`
 const rowSig = (rows) => JSON.stringify(rows.map((r) => [r.contract_id, r.side, String(r.lots)]))
 const canAddToPaper = computed(() => !props.paperMode && !paperRecorded.value && !addLocked.value && !busy.value && !paperBusy.value && canSaveLegs(props.legs) && tickedLegs.value.length > 0)
 
@@ -439,11 +443,10 @@ function openPaperDialog(id) {
     key: l.id ?? `leg-${i}`, contract_id: l.contract_id, side: l.action, text: contractName(l), lots: l.lots, lot_size: l.lot_size,
     kind: 'open', ...entryPriceFor(l, props.livePriceById), // the live price the page holds, else the planned entry (noted)
   }))
-  const same = refusedFor && refusedFor.id === id && !refusedFor.edited && refusedFor.sig === rowSig(paperOrders.value)
+  const same = refusedLists.has(refusalKey(id, paperOrders.value))
   paperState.value = same ? PAPER_STATE.REFUSED : PAPER_STATE.READY // F4: the same refused request is not offered again without an edit
-  paperError.value = same ? refusedFor.error : ''
-  if (!same) refusedFor = null
-  serverNotLive.value = false
+  paperError.value = same ? refusedLists.get(refusalKey(id, paperOrders.value)) : ''
+  if (!same) serverNotLive.value = false // FB2 F8: a refused list comes back with the "prices not live" tick offer its refusal asked for
   paperOpen.value = true
 }
 
@@ -464,19 +467,19 @@ async function confirmPaper(orders, held = null, notLiveTicked = false, dialogKe
     await addToPaper(api, paperTarget.value, orders, [], null, held, null, notLiveTicked === true, orderKeyFor(paperTarget.value, JSON.stringify(orders), dialogKey)) // Lane FJ item 1d: the dialog's key; the same orders still open after an unknown outcome send the key already held
   } catch (e) {
     const outcome = paperPostOutcome(e)
-    if (outcome === PAPER_STATE.REFUSED) paperError.value = (e?.parts ?? NEUTRAL_PARTS).what_happened || NEUTRAL_PARTS.what_happened // 4xx: nothing stored
+    if (outcome === PAPER_STATE.REFUSED) paperError.value = refusalText(e?.parts, NEUTRAL_PARTS.what_happened) // 4xx: nothing stored; F6: every part of the reply
     if (outcome === PAPER_STATE.REFUSED && e?.error_code === INDEX_AGE_REFUSAL) serverNotLive.value = true // F-32: the dialog now asks for the tick; the user sends again (one action, one request)
     paperState.value = outcome
     if (outcome === PAPER_STATE.REFUSED) dropOrderKey(paperTarget.value) // a definite refusal (580 / 581 / 583 too): nothing stored, the key is free
     if (outcome === PAPER_STATE.UNKNOWN) lockAddUnknown(paperTarget.value)
     if (outcome === PAPER_STATE.REFUSED) {
       const edited = orders.some((o, i) => { const p = paperOrders.value[i]; return !p || String(o.quantity) !== String(p.lots * p.lot_size) || String(o.price).trim() !== String(p.price ?? '').trim() })
-      refusedFor = { id: paperTarget.value, sig: rowSig(paperOrders.value), edited, error: paperError.value }
-    } else refusedFor = null
+      if (!edited) refusedLists.set(refusalKey(paperTarget.value, paperOrders.value), paperError.value)
+    } else refusedLists.clear()
     paperBusy.value = false
     return
   }
-  refusedFor = null
+  refusedLists.clear()
   dropOrderKey(paperTarget.value) // stored: the action is over
   // STORED (201): from here this plan never records again (paperRecorded); a failure below is not "not placed"
   paperRecorded.value = true
@@ -536,7 +539,7 @@ v-if="hasLegs" type="button" role="menuitem" data-testid="menu-save"
                   :disabled="!canSaveNow" @click="menuDo(save)">Save</button>
           <button
 v-if="hasLegs" type="button" role="menuitem" data-testid="save-as"
-                  :disabled="!canSave" @click="menuDo(saveAs)">Save As</button>
+                  :disabled="!canSaveAs" @click="menuDo(saveAs)">Save As</button>
           <button
 v-if="current" type="button" role="menuitem" data-testid="rename-open"
                   :disabled="busy" @click="menuDo(renameOpen)">Rename</button>

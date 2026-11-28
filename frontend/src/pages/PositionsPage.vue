@@ -62,8 +62,13 @@ const realEmpty = computed(() => !!result.value && !result.value.strategies.leng
 const realState = computed(() => {
   if (loading.value) return 'loading'
   if (errorParts.value) return notConnected.value ? 'not_connected' : 'read_failed'
+  if (brokerOff.value) return 'not_connected'
   return realEmpty.value ? 'empty' : 'connected'
 })
+// fd2: no Zerodha session is a 200 with broker_connected:false (real_pnl.state "not_connected" and its reason); only exactly false counts, so an old reply is unchanged
+const brokerOff = computed(() => result.value?.broker_connected === false)
+const NOT_CONNECTED_LINE = 'Zerodha is not connected, so no real positions are shown.' // new wording, pending owner read (28 Nov 2026): used only when the server sent no reason
+const brokerOffLine = computed(() => { const r = result.value?.real_pnl?.reason; return typeof r === 'string' && r.trim() !== '' ? r : NOT_CONNECTED_LINE })
 // ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
 // shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.
 const realTotals = computed(() => {
@@ -145,6 +150,7 @@ onBeforeUnmount(() => {
     <div v-if="filter !== 'paper'" :data-state="realState" data-testid="real-state">
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
     <ListLoadFailed v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" @retry="loadReal" />
+    <p v-else-if="brokerOff" class="text-sm text-ink-muted" data-testid="positions-not-connected">{{ brokerOffLine }}</p>
     <div v-else-if="result" class="grid gap-4 text-sm">
       <div class="flex flex-wrap items-center justify-between gap-x-6 gap-y-2 rounded-lg border border-line bg-surface px-4 py-3">
         <p class="text-ink-muted">Read from Zerodha at <span class="num font-medium text-ink" data-testid="positions-read-at">{{ istTime(result.read_at) }}</span>.</p>

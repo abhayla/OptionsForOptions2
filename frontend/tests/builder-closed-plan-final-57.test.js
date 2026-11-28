@@ -68,10 +68,12 @@ describe('ADR-330 (57): the builder page of a closed trade', () => {
     expect(t(w, 'closed-result').text()).toBe(BOOK.closed_text)
     expect(t(w, 'plan-final').text()).toBe(FINAL)
   })
-  it('has no Plan watch box, never reads the plan watch, and offers no way to add a leg', async () => {
+  it('Lane FJ (UX-A06, owner review 28 Nov): the Plan watch box shows only the closed fact, never reads the plan watch, and offers no way to add a leg', async () => {
     answers['GET /strategies/63/plan-watch'] = never
     const w = await openBuilder()
-    expect(t(w, 'plan-watch').exists()).toBe(false)
+    expect(t(w, 'plan-watch-closed').text()).toBe('This trade is closed; nothing is watched.')
+    expect(t(w, 'plan-watch-loading').exists()).toBe(false)
+    expect(t(w, 'plan-watch-plan').exists()).toBe(false)
     expect(watchCalls()).toEqual([])
     expect(t(w, 'add-edit').exists()).toBe(false)
     expect(t(w, 'no-legs-add').exists()).toBe(false)

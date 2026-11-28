@@ -117,7 +117,7 @@ describe('ADR-330 (49): Exit of an untouched leg exits that leg only', () => {
     await flushPromises()
     expect(t(w, 'paper-confirm').exists()).toBe(true)
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
-    expect(t(w, 'paper-error').text()).toContain(NOT_LIVE)
+    expect(t(w, 'paper-error').text()).toMatch(/^No price for NIFTY/) // Lane FJ r3 (TD O-3): names the contract
     expect(orderPosts()).toHaveLength(0)
     expect(S(w).pendingOrders.some((o) => o.kind === 'add' && o.contract_id === OPEN_IDS[1])).toBe(true)
   })

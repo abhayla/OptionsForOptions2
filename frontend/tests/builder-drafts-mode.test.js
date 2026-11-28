@@ -153,7 +153,7 @@ describe('Drafts Mode edits are pending paper orders until Confirm', () => {
     // Lane U hotfix 27 Nov (A-H #209, ADR-322 (3), ADR-016..019): a leg with no live price is refused. After hours the server's display price is
     // 'live' whenever a close is held (ADR-212, paper.display_price), so a leg that is not live here has no price at all: Confirm is off with the sentence.
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
-    expect(t(w, 'paper-error').text()).toContain('Prices are not live; try again when they update')
+    expect(t(w, 'paper-error').text()).toMatch(/^No price for NIFTY/) // Lane FJ r3 (TD O-3): the sentence names the contract
   })
 })
 

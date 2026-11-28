@@ -250,13 +250,12 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     expect(row.get('[data-testid="paper-ltp"]').text()).toBe('—')
     const id = d.strategies[2].positions[0].contract_id
     await all(w, 'paper-group')[1].get(`[data-testid="select-leg-${d.strategies[2].strategy_id}-${id}"]`).setValue(true)
-    await t(w, `exit-selected-${d.strategies[2].strategy_id}`).trigger('click')
-    await flushPromises()
-    expect(w.find('[data-testid="paper-price"]').exists()).toBe(false)
-    expect(t(w, 'paper-exit-price').text()).toContain('the server sets the exit price when you confirm')
-    // Lane U hotfix 27 Nov (A-H #209, ADR-322 (3), ADR-016..019): the leg has no live price (after hours the server's display price is 'live' when a close is held, ADR-212): Confirm is off with the sentence
-    expect(t(w, 'paper-confirm-button').element.disabled).toBe(true)
-    expect(w.text() + document.body.textContent).toContain('Prices are not live; try again when they update')
+    // Lane FJ r3 (TD O-3): the leg has no live price, so Exit (1) is grey beforehand and says which contract has no price; no dialog opens
+    const btn = t(w, `exit-selected-${d.strategies[2].strategy_id}`)
+    expect(btn.element.disabled).toBe(true)
+    const name = all(w, 'paper-group')[1].get(`[data-testid="select-leg-${d.strategies[2].strategy_id}-${id}"]`).attributes('aria-label').replace('Select ', '')
+    expect(all(w, 'paper-exit-reason').map((r) => r.text())).toContain(`No price for ${name}`)
+    expect(w.find('[data-testid="paper-confirm"]').exists()).toBe(false)
   })
 
   it('D-40: the header shows the server\'s left-out line as sent, and no line when none was left out', async () => {
