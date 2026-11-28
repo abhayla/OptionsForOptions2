@@ -1,4 +1,4 @@
-STATUS 15:20 | item 1 (a to g) walked, results below; items 2 to 4 not started | next push: after item 3 | blocker: none
+STATUS 15:55 | items 1, 2 and 3 walked (push 2); item 4 next | next push: end of run | blocker: none
 
 # Lane TG results: the round 2 test plan walked in the cloud (28 Nov 2026)
 
@@ -25,6 +25,12 @@ Build head walked: see "Build" below. Screenshots: `screens-tg/` (JPEG, 1366x768
 | W-32 the leg's own expiry control | FAIL (D-TG-2) | `w32-1-after-chip.jpg`, `w32-2-review.jpg` |
 | W-01 Reset keeps typed levels | PASS | `w01-1-save.jpg`, `w01-2-reset.jpg` |
 | SW-6 Add to Paper with the market closed | PASS (Confirm is greyed) | `sw6-2-add-dialog.jpg` |
+| W-09 plan stop in scenario mode | PARTIAL: tool limit (`check skipped: not_ticked`) | worker log |
+| R2-F1 R1 builder cut reply | PASS | `r1b-*.jpg` |
+| R2-F1 R2 Positions cut reply | PASS (different sentence) | `r2pos-*.jpg` |
+| R2-F1 R3 Alerts cut reply | CANNOT (no alert row with an exit) | - |
+| R2-F3 R4 cancelled-stop line | PASS (reply), page line not walked | API reply |
+| R2-FJ N1 real position | PASS (card), PARTIAL (refusal hidden by market-closed) | `n1-live.jpg` |
 
 ## Item 1 in detail
 
@@ -66,6 +72,16 @@ Stop (Rs) typed 100 and saved: the sheet closed and reopened with Stop (Rs) 100.
 ### 1g SW-6
 A draft from Ready-made "Bull Put Spread": Add to Paper first asks `Name this paper trade ... A name can be up to 20 characters.`, then the dialog reads `Add to Paper S Add NIFTY 8 Dec 24200 PE ... B Add NIFTY 8 Dec 24000 PE ... Held at my broker  This is not a real trade. Paper orders use no real money. Orders can be placed from 09:15 on Monday 30 Nov. Cancel Confirm`. Confirm is greyed (disabled). No tick box. PASS (the dialog says so and Confirm is greyed; the server refusal was not needed).
 
+## Item 2: W-09 in scenario mode (PARTIAL: tool limit)
+Own database `ofo_dev` (migrated to head 0061, catalogue loaded with `load_cat.py PATH-01 PATH-10 PATH-11 PATH-12`), `APP_ENV=test`, `OFO_SCENARIO=PATH-01` for the API and the worker, `seed_scenario.py PATH-01` (`PATH-01 strategy id 1`), plan saved with Stop (Rs) 500 and Target (Rs) 20000 (reply: stop 3.44 % of max loss, "a loss of Rs 500.00 (3.44 % of max loss) or 2x the credit received, whichever comes first"), frames 0 to 6 posted by `POST /api/scenario/frame` (reply `{"scenario_id":"PATH-01","frame":n,"last":9}`), 25 s after each. `adjustment_suggestions` for strategy 1 stayed at 0 rows after every frame; `paper_alerts` 0 rows. The worker's own line on every cycle: `background: strategy 1 check skipped: not_ticked`. PARTIAL: tool limit (the scenario worker did not tick the plan check), Monday T1-05 is the proof. Only a rupee stop was tried (the % stop, target, time exit and already-crossed cases were not run: the first case gave no tick).
+
+## Item 3: review findings as a user meets them
+- **R1 builder (PASS).** Scenario trade PATH-10 (strategy 2), the exit request reached the server and the reply was cut (Playwright route: forward, then abort). The page never says "not stored". It shows `The first exit's outcome is not known yet; no second exit is sent until the server's answer is known.` Exit stayed locked at 20, 40 and 60 s (no timer unlock, window is 120 s). A second press sent nothing: POSTs counted 1 before and 1 after. Screens `r1b-*`. (First try, with the book still readable, the page found the exit in the book and wrote `NIFTY 9 Nov 22950 PE: Exit placed on paper.`: the reply being cut is not enough; the book reads must fail too. `r1-*`.)
+- **R2 Positions (PASS with a different sentence).** Same cut on Positions > Paper (strategy 3, one leg ticked): the dialog stays open with `We could not confirm the order. Check Orderbook before trying again.  Open Orderbook`, Confirm greyed, never "not stored". Exit disabled at 55 s; second try sent nothing (POSTs 1). The sentence is NOT the builder's "outcome is not known yet" line: plan should say which one is expected where. `r2pos-*`.
+- **R3 Alerts (CANNOT IN THE CLOUD as built here):** no alert row with an exit answer exists (W-09 produced none); not walked.
+- **R4 / F3 (PASS for the reply, PARTIAL for the page).** Scenario trade PATH-01 gave an order that completes. Leg stop above 200 on contract 44 (NIFTY 23150 PE), exit of that leg by `POST /paper/strategies/1/orders` with a `client_request_id`: the 201 reply carries `"cancelled_stops": [{"leg": "NIFTY 9 Nov 23150 PE", "contract": 44, "level": "200.00"}]`; the trigger reads `cancelled`. The line on the page after a move was not walked.
+- **N1 (PASS for the card, PARTIAL for the refusal).** One position of kind real (`seed_real.py`, strategy 7, with the harness's two Zerodha reads answered locally): Live Strategies card reads `Not being watched: the worker does not list this trade.` then `Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only.`; no Exit button and no Stops link on that card (the four paper cards have both). `n1-live.jpg`. A paper `add` and `open` on strategy 7 are refused, but by `The market is closed. Orders can be placed once it opens.` (MARKET_DATA_102) before the real-position rule, so `Real position: exit and protect it in Kite.` was not seen: the refusal order should be told to the PC (market-closed first). Needs scenario mode with a real strategy in a scenario catalogue to see it.
+
 ## Plan faults for Lane X2
 1. W-26 step 2: "Raise one leg's lots": old line `**Raise one leg's lots (do not press Review).**` new line `**Raise the lots with the Multiplier (the leg rows' lots are plain text on a running trade; there is no per-leg lots control), do not press Review. All legs rise.**` Expected text in case A then names every leg: `The change waiting on <leg>, <leg>, ... is not sent and will be discarded.`
 2. SW-8: "Records" is not a page: `/alerts/records` is "Page not found". Records is the History page's block `Stops and expiry settlements`. Old `Open Alerts; read Active, History and the Records view` new `Open Alerts > Active and Alerts > History; the Records list is the block "Stops and expiry settlements" on History`.
@@ -93,11 +109,11 @@ A draft from Ready-made "Bull Put Spread": Add to Paper first asks `Name this pa
 - Gave #1 and #2 a plan (Stop Rs 2000, Target Rs 3000) so the worker lists them; the owner's PC trades are the real test of the unplanned case.
 
 ## Not done (so far)
-Items 2, 3 and 4 of the queue (W-09, R2-F1/F3/FJ and the real-kind position, then section 4 onward).
+Item 4 (section 4 onward) not yet walked; see below when updated.
 
 ## Task / model / minutes
 | task | model | minutes |
 |---|---|---|
 | set-up and item 1 | Sonnet (this session) | 33 |
 
-SAFE TO CLOSE: not yet (item 1 only).
+SAFE TO CLOSE: not yet (items 1 to 3 only).

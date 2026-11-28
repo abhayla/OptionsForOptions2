@@ -1,0 +1,18 @@
+const { launch, shot, body, MAIN } = require('./common')
+;(async () => {
+  const { browser, page } = await launch()
+  const posts = []; page.on('request', (r) => { if (r.method() === 'POST') posts.push(r.url().replace(/^https?:\/\/[^/]+/, '')) })
+  await page.goto(MAIN + '/strategy/builder?strategy=1'); await page.waitForTimeout(7000)
+  const sel = page.getByLabel('Change expiry of leg 3')
+  console.log('leg 3 options:', await sel.locator('option').allInnerTexts())
+  await sel.selectOption({ index: 1 }); await page.waitForTimeout(3000)
+  let t = await body(page)
+  console.log('stop sentence on page:', (t.match(/The stop on[^|]*/g) || ['<none>']).join(' ;; '))
+  console.log('pending:', (t.match(/\d+ pending changes?/g) || []).join(','), '| expiries now:', (await page.locator('[data-testid=leg-expiry-select]').evaluateAll(s => s.map(x => x.value))).join(','))
+  console.log('buttons:', (await page.getByRole('button').allInnerTexts()).filter(x => /Review|Confirm|Cancel|Discard|Apply/.test(x)).join(' | '))
+  await shot(page, 'w32-1-after-chip')
+  const rev = page.getByRole('button', { name: /Review/ }).first()
+  if (await rev.count()) { await rev.click(); await page.waitForTimeout(12000); const d = await page.getByRole('dialog').first().innerText().catch(() => '<no dialog>'); console.log('REVIEW:', d.replace(/\s+/g, ' ').slice(0, 900)); await shot(page, 'w32-2-review'); await page.getByRole('button', { name: 'Cancel' }).last().click().catch(() => {}) }
+  console.log('POSTs:', posts.join(' ; '))
+  await browser.close()
+})()
