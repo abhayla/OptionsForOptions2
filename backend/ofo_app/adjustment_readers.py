@@ -56,7 +56,7 @@ from ofo_app import (
     tracked_book,
     tracked_contracts,
 )
-from ofo_app.catalogue_store import load_catalogue
+from ofo_app.catalogue_store import StoredContract, load_catalogue, load_contracts
 from ofo_app.db import get_sessionmaker
 from ofo_app.errors import Failure
 from ofo_app.outcome_oi import oi_of
@@ -206,6 +206,29 @@ async def nearest_expiry(db: Any, strategy_id: int) -> datetime.date | None:
                 if p.net_quantity != 0 and found.get(int(p.instrument_id)) is not None
                 and found[int(p.instrument_id)].stored is not None]
     return min(expiries, default=None)
+
+
+async def nearest_expiries(db: Any, strategy_ids: Iterable[int]) -> dict[int, datetime.date | None]:
+    """``nearest_expiry`` for many strategies in TWO statements whatever the count (W-13: the alert lists labelled each
+    trade with 3 to 4 statements of its own): one paper-orders read (owner check in the query), one contract read.
+    Same answer per strategy as ``nearest_expiry`` for a PAPER book (the nearest expiry among the open legs; a flat book
+    or a contract that does not read -> None). A strategy that is not in the result has no paper order (a real book, not
+    this user's, nothing traded): the caller asks ``nearest_expiry`` for it, one at a time."""
+    ids = sorted(set(strategy_ids))
+    papers = await paper_book.load_owned_many(db, current_user_ref(), ids)
+    stored = await load_contracts(db, {o.order.contract_id for rows in papers.values() for o in rows})
+    out: dict[int, datetime.date | None] = {}
+    for sid, orders in papers.items():
+        if not orders:
+            continue
+        book = net_positions([o.order.as_paper() for o in orders], {})
+        expiries = []
+        for p in book.positions:
+            found = stored.get(int(p.instrument_id))
+            if p.net_quantity != 0 and isinstance(found, StoredContract):
+                expiries.append(found.listed.contract.expiry)
+        out[sid] = min(expiries, default=None)
+    return out
 
 
 _ENTRY_SOURCE = "entry"  # = settings_in_force.BASE_ENTRY (imported lazily: that module imports the check)
@@ -874,16 +897,24 @@ class CatalogueUnreadable(Exception):
 async def stored_kind(db: Any, underlying: str, expiry: datetime.date, *, scn: Any = None,
                       load: Callable[..., Any] | None = None) -> str:
     """The expiry kind of ``expiry`` from the STORED catalogue (the day's instrument list the app keeps), by the one
-    rule ``expiry_kind_of``; "" = not known. A database error rolls the session back (it aborts the transaction, the
-    next read needs it clean) and raises ``CatalogueUnreadable``."""
+    rule ``expiry_kind_of``; "" = not known. The read runs in a SAVEPOINT: a database error rolls back only that
+    savepoint (the transaction stays usable for the next read) and raises ``CatalogueUnreadable``. It never calls
+    ``db.rollback()``: that would drop the CALLER's order-key claim and strategy row lock, and the orders would then
+    commit with no key row."""
     scn = _scenario() if scn is None else scn
+
+    async def listed() -> list[Any]:
+        catalogue = await (load(db) if load is not None else load_catalogue(db, underlying))  # FD5 item 4: one name
+        return [e for e in catalogue.all_entries()
+                if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
     try:
-        entries = [e for e in (await (load or load_catalogue)(db)).all_entries()
-                   if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
+        if db is None:
+            entries = await listed()
+        else:
+            async with db.begin_nested():
+                entries = await listed()
     except Exception as exc:  # any failed read means "kind not known", with its own reason
         log.warning("expiry kind: catalogue not read", exc_info=True)
-        if db is not None:
-            await db.rollback()
         raise CatalogueUnreadable from exc
     futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
     return expiry_kind_of(expiry, [e for e in entries if e.contract.is_option()], futures, scn)
@@ -1010,30 +1041,32 @@ async def _index_quote_held(ctx: Any, feed: Any, underlying: str) -> Any:
     return quote
 
 
-async def _index_spot_held(ctx: Any, feed: Any, underlying: str, confirmed: bool = False) -> Decimal:
+async def _index_spot_held(ctx: Any, feed: Any, underlying: str,
+                           confirmed: bool = False) -> tuple[Decimal, datetime.datetime | None]:
     """The index's live spot for the fill's starting point (ADR-283 (1)). The API process holds only what a page
     socket subscribed, so an index nobody holds is held on the shared fan-out until its first quote or ``LEG_WAIT_S``
     passes (``read_door.read_quotes``). Answer states: held / quoted within the wait -> the spot; no
     context / not connected / never quoted / not a positive price -> ``StrategyRefused`` (nothing stored), unless the
     user confirmed the not-live line (``confirmed``, ADR-330 (28)): then the last held value
-    (``_index_value_not_live``)."""
+    (``_index_value_not_live``). Returns ``(spot, at)``: the value and the time of the quote it came from (FR 3.4;
+    None when the quote states none)."""
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415 - write path only
 
-    spot = quote = None
+    spot = quote = at = None
     if ctx is not None and ctx.provider.status().connected:
         quote = await _index_quote_held(ctx, feed, underlying)
         # ADR-330 (39): the quote's own health carries the one index age rule (``FeedState.quote_health``); a value
         # that rule calls not live is not a live spot, whatever the feed as a whole says: it needs the user's tick
         live = quote is not None and quote.health is DataHealth.AVAILABLE
-        spot = quote.ltp if live else None
+        spot, at = (quote.ltp, quote.price_at) if live else (None, None)
     if (not isinstance(spot, Decimal) or spot <= 0) and confirmed:
         held_value = _index_value_not_live(ctx, underlying)
-        spot = None if held_value is None else held_value[0]
+        spot, at = (None, None) if held_value is None else held_value
     if not isinstance(spot, Decimal) or spot <= 0:
         refused = StrategyRefused("paper_index_price_unavailable", Failure.CONFLICT)
         refused.reason = _index_not_held_reason(ctx, quote)  # type: ignore[attr-defined]
         raise refused
-    return spot
+    return spot, at
 
 
 async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
@@ -1065,7 +1098,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
     if used is None or not open_ or not all(is_option(cid) for cid, _ in open_):
         return
     # after the no-facts returns: an exit needs no spot
-    spot = await _index_spot_held(ctx, feed, underlying, prices_not_live_confirmed)
+    spot, spot_at = await _index_spot_held(ctx, feed, underlying, prices_not_live_confirmed)
     kept = [cid for cid, _ in open_ if cid not in filled and found[cid].identity is not None]
     prices: dict[int, Decimal | None] = dict(filled)
     if kept:
@@ -1085,7 +1118,7 @@ async def record_basket_facts(db: Any, ctx: Any, feed: Any, strategy_id: int,
         log.warning("basket ATM IV unreadable (%s)", type(exc).__name__)
         iv = None
     await entry_facts_store.record_basket(db, strategy_id, used,
-                                          entry_facts_store.BasketFacts(clock, spot, iv, legs))
+                                          entry_facts_store.BasketFacts(clock, spot, iv, legs, spot_at))
 
 
 def _atm_vol(rows: list[ChainRow], ids: dict[str, str], greeks: Any, level: Decimal | None) -> Decimal | None:

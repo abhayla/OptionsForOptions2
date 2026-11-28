@@ -528,3 +528,37 @@ async def test_a_zero_or_negative_max_loss_gives_no_stop_warning(app_db_url, mon
         _base_loss(monkeypatch, loss)
         status, preview = await _call("GET", _plan_path(sid) + "/levels", params={"stop_rupees": "5000"})
         assert status == OK and preview["stop"]["warning"] is None, (loss, preview)
+
+
+@pytest.mark.parametrize("loss", [D("2600"), None])
+async def test_a_saved_rupee_stop_of_100_is_in_the_sheet_body_on_the_save_and_on_every_read(app_db_url, monkeypatch,
+                                                                                            loss):
+    """O-R-09 / W-01 (builder #209): after Stop (Rs) 100 is saved the plan block must have a stop figure to print. The
+    server returns it in the saved plan AND in the prefill, on the save and on a later GET, whether the trade's max
+    loss is known (percent derived) or not (rupees alone, never a guess)."""
+    _base_loss(monkeypatch, loss)
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    status, saved = await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "stop_rupees": "100"})
+    assert status == OK, saved
+    status, again = await _call("GET", _plan_path(sid))
+    assert status == OK, again
+    for where in (saved["plan"], saved["prefill"], again["plan"], again["prefill"]):
+        assert where["stop_rupees"] == "100.00" and where["stop_source"] == "rupees", (loss, where)
+        assert "Rs 100" in where["stop_rupee_words"] and "Rs 100" in where["stop_words"], (loss, where)
+    assert (again["plan"]["stop"] is None) == (loss is None)  # the percent only when the base can state it
+
+
+@pytest.mark.parametrize("loss", [D("2600"), None])
+async def test_the_check_limits_the_plan_block_prints_carry_the_saved_rupee_stop_of_100(app_db_url, monkeypatch, loss):
+    """O-R-09: PlanEntry's stop line is the check's own ``limits`` row (not the sheet). After Stop (Rs) 100 is saved the
+    check must carry a stop limit row with text, so the block can print it."""
+    _base_loss(monkeypatch, loss)
+    sid = await _seeded(app_db_url, monkeypatch, "ADJ-01")
+    system = await _system_ic(app_db_url)
+    assert (await _call("POST", _plan_path(sid), json={"playbook_id": system.id, "stop_rupees": "100"}))[0] == OK
+    status, check_body = await _call("GET", f"/api/strategies/{sid}/adjustment-check")
+    assert status == OK, check_body
+    rows = [x for x in check_body["limits"] if x["rule_id"] == "plan.stop.rupee_loss" or "rupee" in x["rule_id"]]
+    assert rows and all(x["text"] for x in rows), check_body["limits"]
+    assert any("100" in x["text"] for x in rows), rows
