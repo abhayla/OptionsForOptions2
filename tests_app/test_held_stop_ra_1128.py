@@ -29,7 +29,7 @@ CROSSED = "22800.00"  # below the exit level 22,850.00
 
 
 @pytest.mark.parametrize("at", [OPEN_AT, AFTER_CLOSE], ids=["market_open", "market_closed"])
-async def test_ra_f1_a_stop_armed_before_the_held_row_exists_fires_as_a_record_never_a_paper_order(db, caplog, at):  # noqa: F811
+async def test_ra_f1_a_stop_armed_before_the_held_row_fires_as_a_record_not_an_order(db, caplog, at):  # noqa: F811
     """Lane R1 (ADR-330 (73)) rewrites RA F1: the held position is REAL and its stop is judged like a paper one's: with
     the market open it fires ONCE as a ``stop_fired`` record (no stop order, nothing sent); with the market closed it
     stays armed and nothing is stored (the same market rule as paper)."""

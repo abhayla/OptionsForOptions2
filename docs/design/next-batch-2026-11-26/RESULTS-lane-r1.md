@@ -1,4 +1,4 @@
-STATUS 21:55 | stage 1 pushed (f9b2a0f, TOTAL PASS); stages 2 and 3 built, targeted tests green, full check next | next push 23:00 (stages 2 and 3 together) | blocker: none (my messages to the coordinator are refused: this session lacks the owner's device-trust approval; this line is the report)
+STATUS 22:20 | stage 1 pushed (f9b2a0f, TOTAL PASS); stages 2 and 3 built, Opus review done (F1 fixed), full check running | next push 23:15 (stages 2 and 3 together) | blocker: none (my messages to the coordinator are refused: this session lacks the owner's device-trust approval; this line is the report)
 
 # Lane R1: real positions get the same screens, backend (round 3)
 
@@ -46,7 +46,7 @@ paper orders that exist (none for a sent basket: every figure of the app's own i
 
 ## Question for the owner
 Q1 (interim built: NO). Does a stored exit close the app's view? Interim: the row stays open and shows the record line until Zerodha shows zero quantity; status stays "Running". Recommendation: the same; the broker is the authority.
-Q2 (interim: a fired stop is claimed once and stops; other armed stops stay; a stored manual exit does NOT cancel stops yet). After a stored exit or a fired stop, should the watcher keep alerting? Recommendation: one reminder alert 15 minutes later if Zerodha still shows the quantity ("Exit stored at 10:05; Zerodha still shows this position open"), and cancel the strategy's armed stops when a stored exit covers every leg.
+Q2 (interim built as the note says: a fired stop is claimed once and stops; a stored manual exit cancels the armed stops it covers: every leg exited cancels every armed stop of the strategy, a partial exit cancels the leg stops of the exited contracts; a fired stop does not cancel the strategy's other stops). After a stored exit or a fired stop, should the watcher keep alerting? Recommendation: one reminder alert 15 minutes later if Zerodha still shows the quantity ("Exit stored at 10:05; Zerodha still shows this position open").
 Q3 (interim: leave as is). A held condor's add and open stay paper orders that change the shown book; only its exit goes to records. Recommendation: move held add and open to records too, so a held position's book never changes by anything the user stores.
 Q4 (interim: the plan's legs "as last read", or a held position's recorded paper legs). Where does the worker read a real position's open legs? Recommendation: the Zerodha snapshot read already used by `routes/positions.py`; confirm it is reachable from the worker's separate process, then replace `PaperMonitor._closing_legs`.
 
@@ -72,11 +72,16 @@ Q4 (interim: the plan's legs "as last read", or a held position's recorded paper
 ## Not done
 - Contract fields on `GET /paper/strategies/{id}` (the book) and `GET /strategies/{id}/tracking` for a real position: those answer as before; only the order door, the stops answers, the active alerts and the strategy list carry the fields.
 - `routes/tracking.py` for a real position (see "For the owner lane" 1).
-- The Opus review of the money-path diff (the brief requires one per stage): not run from this lane (see Reviews).
+- The Opus review ran once for stages 2 and 3 together (see Reviews); a second round was not needed (no open money finding).
 - The browser walk (Lane R2's screens).
 
 ## Reviews
-Opus review of stages 2 and 3: NOT run (this lane has no way to start a helper session that the coordinator can read). For the coordinator: review `backend/ofo_app/real_action_store.py`, `paper_limit.record_checked`, `routes/paper.py` (`_store_records`, `_records_door`, `_record_stop`, `_answer`), `paper_monitor._fire_real` and `_closing_legs` for: a record counted as a fill; any path that reaches `paper_store.place` or a broker for a real position.
+Opus review of stages 2 and 3 (reviewer subagent, read-only, no database): PASS on the money invariants: no path from a real action or a reached stop to `paper_store.place`, a `paper_orders` insert, a broker or the network; no reader counts a record as a fill; the tag cannot flip; a repeated press stores one record; Decimal round trips exact. Findings and what was done:
+- F1 (MAJOR, could cost money through the user's own Kite order): a stop stayed armed after the exit that covered it and raised a later "place it in Kite" alert. FIXED before the push: a stored exit cancels the stops it covers (`routes/paper._cancel_covered_stops`; tests `test_a_partial_exit_cancels_only_the_leg_stop...`, `test_an_exit_of_every_leg_cancels_every_armed_stop...`, `test_an_add_cancels_no_stop`). Found on the way: the order door's orphan-stop sweep (`_armed_leg_stops`) ran before the records branch and would have cancelled every stop of a real position on ANY next order; the records branch now runs first.
+- F5 (defence in depth) FIXED: `real_action_store.record` refuses a leg with a quantity that is not a whole positive number or a side other than BUY/SELL.
+- F6 FIXED: the plan read in `PaperMonitor._real_legs` runs in a savepoint (a database error no longer aborts the shared reload).
+- NEXT BATCH (cannot cost money today, nothing is sent): F2 `record_checked` does not check the exit/add legs against the plan (contract not in the plan, side that does not close, quantity above the plan's; looser than paper, and the plan is "as last read"); F3 `record.price` is the first leg's price (a 4-leg exit shows one price; an index-exit stop stores the index level as every leg's price); F4 a first basket with a `held` block answers `position_kind: "paper"` though the position becomes real; F7 `_fire_real` reads the legs without the strategy row lock (a held add committed between the read and the claim is missing from the `stop_fired` record); F8 `_no_paper_book` answers `booked: 0` and `state: "PAUSED"` for a sent basket whose stops are watched; F9 an unknown kind answers 503 "busy" (reads as try again); F10 after a stop is cancelled its `stop` record stays the newest line ("When it is reached you get an alert."), and "Keep" re-arms a real stop without a new `stop` record; F11 (not a regression) if Execute inserts its plan without the strategy row lock, a first paper order running at the same moment can claim `paper` for a sent basket: item "For the owner lane" 4 (write the tag at Execute) closes it.
+- Q4 stale legs (the plan, not Zerodha): a leg the user closed in Kite is still listed in an index-exit alert. The owner's question Q4 above.
 
 | task / model / minutes |
 |---|

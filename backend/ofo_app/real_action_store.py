@@ -53,6 +53,19 @@ class Leg:
 
 
 @dataclasses.dataclass(frozen=True)
+class Draft:
+    """One order of a real position's basket as the door read it (the size checks read these fields): NOT a paper
+    order (``paper_store.NewOrder`` is built only at the paper door), and never stored as one."""
+
+    contract_id: int
+    side: str
+    quantity: int
+    price: Decimal
+    kind: str
+    placed_at: datetime.datetime
+
+
+@dataclasses.dataclass(frozen=True)
 class StoredRecord:
     id: int
     strategy_id: int
@@ -67,6 +80,21 @@ class StoredRecord:
         """The one price the contract's ``record.price`` carries: the first leg's (a stop has one leg; a basket's
         record shows its first leg, the legs are in the list)."""
         return self.legs[0].price if self.legs else None
+
+
+_CLOSING: Final = {"BUY": "SELL", "SELL": "BUY"}
+
+
+def closing_side(side: str) -> str:
+    """The side that closes a leg bought (BUY) or sold (SELL) at entry; an unknown side raises (never guessed)."""
+    return _CLOSING[side]
+
+
+def closing_side_of_net(net_quantity: int) -> str:
+    """The side that closes a signed net quantity: a long (positive) is closed by a SELL, a short by a BUY."""
+    if net_quantity > 0:
+        return "SELL"
+    return "BUY"
 
 
 def _legs_json(legs: Sequence[Leg]) -> str:
@@ -94,6 +122,8 @@ async def record(conn: Any, *, user_ref: str, strategy_id: int, action: str, leg
     if stored_at.tzinfo is None:
         raise ValueError("a record's time must be timezone-aware")
     for leg in legs:
+        if type(leg.quantity) is not int or leg.quantity <= 0 or leg.side not in _CLOSING:
+            raise ValueError("a record's leg has a whole positive quantity and the side BUY or SELL")
         if not isinstance(leg.price, Decimal) or not leg.price.is_finite() or leg.price <= 0:
             raise ValueError("a record's price is a positive Decimal")
     await conn.execute(_INSERT, {
@@ -125,7 +155,8 @@ def record_out(rec: StoredRecord | None) -> Mapping[str, Any] | None:
 
 def record_text(rec: StoredRecord) -> ExplanationText:
     """The one line a record carries (pending owner read): what was stored, when, at what price; never a fill."""
-    return render_explanation(f"real_record_{rec.action}", time=rec.stored_at, price=price_text(rec.price))  # type: ignore[arg-type]
+    price = price_text(rec.price)  # type: ignore[arg-type] - a record always has a leg
+    return render_explanation(f"real_record_{rec.action}", time=rec.stored_at, price=price)
 
 
 #: every wording a stored real alert body can have (the store keeps the text only, a read tries each)
@@ -136,7 +167,7 @@ def alert_body(what: ExplanationText | str, exits: Sequence[tuple[ExplanationTex
                names_contract: bool) -> ExplanationText:
     """The reached-stop alert of a REAL position: the paper body's three shapes with "exit stored" and "Not sent to
     Zerodha. Place it in Kite." instead of "A paper exit only"."""
-    legs = [render_explanation("paper_alert_leg", contract=contract, price=price_text(price)) for contract, price in exits]
+    legs = [render_explanation("paper_alert_leg", contract=c, price=price_text(price)) for c, price in exits]
     if len(legs) == 1:
         if names_contract:
             return render_explanation("real_alert_body_one", what=what, price=price_text(exits[0][1]))

@@ -46,7 +46,7 @@ import pytest  # noqa: E402
 
 
 @pytest.mark.parametrize("at", [AFTER_CLOSE, SATURDAY, OPEN_AT], ids=["after_close", "weekend", "open"])
-async def test_n3_a_real_position_reads_what_the_same_paper_trade_reads_never_not_applicable(db, monkeypatch, at):  # noqa: F811
+async def test_n3_a_real_position_reads_as_paper_never_not_applicable(db, monkeypatch, at):  # noqa: F811
     real = await _read(db, monkeypatch, at, real=True)
     paper = await _read(db, monkeypatch, at, real=False)
     print("REAL", real, "PAPER", paper)

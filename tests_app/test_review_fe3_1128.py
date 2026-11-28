@@ -97,7 +97,7 @@ async def test_f5_b_a_kind_that_cannot_be_read_at_the_fire_leaves_the_exit_armed
 
 
 # ---- F4: the report names a real position's old stop in every branch ----------------------------------------------
-async def test_f4_a_real_positions_stop_reads_book_not_read_like_paper_when_the_book_cannot_be_read(db, monkeypatch):  # noqa: F811
+async def test_f4_a_real_stop_reads_book_not_read_like_paper_when_the_book_is_unreadable(db, monkeypatch):  # noqa: F811
     market = Market()
     stored, _ids, keys = await _strategy(db)
     await held_entry_store.record(db, stored.id, OPEN_AT, None)  # a real position (ADR-292)
@@ -127,7 +127,7 @@ async def test_f4_a_real_positions_stop_reads_book_not_read_like_paper_when_the_
 
 
 # ---- F5: the kind is read again inside the fire --------------------------------------------------------------------
-async def test_f5_a_strategy_that_became_real_after_the_list_was_loaded_is_stopped_as_a_record(db, monkeypatch):  # noqa: F811
+async def test_f5_a_strategy_real_after_the_list_loaded_is_stopped_as_a_record(db, monkeypatch):  # noqa: F811
     market, stored, tid, monitor, _client, _clock = await _loaded(db, monkeypatch)
     await held_entry_store.record(db, stored.id, OPEN_AT, None)  # now a real position; the monitor was not told
     market.tick(INDEX, CROSSED)

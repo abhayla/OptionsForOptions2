@@ -20,7 +20,8 @@ Changes (owner-run, one transaction; ADDITIVE: two new tables, nothing existing 
 - public.real_action_records: append-only book of what a user stored for a REAL position (open, add, exit, stop) and
   what the worker stored when a stop was reached (stop_fired). No broker field: nothing is sent. Insert-only guard
   (OF063), SELECT and column-limited INSERT for the application role. Unique (user_ref, request_key, action) where a
-  key is set (a repeated press stores one record per action); unique (trigger_id) for stop_fired (a fired stop is claimed once).
+  key is set (a repeated press stores one record per action); unique (trigger_id) for
+  stop_fired (a fired stop is claimed once).
 - downgrade: refuses while real_action_records holds a row (it exists nowhere else); else drops both tables and the
   guard function.
 

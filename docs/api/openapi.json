@@ -75,6 +75,28 @@
             ],
             "title": "Position Kind Text"
           },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stored_not_sent": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored Not Sent"
+          },
           "strategy_id": {
             "title": "Strategy Id",
             "type": "integer"
@@ -9219,6 +9241,32 @@
             ],
             "title": "Plan Final Text"
           },
+          "position_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "paper",
+                  "real",
+                  "unknown",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
+          },
           "positions": {
             "items": {
               "$ref": "#/components/schemas/PaperNetOut"
@@ -9298,6 +9346,16 @@
             ],
             "title": "Profit Left Text"
           },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "recover": {
             "anyOf": [
               {
@@ -9337,6 +9395,18 @@
             ],
             "title": "Status Word",
             "type": "string"
+          },
+          "stored_not_sent": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored Not Sent"
           },
           "strategy_id": {
             "title": "Strategy Id",
@@ -13809,6 +13879,43 @@
         "title": "ReasonOut",
         "type": "object"
       },
+      "RecordOut": {
+        "additionalProperties": false,
+        "description": "Lane R1: the stored record of a real position's action (ADR-330 (73)): what was stored, when and at what price.\nNothing was sent to the broker; the price is a reminder, never a fill.",
+        "properties": {
+          "action": {
+            "enum": [
+              "open",
+              "add",
+              "exit",
+              "stop",
+              "stop_fired"
+            ],
+            "title": "Action",
+            "type": "string"
+          },
+          "price": {
+            "title": "Price",
+            "type": "string"
+          },
+          "stored_at": {
+            "format": "date-time",
+            "title": "Stored At",
+            "type": "string"
+          },
+          "text": {
+            "title": "Text"
+          }
+        },
+        "required": [
+          "action",
+          "stored_at",
+          "price",
+          "text"
+        ],
+        "title": "RecordOut",
+        "type": "object"
+      },
       "RefusalOut": {
         "additionalProperties": false,
         "description": "The reviewed catalogue message (four parts) for one refusal code: what /broker/refused shows (#163).",
@@ -17862,6 +17969,16 @@
             ],
             "title": "Not Applicable Text"
           },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "set_before_adjustment": {
             "default": false,
             "title": "Set Before Adjustment",
@@ -17876,6 +17993,18 @@
             ],
             "title": "State",
             "type": "string"
+          },
+          "stored_not_sent": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored Not Sent"
           },
           "strategy_id": {
             "title": "Strategy Id",
@@ -17933,6 +18062,54 @@
             "default": false,
             "title": "Already Set",
             "type": "boolean"
+          },
+          "position_kind": {
+            "anyOf": [
+              {
+                "enum": [
+                  "paper",
+                  "real",
+                  "unknown",
+                  "none"
+                ],
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
+          },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
+          "stored_not_sent": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored Not Sent"
           },
           "triggers": {
             "items": {
@@ -19830,6 +20007,16 @@
             ],
             "title": "Position Kind Text"
           },
+          "record": {
+            "anyOf": [
+              {
+                "$ref": "#/components/schemas/RecordOut"
+              },
+              {
+                "type": "null"
+              }
+            ]
+          },
           "revision": {
             "title": "Revision",
             "type": "integer"
@@ -19848,6 +20035,18 @@
             ],
             "title": "Status Word",
             "type": "string"
+          },
+          "stored_not_sent": {
+            "anyOf": [
+              {
+                "const": true,
+                "type": "boolean"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Stored Not Sent"
           },
           "total_after": {
             "anyOf": [

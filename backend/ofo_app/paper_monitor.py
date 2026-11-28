@@ -295,7 +295,8 @@ class PaperMonitor:
             sid = a.trigger.strategy_id
             if sid in self._real_strategies and sid not in out:
                 try:
-                    out[sid] = list((await strategy_store.load(session, a.user_ref, sid)).saved.contract_ids)
+                    async with session.begin_nested():  # a database error here must not abort the shared reload
+                        out[sid] = list((await strategy_store.load(session, a.user_ref, sid)).saved.contract_ids)
                 except Exception:  # noqa: BLE001 - one unreadable plan never stops the others being watched
                     log.warning("paper monitor: the plan legs of real strategy %s could not be read", sid)
         return out
@@ -312,11 +313,11 @@ class PaperMonitor:
             # fact: the last list is kept (and the age rule applies), never replaced by an empty one
             raise BookUnreadError("the position kinds of every armed strategy could not be read")
         keep: list[triggers.ArmedTrigger] = []
-        self._real_strategies = {sid for sid, k in kinds.items() if k == position_kind.REAL}
+        self._real_strategies = {sid for sid, k in kinds.items() if position_kind.takes_records(k)}
         self._na_strategies = {}
         for a in armed:
             kind = kinds.get(a.trigger.strategy_id, position_kind.UNKNOWN)
-            if kind in (position_kind.PAPER, position_kind.REAL):  # Lane R1: real is judged too (alert + record)
+            if position_kind.is_judged(kind):  # Lane R1: a real position is judged too (alert + record)
                 keep.append(a)
                 self.not_applicable.pop(a.trigger.id, None)  # review F4: it reads paper again
                 continue
@@ -631,11 +632,12 @@ class PaperMonitor:
         # the settings in force at THIS tick (one read; a store that cannot answer raises: the fire is not recorded
         # and the next crossing tick retries, never priced on a held or default rate)
         feed = LiveFeed(await with_rate_in_force(feed.ctx, self._read_settings), feed.fanout)
+        from ofo_app import position_kind  # noqa: PLC0415 - late: the one kind rule
         async with self._sessions() as session, session.begin():
             kind = await self._kind_in_fire(session, t.strategy_id)
-            if kind == "real":  # Lane R1: no paper order, no broker call: an alert and one record
+            if position_kind.takes_records(kind):  # Lane R1: no paper order, no broker call: alert + record
                 return await self._fire_real(session, w, price, now, feed)
-            if kind != "paper":
+            if not position_kind.is_paper(kind):
                 self._skipped_not_paper(a)  # RA (Z2 T1): left armed, and said: never a silent skip
                 return None  # review F5: the kind is read again in the fire; unreadable = left armed
             book = await paper_store.load(session, t.strategy_id)
@@ -726,15 +728,15 @@ class PaperMonitor:
         """Lane R1: contract id -> (the closing side, the quantity in units) of a REAL position's open legs. A held
         position's own recorded paper legs when it has any (ADR-292 (4): the user records each broker change); else the
         stored plan's legs "as last read" (Q4 interim: the broker's own read is not reachable from this process)."""
-        from ofo_app import strategy_store  # noqa: PLC0415 - late: the one stored-plan reader
+        from ofo_app import real_action_store, strategy_store  # noqa: PLC0415 - late: the plan reader, the side map
         book = await paper_store.load(session, a.trigger.strategy_id)
         if book:
             net = {int(p.instrument_id): p.net_quantity
                    for p in net_positions([o.order.as_paper() for o in book], {}).positions if p.net_quantity}
             if net:
-                return {c: ("SELL" if q > 0 else "BUY", abs(q)) for c, q in net.items()}
+                return {c: (real_action_store.closing_side_of_net(q), abs(q)) for c, q in net.items()}
         saved = (await strategy_store.load(session, a.user_ref, a.trigger.strategy_id)).saved
-        return {c: ("SELL" if leg.action.value == "BUY" else "BUY", leg.quantity)
+        return {c: (real_action_store.closing_side(leg.action.value), leg.quantity)
                 for c, leg in zip(saved.contract_ids, saved.definition.legs, strict=True)}
 
     @staticmethod

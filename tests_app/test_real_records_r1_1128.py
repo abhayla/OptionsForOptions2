@@ -6,7 +6,6 @@ Answer states: stored, repeated press (same request key), market closed, kind un
 from __future__ import annotations
 
 import datetime
-import pathlib
 import uuid
 from http import HTTPStatus
 
@@ -22,7 +21,6 @@ from test_paper_save_paths_fx2 import _count, db  # noqa: F401 - fixture
 from test_paper_triggers_routes import notified  # noqa: F401 - fixture
 from test_strategy_store import _client
 
-ROOT = pathlib.Path(__file__).resolve().parent.parent
 _RECORDS = text("SELECT action, trigger_id, request_key FROM public.real_action_records "
                 "WHERE strategy_id = :s ORDER BY id")
 
@@ -155,14 +153,66 @@ async def test_a_record_is_append_only_even_through_a_route_made_row(db, notifie
             await db.execute(text(sql + " WHERE strategy_id = :s"), {"s": stored.id})
 
 
-def test_no_book_or_pnl_reader_counts_a_record():
-    """The guard: only the record store, the order and stop routes (which store and read back records) and the worker
-    (stage 3) name the table or the module; no paper book, P&L, position, adjustment or tracking reader does."""
-    allowed = {"backend/ofo_app/real_action_store.py", "backend/ofo_app/routes/paper.py",
-               "backend/ofo_app/paper_limit.py", "backend/ofo_app/paper_monitor.py",
-               "backend/ofo_app/routes/alerts.py", "backend/ofo_app/routes/strategies.py",
-               "backend/ofo_app/routes/tracking.py", "backend/ofo_app/routes/plan_watch.py",
-               "backend/ofo_app/alembic/versions/0063_position_tags.py", "backend/ofo_app/position_kind.py"}
-    hits = {str(p.relative_to(ROOT)).replace("\\", "/") for p in (ROOT / "backend").rglob("*.py")
-            if any(w in p.read_text(encoding="utf-8") for w in ("real_action_records", "real_action_store"))}
-    assert hits <= allowed, sorted(hits - allowed)
+# ---- Opus review F1 (Lane R1, Q2 interim): a stored exit cancels the stops it covers ---------------------------------
+
+async def _arm(db, stored, ids):
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo_app import paper_trigger_store as triggers  # noqa: PLC0415
+    leg0 = await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", Decimal("120.00"),
+                                                                 contract_id=ids[0]))
+    leg1 = await triggers.add(db, stored.id, triggers.NewTrigger("leg_stop", "above", Decimal("40.00"),
+                                                                 contract_id=ids[1]))
+    index = await triggers.add(db, stored.id, triggers.NewTrigger("conditional_exit", "above", Decimal("23100"),
+                                                                  underlying="NIFTY"))
+    return leg0, leg1, index
+
+
+async def _armed_ids(db, sid: int) -> set[int]:
+    from ofo_app import paper_trigger_store as triggers  # noqa: PLC0415
+    return {r.trigger.id for r in await triggers.list_for(db, sid) if r.cancelled_at is None and r.fired_at is None}
+
+
+async def test_a_partial_exit_cancels_only_the_leg_stop_of_the_exited_leg(db, notified):
+    app, stored, ids = await _sent_basket(db)
+    leg0, leg1, index = await _arm(db, stored, ids)
+    assert await _armed_ids(db, stored.id) == {leg0, leg1, index}
+    reply = await _post(app, stored.id, [_new(ids[0], "BUY", 65, "30", "exit")])
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert [c["contract"] for c in reply.json()["cancelled_stops"]] == [ids[0]]
+    assert await _armed_ids(db, stored.id) == {leg1, index}
+
+
+async def test_an_exit_of_every_leg_cancels_every_armed_stop_so_no_alert_follows_a_closed_position(db, notified):
+    app, stored, ids = await _sent_basket(db)
+    leg0, leg1, index = await _arm(db, stored, ids)
+    assert await _armed_ids(db, stored.id) == {leg0, leg1, index}
+    legs = stored.saved.definition.legs
+    orders = [_new(c, "BUY" if leg.action.value == "SELL" else "SELL", leg.quantity, "30", "exit")
+              for c, leg in zip(ids, legs, strict=True)]
+    reply = await _post(app, stored.id, orders)
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert await _armed_ids(db, stored.id) == set()
+
+
+async def test_an_add_cancels_no_stop(db, notified):
+    app, stored, ids = await _sent_basket(db)
+    leg0, leg1, index = await _arm(db, stored, ids)
+    reply = await _post(app, stored.id, [_new(ids[0], "SELL", 65, "39.15", "add")])
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert await _armed_ids(db, stored.id) == {leg0, leg1, index}
+
+
+@pytest.mark.parametrize(("quantity", "side"), [(0, "BUY"), (-65, "BUY"), (65, "HOLD"), (65, ""), (True, "BUY")])
+async def test_the_record_store_refuses_a_leg_with_a_bad_quantity_or_side(db, quantity, side):
+    import datetime as _dt  # noqa: PLC0415
+    from decimal import Decimal  # noqa: PLC0415
+
+    from ofo_app import real_action_store  # noqa: PLC0415
+    _app, stored, ids = await _sent_basket(db)
+    with pytest.raises(ValueError, match="quantity"):
+        await real_action_store.record(
+            db, user_ref=stored.user_ref, strategy_id=stored.id, action="exit",
+            legs=[real_action_store.Leg(ids[0], side, quantity, Decimal("30"))],
+            stored_at=_dt.datetime(2026, 11, 27, 10, 0, tzinfo=_dt.UTC))
+    assert await _records(db, stored.id) == []

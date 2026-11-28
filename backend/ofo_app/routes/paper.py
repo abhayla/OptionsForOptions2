@@ -1489,7 +1489,7 @@ async def _refuse_real_position(db: Any, strategy_id: int) -> str:
         kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id)
     except SQLAlchemyError:  # FD5 D (F4): a failed kind read refuses with a catalogue sentence (nothing stored)
         raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY) from None
-    if kind not in {"paper", "real", "none"}:
+    if not position_kind.is_known(kind):
         raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY)
     return kind
 
@@ -1498,7 +1498,7 @@ async def _records_door(db: Any, strategy_id: int, kind: str, orders: Sequence[A
     """Lane R1: whether this basket is stored as RECORDS (a real position's action) and not as paper orders. A real
     position that is not held: always. A held position (ADR-292 (4), Q3 interim: its add and open stay paper orders):
     only a basket of exits; an exit mixed with other kinds is refused (one basket, one place)."""
-    if kind != "real":
+    if not position_kind.takes_records(kind):
         return False
     if not await store.is_held(db, strategy_id):
         return True
@@ -1516,7 +1516,7 @@ async def _real_fields(db: Any, strategy_id: int, user_ref: str, kind: str | Non
     record of the request key when the request had one, else the strategy's newest. A failed records read leaves
     ``record`` out (the action is still reported as stored): never a 5xx after a commit."""
     out: dict[str, Any] = {"position_kind": kind, "position_kind_text": position_kind.line_of(kind or "unknown")}
-    if kind != "real":
+    if not position_kind.takes_records(kind):
         return out
     out["stored_not_sent"] = True
     try:
@@ -1605,7 +1605,7 @@ async def _answer(db: Any, stored: Any, user_ref: str, kind: str, key: Any, deps
     out = (await _book(db, stored, orders, ctx, feed, at, rates, cancelled=cancelled) if orders
            else _no_paper_book(stored, at, cancelled))
     fields = await _real_fields(db, stored.id, user_ref, kind, key)
-    if kind == "real":
+    if position_kind.takes_records(kind):
         fields["status_word"] = store.status_word(stored.status, True)
     kept = {name: value for name, value in out if name in out.model_fields_set}  # rebuilt by validation (frozen)
     return PaperBookOut.model_validate({**kept, **fields})
@@ -1671,10 +1671,11 @@ async def _place_orders(  # noqa: C901, PLR0912, PLR0913, PLR0915
     await store.lock_strategy(db, user_ref, strategy_id)
     if stage.get("key") is not None:  # FD3 item 2: the durable claim, in THIS transaction (commits with the orders)
         await request_key.claim_in_transaction(db, user_ref, stage["key"], strategy_id, stage["sent"], "paper")
+    if records:  # before the orphan sweep below: a real position has no paper book, so every stop of it looks orphaned
+        return await _store_records(db, user_ref, strategy_id, body, (ctx, settings, placed_at, exit_prices, stored),
+                                    stage)
     armed_before = await _armed_leg_stops(db, strategy_id)  # F3: the stops this request may cancel
     swept: list[int] = []  # FD5 2a: the ids the stale-stop sweep inside the fill cancels
-    if records:
-        return await _store_records(db, user_ref, strategy_id, body, (ctx, settings, placed_at, exit_prices), stage)
     try:
         book = await paper_limit.place_checked(
             db, user_ref, strategy_id, [
@@ -1722,17 +1723,21 @@ async def _store_records(db: Any, user_ref: str, strategy_id: int, body: PaperOr
                          stage: dict) -> tuple[datetime.datetime, list[dict]]:
     """Lane R1 (ADR-330 (73), ADR-281): the real position's branch of ``_place_orders``. The same checks, then ONE
     record per action in ``real_action_records`` (never a paper order, never a broker call), the request key's own
-    result in the same transaction, the same deadline and the same commit rules. Cancels no stop and links no suggestion
-    (those read the paper book, which a real position does not have). Returns the time and no cancelled stops."""
-    ctx, settings, placed_at, exit_prices = deps
+    result in the same transaction, the same deadline and the same commit rules. A stored exit cancels the stops it
+    covers (review F1: a stop left armed after the user closed the leg would alert "place it in Kite" for a position
+    that is gone); it links no suggestion (those read the paper book, which a real position does not have). Returns the
+    time and the leg stops it cancelled."""
+    ctx, settings, placed_at, exit_prices, stored = deps
     try:
         await paper_limit.record_checked(
             db, user_ref, strategy_id,
-            [paper_store.NewOrder(o.contract_id, o.side, o.quantity, exit_prices.get(i, o.price), o.kind, placed_at)
+            [real_action_store.Draft(o.contract_id, o.side, o.quantity, exit_prices.get(i, o.price), o.kind, placed_at)
              for i, o in enumerate(body.orders)],
             ctx=ctx, at=placed_at, settings=settings, request_key=stage.get("key"))
+        cancelled = await _cancel_covered_stops(db, strategy_id, stored, body.orders)
+        cancelled_out = await _stops_out(db, stored, {}, cancelled)
         if stage.get("key") is not None:
-            await request_key.finish_in_transaction(db, user_ref, stage["key"], {"cancelled_stops": []})
+            await request_key.finish_in_transaction(db, user_ref, stage["key"], {"cancelled_stops": cancelled_out})
         if _monotonic() > stage["deadline"]:  # R9: the page has given up by now; a late commit would surprise the user
             raise StrategyRefused("order_request_too_slow", Failure.CONFLICT)
         stage["commit_started"] = True
@@ -1740,7 +1745,23 @@ async def _store_records(db: Any, user_ref: str, strategy_id: int, body: PaperOr
     except Exception:
         await db.rollback()
         raise
-    return placed_at, []
+    return placed_at, cancelled_out
+
+
+async def _cancel_covered_stops(db: Any, strategy_id: int, stored: Any, orders: Sequence[Any]) -> list[Any]:
+    """Lane R1 (review F1; Q2 interim): a stored exit of a REAL position cancels the armed stops it covers, in the
+    same transaction. Every leg exited (the position's own recorded legs, else the stored plan's) cancels every armed
+    stop of the strategy; a partial exit cancels the leg stops of the exited contracts only. Returns the leg stops
+    cancelled (the answer lists them as paper's does)."""
+    exited = {o.contract_id for o in orders if o.kind == "exit"}
+    if not exited:
+        return []
+    still = (set(_open_ids(await paper_store.load(db, strategy_id))) or set(stored.saved.contract_ids)) - exited
+    armed = [r.trigger for r in await paper_trigger_store.list_for(db, strategy_id) if _state(r) == "armed"]
+    covered = [t for t in armed if not still or (t.kind == "leg_stop" and t.contract_id in exited)]
+    for t in covered:
+        await paper_trigger_store.cancel(db, strategy_id, t.id)
+    return [t for t in covered if t.kind == "leg_stop"]
 
 
 class ExitRiskOut(ApiModel):
@@ -2191,7 +2212,7 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
         kind = "unknown"  # answered as success, the lines fail closed (no live paper stop)
     off = kind in _NO_PAPER_ACTION_KINDS  # R6: an unreadable position has no live stop (a real one has: Lane R1)
     recs: dict[int, Any] = {}
-    if kind == "real":  # Lane R1: the stop's record, by trigger (a failed read leaves the rows without it)
+    if position_kind.takes_records(kind):  # Lane R1: the stop's record, by trigger (a failed read: none)
         try:
             async with db.begin_nested():
                 for rec in await real_action_store.load(db, strategy_id):
@@ -2202,7 +2223,7 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
     return TriggersOut.model_validate({
         "already_set": already_set, "already_armed": list(already_armed),
         "position_kind": kind, "position_kind_text": position_kind.line_of(kind),
-        "stored_not_sent": True if kind == "real" else None,
+        "stored_not_sent": position_kind.takes_records(kind) or None,
         "record": real_action_store.record_out(max(recs.values(), key=lambda x: x.id) if recs else None),
         "triggers": [{
         "id": r.trigger.id, "strategy_id": r.trigger.strategy_id, "kind": r.trigger.kind,
@@ -2216,7 +2237,7 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
         "fired_at": r.fired_at, "cancelled_at": r.cancelled_at,
         "set_before_adjustment": r.trigger.id in marks, "adjustment_note": marks.get(r.trigger.id),
         "not_applicable_text": position_kind.line_of(kind) if off and _state(r) == "armed" else None,
-        "stored_not_sent": True if kind == "real" else None,
+        "stored_not_sent": position_kind.takes_records(kind) or None,
         "record": real_action_store.record_out(recs.get(r.trigger.id))}
         for r in rows]})
 
@@ -2325,7 +2346,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
     stored = await _load_strategy(db, user_ref, strategy_id)
     kind = await _refuse_real_position(db, strategy_id)  # Lane R1: the ONE kind read; only an unreadable kind refuses
     underlying = stored.saved.definition.underlying
-    real_legs = list(stored.saved.contract_ids) if kind == "real" else ()  # Q4 interim: the stored plan's legs
+    real_legs = list(stored.saved.contract_ids) if position_kind.takes_records(kind) else ()  # Q4 interim: plan legs
     # ADR-327: the price read (up to 3 s) happens BEFORE the strategy row lock, so a slow feed never holds the lock the
     # monitor's fire waits behind; what the read decided is re-validated under the lock below (D-05: the open legs)
     if crossed := await check_trigger_levels(db, ctx, feed, underlying,
@@ -2343,7 +2364,7 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
     try:
         for n in fresh:
             trigger_id = await paper_trigger_store.add(db, strategy_id, n)
-            if kind == "real":  # Lane R1: the stop is also a record (nothing is sent; the worker alerts when reached)
+            if position_kind.takes_records(kind):  # Lane R1: the stop is also a record (nothing is sent)
                 await _record_stop(db, user_ref, stored, n, trigger_id, now())
         await db.commit()
     except Exception:
@@ -2361,7 +2382,7 @@ async def _record_stop(db: Any, user_ref: str, stored: Any, new: paper_trigger_s
     legs = []
     for contract_id, leg in zip(stored.saved.contract_ids, stored.saved.definition.legs, strict=True):
         if new.contract_id is None or new.contract_id == contract_id:
-            legs.append(real_action_store.Leg(contract_id, "SELL" if leg.action.value == "BUY" else "BUY",
+            legs.append(real_action_store.Leg(contract_id, real_action_store.closing_side(leg.action.value),
                                               leg.quantity, new.level))
     if not legs:
         raise StrategyRefused("paper_trigger_leg_not_open")  # fail closed: a leg the stored plan does not have

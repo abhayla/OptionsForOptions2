@@ -222,9 +222,9 @@ async def record_checked(db: Any, user_ref: str, strategy_id: int, orders: Seque
     per action in ``real_action_records``. It never reaches ``paper_store`` and never a broker: the position, its
     quantity and its P&L stay the broker's figure. A kind that is not real, or cannot be read, is refused (fail closed).
     The caller commits, or rolls back on any raise. Returns the records of this request."""
-    from ofo_app import may_act, real_action_store, strategy_store  # noqa: PLC0415 - they import the route layer
+    from ofo_app import may_act, position_kind, real_action_store, strategy_store  # noqa: PLC0415 - route layer
     may_act.refuse_unless_allowed(ctx, "place", at)  # ADR-212 / (60): the same rule, before anything is stored
-    if (await strategy_store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown") != "real":
+    if not position_kind.takes_records((await strategy_store.kinds_of(db, [strategy_id])).get(strategy_id)):
         raise StrategyRefused("user_input_request_not_available", Failure.UPSTREAM_BUSY)
     if any(o.kind not in real_action_store.USER_ACTIONS for o in orders):
         raise StrategyRefused("user_input_request_not_available", Failure.CONFLICT)

@@ -37,6 +37,26 @@ def kind_of(has_order: bool | None, position_tag: str | None, held_at_broker: bo
     return NONE if position_tag is None and not has_order else UNKNOWN
 
 
+def takes_records(kind: str | None) -> bool:
+    """Whether this kind's user actions are stored as records (ADR-330 (73)): the tag decision lives HERE, once, so no
+    order-door file branches on a tag's name (tests/test_order_door_parity_live_day.py)."""
+    return kind == REAL
+
+
+def is_judged(kind: str | None) -> bool:
+    """Whether a stop of this kind is judged by the worker (paper and real alike; an unreadable kind never is)."""
+    return kind in (PAPER, REAL)
+
+
+def is_known(kind: str | None) -> bool:
+    """Whether a door may act on this kind (fail closed: an unreadable kind is refused)."""
+    return kind in (PAPER, REAL, NONE)
+
+
+def is_paper(kind: str | None) -> bool:
+    return kind == PAPER
+
+
 def line_of(kind: str) -> ExplanationText | None:
     """The one sentence a row carries: real and unknown only; paper and none carry none (unchanged rows)."""
     if kind == REAL:
