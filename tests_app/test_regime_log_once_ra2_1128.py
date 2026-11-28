@@ -12,9 +12,9 @@ from ofo_app import regime_inputs
 NEEDS = "needs 28 daily bars, got 0"
 
 
-def _raises(message: str):
+def _raises(message: str, error=regime_inputs._OwnReason):
     def read():
-        raise ValueError(message)
+        raise error(message)
     return read
 
 
@@ -52,5 +52,5 @@ def test_a_value_error_that_is_not_this_modules_own_message_logs_its_class_only(
     """Opus review F6: a ValueError from parsing a Kite row can carry a slice of the response."""
     regime_inputs._TOLD.clear()
     with caplog.at_level(logging.WARNING, logger="ofo_app.regime_inputs"):
-        regime_inputs._attempt("adx", _raises("time data 'access_token=XYZ;AAAA' does not match format"))
+        regime_inputs._attempt("adx", _raises("time data 'access_token=XYZ;AAAA' does not match format", ValueError))
     assert [r.getMessage() for r in caplog.records] == ["regime input adx not read: ValueError"]

@@ -74,23 +74,33 @@ _LIVE_DAILY = DailyCandles(_LIVE_FETCH)  # one per process: at most one read per
 #: (input, class, text) already told: an input that cannot be read for the same reason is logged ONCE (Lane RA2, W-09: a
 #: scenario with no day candles logged "adx not read" on every cycle)
 _TOLD: set[tuple[str, str, str]] = set()
-#: the openings of this module's and ``marketdata.regime``'s own messages: only these are logged with their text
-#: (Opus F6:
-#: a ValueError from parsing a Kite row can carry a slice of the response)
-_OWN_TEXTS: Final = ("needs ", "a day candle has no range", "a bar's low", "no true range", "period must")
+
+
+class _OwnReason(ValueError):
+    """A ``ValueError`` of OUR maths (``regime``, ``_bars``), re-raised by ``_own_after``: only its text is logged. Any
+    other error, a ``ValueError`` of another module too, is logged by class only (Opus review F2: http.client puts a
+    whole header value, the Kite token, in its ValueError, and a text that merely STARTS like ours is not ours)."""
+
+
+def _own_after(fetch: Any, calc: Any) -> Any:
+    """The fetch runs as it is (its errors are logged by class); the calculation on what it got is ours."""
+    got = fetch()
+    try:
+        return calc(got)
+    except ValueError as exc:
+        raise _OwnReason(str(exc)) from None
 
 
 def _attempt(what: str, read: Any) -> Any:
     try:
         return read()
     except _READ_ERRORS as exc:
-        # a ValueError is this module's own arithmetic or shape message ("needs 28 daily bars, got 0"): safe and plain;
-        # a Kite or margin error may carry a token or a body, so only its class is ever logged
-        text = str(exc) if type(exc) is ValueError and str(exc).startswith(_OWN_TEXTS) else ""
-        key = (what, type(exc).__name__, text)
+        name = "ValueError" if isinstance(exc, _OwnReason) else type(exc).__name__
+        text = str(exc) if isinstance(exc, _OwnReason) else ""
+        key = (what, name, text)
         if key not in _TOLD:
             _TOLD.add(key)
-            log.warning("regime input %s not read: %s%s", what, type(exc).__name__, f": {text}" if text else "")
+            log.warning("regime input %s not read: %s%s", what, name, f": {text}" if text else "")
         return None
 
 
@@ -106,11 +116,11 @@ def read_with(clients: Clients, underlying: str, daily: DailyCandles) -> RegimeI
     pct = adx = None
     if clients.history is not None:
         if underlying == _PERCENTILE_INDEX and vix is not None:
-            pct = _attempt("vix_percentile",
-                           lambda: regime.vix_percentile(vix, [c.close for c in daily.last(VIX_TOKEN)]))
+            pct = _attempt("vix_percentile", lambda: _own_after(
+                lambda: daily.last(VIX_TOKEN), lambda got: regime.vix_percentile(vix, [c.close for c in got])))
         token = INDEX_TOKENS.get(underlying)
         if token is not None:
-            adx = _attempt("adx", lambda: regime.adx(_bars(daily.last(token))))
+            adx = _attempt("adx", lambda: _own_after(lambda: daily.last(token), lambda got: regime.adx(_bars(got))))
     return RegimeInputs(funds, vix, prev, pct, adx)
 
 

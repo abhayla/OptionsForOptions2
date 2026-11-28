@@ -1,4 +1,4 @@
-STATUS 23:05 | items 4, 5, 6 + monitoring-state answer + issue 876 cases built on RA2's head dc1aeebd8; items 1 to 3 DROPPED (RA2 built them, coordinator order 16:37Z); full check running | next push: this head after TOTAL PASS | blocker: none (messages to the coordinator are refused: owner's device trust; this line is the report)
+STATUS 23:40 | items 4, 5, 6 + monitoring-state answer + issue 876 cases built; RA2 1f8e0018c merged and verified (F1 no hole, F2 hole fixed); items 1 to 3 DROPPED (RA2's); one quiet full check running | next push: this head after TOTAL PASS | blocker: none (messages to the coordinator are refused: owner's device trust; this line is the report)
 
 # Lane B1b: worker, monitor, alerts, paper P&L (successor of Lane RA2; base origin/fix/r3-leftovers-2-1128 dc1aeebd8, integration/weekend-r3-1129 already merged there)
 
@@ -26,6 +26,11 @@ container is not pushed; the tests are small):
   in its text). Log the text only for our own maths errors (a ValueError subclass raised by `regime` / `_bars`); everything else by class only.
 - F3/F4 minor (unreadable slot): a stopped monitor's slot with a readable time must stay ignored like a readable stopped slot; an `Infinity` id in a
   skipped slot must not raise (`OverflowError` escaped `decode_exits`).
+
+## Verification of RA2 1f8e0018c (merged; coordinator order 17:11Z)
+- F1 hole: NO. RA2 builds the answer AFTER the commit (`_answer_after_commit`: retry on a clean transaction, then the truthful "saved, but the list could not be read", HTTP 409); a swallowed read error can no longer undo a write. Proven by tests_app/test_review_closes_b1b_1128.py (5 passed): a REAL PostgreSQL error (`SELECT 1/0`) in a read after the commit answers 201 armed with the row stored; a real error before the commit stores nothing, answers an error without "armed" and does not notify the monitor; a swallowed error inside `_adjustment_marks` leaves the committed stop alone.
+- F2 hole: YES. `_attempt` logged a foreign `ValueError` with its text whenever the text STARTED with one of our openings (`needs `, ...): a transport error "needs the header token key:SECRET" reached the log (test red on 1f8e0018c). FIXED structurally: only an `_OwnReason` (our maths, raised by `_own_after` around `regime` and `_bars`) is logged with its text; everything else by class only. RA2's own tests changed to raise `_OwnReason` where they expect the text; the foreign-ValueError test stays plain.
+- Backstops: (c) a no-session LIVE book's `as_of` equals the close's time is asserted in test_stored_close_paper_pnl_ra2_1128 (core); (d) no session at 09:15:00 IST: NOT_CONNECTED, no figure (test_review_closes_b1b_1128).
 
 ## Item 6 (cause, design, Opus review)
 Cause (FE4 F7): the worker (`background.feed_state` / `market_closed_for`) and the monitor (`may_act.market_open(feed.ctx, now)`) each asked the
