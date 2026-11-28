@@ -1,4 +1,4 @@
-STATUS 23:45 | push 1 ready: lane_watch + 38 tests + example and filled state + lessons table + design draft; full check next | next push 00:30 | blocker: message to @parent refused (device trust); this line is the report
+STATUS 00:10 | push 1 on origin (acef70796, TOTAL PASS 835.9s jobs 4); design built; push 2 (design + this file) next | next push 00:40 | blocker: send_message to @parent refused (device trust); coordinator's 23:35 order read: no new tasks, close after push 2
 
 # Lane CC results: the coordinator's core
 
@@ -150,6 +150,26 @@ lane, instruction between 30 and 300 minutes, STATUS ahead at the 10 minute boun
 build unreachable. Still surviving and accepted: the same-blob `pa == pb` half, the duplicate-pair dedupe, closed lanes
 in the migration check, `.py` filter, FETCH FAILED flag, the two hold-UNKNOWN paths for `not_newer_than`.
 Equivalent mutants: the `watch()` default arguments.
+
+## Found, not assigned (owner's order of 23:35: recorded, not fixed, not handed on)
+
+All from the first real run (23:40 IST view of origin); the coordinator has them in the run output above.
+- R1 (`feat/real-same-screens-be-1128`): `0063_position_tags` has the same number and parent (0062) as RA2's
+  `0063_basket_facts_spot_at`, which B2 and B1b already carry. Two alembic heads when both merge. Evidence: MIGRATION
+  COLLISION lines 16 and 17 of the run.
+- Build `integration/weekend-r3-1129`: head a1d70422 (18:56 IST); wave 1 (22:45) has no new commit. Evidence: WAVE PAST DUE
+  and Z3 SILENT 283 minutes.
+- No commit for more than 90 minutes at 23:40: B3 (21:44), F2 (21:46), F3 (21:48), W2 (21:33), X2 (20:15), R2 (19:52).
+  Their STATUS lines may report pushes the origin does not show.
+- W3 (`test/r3-plan-walk-3-1128`) has no branch on origin.
+- Lane clocks ahead of their own commit: F3 92 minutes, B1b 56, R2 53, F2 39, F1b 27, W2 22. STATUS times of these lanes are
+  not to be trusted.
+
+## Gate
+
+| Push | Head | Result |
+|---|---|---|
+| 1 | acef70796 | `TOTAL PASS 835.9s (steps sum 2110.4s, jobs 4)`; the first attempt stopped at "TOOLS MISSING" (pinned ruff 0.15.12, requirements, `npm ci` were not installed: installed, then re-run) |
 
 ## Not done
 

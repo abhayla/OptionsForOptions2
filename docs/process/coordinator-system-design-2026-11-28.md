@@ -130,6 +130,9 @@ This session cannot file issues in `abhayla/Startup-Factory`. Text for the owner
   whom to message. A future host feature: a message log with delivery time, so INSTRUCTION NOT ACKNOWLEDGED can be set
   by the host and not by hand.
 - **Judging a product question.** Always the owner's.
+- **Trusting a time.** Commit times come from the lane machine's clock. The watch trusts them more than STATUS text
+  (a model guesses the time; the machine does not) and flags a STATUS time later than its own commit. A drifting machine
+  clock is not detected; GitHub's push time would be the true one and is not read from git.
 - **Reading a lane's reasoning.** Only branch and commit are read.
 - **The fault ledger entry.** Written by the coordinator; a check can only count rows with an empty last cell.
 
