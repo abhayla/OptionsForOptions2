@@ -17,6 +17,7 @@ below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables 
 | I-126 | "Two plan-watch tests read the real clock and fail Friday after 15:00" | pins 8ed916db, cdce22ce are ancestors of the build | `tests_app/test_plan_watch.py` 13 passed; the two pinned tests are `test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live` and `test_a_quote_answering_after_the_market_was_cut_is_not_asked` (they call `_pin_server_clock`) | none needed |
 | I-204 | "Three FE2 DB tests fail on the merged build (F-39)" | build e2da71f50: 3 failed, 2 passed (`real_position_exit_refused`) | fix branch origin/fix/r3-leftovers-1128 (951aa698c, worktree, removed after): 5 passed. Build re-run after wave 0: PENDING | none (fix is a5259db50 on that branch) |
 | I-168 | "Pool-not-held plan-watch tests fail on the unmodified build; test_d36 assumes a fresh database" | waits for Lane B3's I-48 on origin | PENDING | |
+| CI-1 (coordinator, front of queue) | CI pull 881, job domain-tests, commit a1d70422: `tests/test_alert_kinds.py::test_the_migration_copies_the_table` ModuleNotFoundError: No module named 'alembic' | clean venv (pyyaml, jsonschema, pytest, mypy only): 1 failed, 12 passed | same venv: 13 passed; mutation (an extra answer in the 0054 literal) makes it fail, so the guard still runs; ruff clean | see git log |
 | I-170 | "27 DB tests in 12 files fail on a clean run" | see below | | |
 | I-176 | "11 of 29 failing tests never named" | see below | | |
 
@@ -29,6 +30,10 @@ below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables 
 | I-110 | issues 854 to 880 filed (27) | `gh issue list` is refused here (GraphQL blocked); REST instead: `gh api -X GET repos/abhayla/optionsforoptions2/issues -f state=all -f per_page=100 -f page=1..3`, non-PR numbers between 854 and 880: 27, first 854, last 880 |
 | I-109 | AX-01 to AX-14 are in the plan | `git show origin/docs/test-plan-weekend-1127:docs/process/test-plan-weekend-2026-11-28.md \| grep -o -E "AX-[0-9]+" \| sort -u` lists AX-01 to AX-14 (14 ids); AX-14 row at line 246 and section 14 intake table at lines 1681 to 1690 (AX-08 to AX-12 appear as one range row "not built") |
 | I-96 | Alerts Active and History rows are in the plan | same file: `grep -n -i alerts` finds rows W-13 (line 199, History "Closed by system"), W-17 (line 203, Active on a slow connection) and SW-8 (line 255, Alerts Active, History, Records block). The slow-link half is "not proven by a command" (the plan itself says the real link time is proven only by the PC) |
+
+## Same class search (CI-1)
+
+`grep -rln "alembic" tests/ | xargs grep -ln "exec_module\|import_module\|from alembic\|import alembic"` hits: test_prepush.py (105 passed), test_door_names_private.py (301 passed), test_history_not_shown.py (56 passed), test_alert_writers_one_caller.py (13 passed), test_alert_kinds.py (fixed). All run in /tmp/ci-like (only pyyaml, jsonschema, pytest, mypy). Wider search for tests naming `alembic/versions`: 8 more files, 129 passed, 1 skipped in the same environment. No other test needs a fix. The fix reads KINDS and ANSWERS by `ast.literal_eval` of the module-level assignments; no importorskip.
 
 ## For Lane Z3
 
