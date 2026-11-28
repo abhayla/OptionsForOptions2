@@ -60,6 +60,7 @@ INDEX_READING_TTL_S: Final = 120
 LEG_NOT_LIVE: Final = "leg_not_live"  # the ``why`` of a trade whose leg-price exit has no live leg reading
 LEG_READING_MAX_AGE_S: Final = 90  # current while the worker re-reads (its tick key turns over every IST minute)
 EXIT_NOT_APPLICABLE: Final = "exit_not_applicable"  # the why of a real position's old armed paper stop (ADR-330 (64))
+BOOK_NOT_READ: Final = "book_not_read"  # the why when the monitor could not read the book for longer than allowed (FE3)
 EXIT_NOT_PRICED: Final = "exit_not_priced"  # the why of a crossed exit that could not run (no live leg price)
 MAX_READING_VALUE: Final = Decimal(10) ** 9  # no index or option price is this large: such a value is no reading
 WATCH_FRESH_S: Final = 30  # a monitor's claim "I judge this exit" counts this long (it renews every ``REFRESH_S``)
@@ -93,14 +94,21 @@ def _aware(at: datetime.datetime) -> datetime.datetime:
     return at
 
 
+def _row(e: Entry) -> dict[str, Any]:
+    return {"status": e.status, "reason": e.reason, "why": e.why,
+            "since": None if e.since is None else _aware(e.since).isoformat()}
+
+
 def encode(entries: Iterable[Entry], at: datetime.datetime,
-           readings: Mapping[str, tuple[IndexReading, datetime.datetime]] | None = None) -> str:
+           readings: Mapping[str, tuple[IndexReading, datetime.datetime]] | None = None,
+           kept: Iterable[Entry] = ()) -> str:
     """The snapshot. ``readings`` (Lane FE): slot ("index:NIFTY", "leg:<instrument id>") -> (the reading, when the
-    worker last noted it): the prices a trade was called watched on travel in the SAME write as that call."""
-    return json.dumps({"at": _aware(at).isoformat(), "strategies": {
-        str(e.strategy_id): {"status": e.status, "reason": e.reason, "why": e.why,
-                             "since": None if e.since is None else _aware(e.since).isoformat()}
-        for e in entries},
+    worker last noted it): the prices a trade was called watched on travel in the SAME write as that call.
+    ``kept`` (Lane FE3 item 4, issue 880): the pause starts of trades paused before a restart that the new worker has
+    not answered for yet. They are NOT strategies of this snapshot (a reader never sees them: such a trade reads
+    "not listed"); a second restart reads them back, so the "since" of a pause survives any number of restarts."""
+    return json.dumps({"at": _aware(at).isoformat(), "strategies": {str(e.strategy_id): _row(e) for e in entries},
+        "kept": {str(e.strategy_id): _row(e) for e in kept},
         "readings": {slot: _reading_body(r, noted) for slot, (r, noted) in sorted((readings or {}).items())}},
         sort_keys=True)
 
@@ -157,10 +165,13 @@ def _entries_of(raw: Any, now: datetime.datetime) -> dict[int, Entry]:
         if at is None or not isinstance(rows, dict) or abs((now - at).total_seconds()) > RESTORE_MAX_AGE_S:
             return {}
         out: dict[int, Entry] = {}
-        for sid_text, row in rows.items():
-            since = _time(row.get("since"))
-            if row.get("status") == PAUSED and isinstance(row.get("reason"), str) and since is not None:
-                out[int(sid_text)] = Entry(int(sid_text), row["status"], row["reason"], str(row.get("why", "")), since)
+        kept = body.get("kept")
+        for group in (kept if isinstance(kept, dict) else {}, rows):  # the snapshot's own rows win over a kept one
+            for sid_text, row in group.items():
+                since = _time(row.get("since"))
+                if row.get("status") == PAUSED and isinstance(row.get("reason"), str) and since is not None:
+                    out[int(sid_text)] = Entry(int(sid_text), row["status"], row["reason"], str(row.get("why", "")),
+                                               since)
         return out
     except (ValueError, TypeError, AttributeError):
         return {}
@@ -189,6 +200,9 @@ class Publisher:
     def __init__(self, client: Any) -> None:
         self._client = client
         self._previous: dict[int, Entry] = {}
+        self._kept: dict[int, Entry] = {}  # FE3 item 4: restored paused entries no check has answered for yet
+        self._restored_at: datetime.datetime | None = None
+        self.restore_pending = False  # FE3 item 3 (F6): the restart's empty snapshot was not written; tried again
         self._written: str | None = None
         self._written_at: datetime.datetime | None = None
 
@@ -206,11 +220,25 @@ class Publisher:
             log.warning("background: reading the old monitoring state failed: %s", type(exc).__name__)
             return False
         self._previous = _entries_of(raw, now)
+        self._kept, self._restored_at = dict(self._previous), now
+        return await self._write_restart_snapshot(now)
+
+    async def retry_restore(self, now: datetime.datetime) -> bool:
+        """FE3 item 3 (F6): a restart whose empty snapshot could not be written leaves the dead worker's answers
+        standing; the worker calls this before every cycle until the write has landed (or a real snapshot has).
+        Nothing is read again: the kept starts are the ones the restart read. Never raises."""
+        if not self.restore_pending or self._client is None:
+            return False
+        return await self._write_restart_snapshot(now)
+
+    async def _write_restart_snapshot(self, now: datetime.datetime) -> bool:
         try:
-            await self._client.set(key(), encode([], now))
+            await self._client.set(key(), encode([], now, kept=self._kept.values()))
         except Exception as exc:  # noqa: BLE001 - the old snapshot then ages out by itself (``SNAPSHOT_STALE_S``)
             log.warning("background: writing the restart monitoring state failed: %s", type(exc).__name__)
+            self.restore_pending = True
             return False
+        self.restore_pending = False
         self._written, self._written_at = None, None  # the first real snapshot is written whatever it says
         return True
 
@@ -221,17 +249,23 @@ class Publisher:
         if self._client is None:
             return False
         entries = snapshot(status, reasons, whys, self._previous, now)
+        answered = {e.strategy_id for e in entries}
+        if self._restored_at is not None and (now - self._restored_at).total_seconds() > RESTORE_MAX_AGE_S:
+            self._kept = {}  # a restored pause no check has answered for in a day is not carried any longer
+        kept = {sid: e for sid, e in self._kept.items() if sid not in answered}  # FE3 item 4: not forgotten unseen
         seen = [(k, str(r.value), r.at.isoformat(), r.source) for k, (r, _n) in sorted((readings or {}).items())]
         fingerprint = json.dumps([[(e.strategy_id, e.status, e.reason, e.why) for e in entries], seen])
         due = self._written_at is None or (now - self._written_at).total_seconds() >= REFRESH_S
         if fingerprint == self._written and not due:
             return False
         try:
-            await self._client.set(key(), encode(entries, now, readings))
+            await self._client.set(key(), encode(entries, now, readings, kept.values()))
         except Exception as exc:  # noqa: BLE001 - never stops a cycle; the reader then sees an old snapshot
             log.warning("background: writing the monitoring state failed: %s", type(exc).__name__)
             return False
-        self._previous = {e.strategy_id: e for e in entries}
+        self._kept = kept
+        self.restore_pending = False  # a real snapshot replaced the old one: nothing is left to retry
+        self._previous = {**kept, **{e.strategy_id: e for e in entries}}
         self._written, self._written_at = fingerprint, now
         return True
 
@@ -265,7 +299,7 @@ async def _with_index_exits(client: Any, answers: dict[int, Entry], now: datetim
     names it at all (the monitor is not running). A report that cannot be read pauses every trade the worker calls
     ACTIVE (``state_unreadable``); only "no report at all" (no monitor ever wrote one) keeps the worker's answer."""
     try:
-        raw = await client.get(exits_key())
+        raw = await read_exits_raw(client)
     except Exception as exc:  # noqa: BLE001 - a store that cannot answer cannot clear a trade with an exit
         log.warning("monitoring state: the index-exit report could not be read: %s", type(exc).__name__)
         return {i: _paused_unreadable(e) for i, e in answers.items()}
@@ -285,6 +319,28 @@ async def _with_index_exits(client: Any, answers: dict[int, Entry], now: datetim
     return out
 
 
+def _text(value: Any) -> Any:
+    return value.decode("utf-8", "replace") if isinstance(value, bytes) else value
+
+
+async def read_exits_raw(client: Any) -> str | None:
+    """The stored index-exit report as one JSON text (``decode_exits`` reads it), or None when no monitor has written
+    one. A client with hashes (every Redis client) reads the monitors' slots from ``exit_slots_key``; a bare get/set
+    double (a test's) reads the one string key. Raises when the store cannot answer."""
+    if not hasattr(client, "hgetall"):
+        return _text(await client.get(exits_key()))
+    fields = await client.hgetall(exit_slots_key())
+    if not fields:
+        return None
+    owners: dict[str, Any] = {}
+    for owner, raw in fields.items():
+        try:
+            owners[str(_text(owner))] = json.loads(_text(raw))
+        except (ValueError, TypeError):
+            owners[str(_text(owner))] = None  # one bad slot is skipped by ``_slots``
+    return json.dumps({"owners": owners})
+
+
 def _paused_unreadable(entry: Entry) -> Entry:
     return entry if entry.status != ACTIVE else Entry(entry.strategy_id, PAUSED, STATE_UNREADABLE, "", None)
 
@@ -293,6 +349,14 @@ def _paused_unreadable(entry: Entry) -> Entry:
 
 def exits_key() -> str:
     return f"{feed_bus.KEY_PREFIX}:background:index_exits"
+
+
+def exit_slots_key() -> str:
+    """Lane FE3 item 3: the monitors' slots as ONE Redis hash, one field per monitor. A field is written by its own
+    monitor alone and by one atomic command (``HSET``), so two monitors writing in the same instant can never drop each
+    other's slot (the old key was one string, read-merged-written). A new name: the old key is a string, and
+    ``HSET`` on it would answer WRONGTYPE until it expired."""
+    return f"{feed_bus.KEY_PREFIX}:background:index_exit_slots"
 
 
 @dataclass(frozen=True)
@@ -372,7 +436,9 @@ async def read_readings(client: Any, now: datetime.datetime) -> Readings | None:
 
 WRITE_TRIES: Final = 3  # a report write is verified and repeated this often at most (two writers can cross)
 OWNER_KEEP_S: Final = 3600  # a monitor's slot that stopped reporting this long ago is dropped by the next writer
-EXITS_KEY_TTL_S: Final = 86400  # the report key itself (a deployment with no monitor for a day has nothing to say)
+#: The report key's expiry, renewed by EVERY write (a monitor writes at least every ``REFRESH_S`` while it runs, so the
+#: key lives while any monitor does, and a day of no write at all leaves nothing to read: "not checked yet").
+EXITS_KEY_TTL_S: Final = 86400
 
 
 def encode_exits(not_run: Mapping[int, str], at: datetime.datetime) -> str:
@@ -430,8 +496,9 @@ def decode_exits(raw: Any, now: datetime.datetime) -> dict[int, str] | None:
 class ExitsPublisher:
     """The paper monitor's one write path of the index-exit report: which strategies have an armed index exit being
     evaluated (``watching``) and which do not (``not_run``, with the why). Every monitor (every API worker process)
-    owns ONE slot of the report, read-merged-written, so one monitor's report never replaces another's (FE2 item 1;
-    a lost update of a simultaneous write is repaired by the next rewrite, at most ``REFRESH_S`` later). Never raises.
+    owns ONE slot of the report (one field of a Redis hash, written by one atomic ``HSET``: FE3 item 3, so two monitors
+    writing in the same instant cannot drop each other's slot), and the key's expiry is renewed by every write. Never
+    raises.
     Rewritten when it changes and at least every ``REFRESH_S`` so a stopped monitor ages out."""
 
     def __init__(self, client: Any, owner: str | None = None) -> None:
@@ -451,13 +518,17 @@ class ExitsPublisher:
             return False
         try:
             kept = False
-            for _ in range(WRITE_TRIES):  # F4: read-merge-write is not atomic; verify the slot is there, else again
-                owners = await self._others(now)
-                owners[self.owner] = slot
-                await self._client.set(exits_key(), json.dumps({"at": slot["at"], "owners": owners}, sort_keys=True),
-                                       ex=EXITS_KEY_TTL_S)
-                if await self._has_slot(slot["at"]):
-                    kept = True
+            for _ in range(WRITE_TRIES):  # the slot is verified, and written again when a store did not keep it
+                if hasattr(self._client, "hset"):
+                    kept = await self._write_field(slot, now)
+                else:  # a bare get/set double: the one string key, read-merge-written (no second writer there)
+                    owners = await self._others(now)
+                    owners[self.owner] = slot
+                    await self._client.set(exits_key(),
+                                           json.dumps({"at": slot["at"], "owners": owners}, sort_keys=True),
+                                           ex=EXITS_KEY_TTL_S)
+                    kept = await self._has_slot(slot["at"])
+                if kept:
                     break
         except Exception as exc:  # noqa: BLE001 - never stops the monitor; the report then ages out (= not run)
             log.warning("paper monitor: writing the index-exit report failed: %s", type(exc).__name__)
@@ -467,6 +538,32 @@ class ExitsPublisher:
             return False
         self._written, self._written_at = fingerprint, now
         return True
+
+    async def _write_field(self, slot: dict[str, Any], now: datetime.datetime) -> bool:
+        """FE3 item 3: this monitor's field of the hash, by one atomic ``HSET`` (nobody else writes it, nobody's write
+        can drop it); the key's expiry is renewed by the same write; the slots of monitors gone for ``OWNER_KEEP_S``
+        are removed (a live monitor's slot is never that old, so this cannot remove a slot in use). True when the
+        stored field is the slot just written."""
+        text = json.dumps(slot, sort_keys=True)
+        await self._client.hset(exit_slots_key(), self.owner, text)
+        await self._client.expire(exit_slots_key(), EXITS_KEY_TTL_S)
+        fields = await self._client.hgetall(exit_slots_key())
+        gone = []
+        mine = None
+        for owner, raw in fields.items():
+            name = str(_text(owner))
+            if name == self.owner:
+                mine = _text(raw)
+                continue
+            try:
+                at = _time(json.loads(_text(raw)).get("at"))
+            except (ValueError, TypeError, AttributeError):
+                at = None
+            if at is None or abs((now - at).total_seconds()) > OWNER_KEEP_S:
+                gone.append(owner)
+        if gone:
+            await self._client.hdel(exit_slots_key(), *gone)
+        return mine == text
 
     async def _has_slot(self, at_text: str) -> bool:
         """Whether the stored report holds this monitor's slot as just written."""
