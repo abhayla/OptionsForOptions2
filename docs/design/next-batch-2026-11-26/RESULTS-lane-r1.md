@@ -1,59 +1,83 @@
-STATUS 21:10 | stage 1: built, full check running | next push 22:30 (stage 1) | blocker: none (replies to the coordinator are refused: device trust; this line is the report)
+STATUS 21:55 | stage 1 pushed (f9b2a0f, TOTAL PASS); stages 2 and 3 built, targeted tests green, full check next | next push 23:00 (stages 2 and 3 together) | blocker: none (my messages to the coordinator are refused: this session lacks the owner's device-trust approval; this line is the report)
 
 # Lane R1: real positions get the same screens, backend (round 3)
 
 Spec basis: ADR-330 (73) (the decision this lane implements; (64) withdrawn), (58); ADR-281; ADR-016 to ADR-019; ADR-292 (4), (5); ADR-003; ADR-008; ADR-002.
-Base: origin/integration/weekend-r3-1129 (a1d70422, wave 0; alembic head was 0062_order_request_keys_expiry). Branch: feat/real-same-screens-be-1128. Status ceiling: Fixed, not tested.
+Base: origin/integration/weekend-r3-1129 (a1d70422, wave 0; alembic head was 0062_order_request_keys_expiry). Branch: feat/real-same-screens-be-1128. Status ceiling: Fixed, not tested (on the owner's PC).
 
-## The field contract (frozen 28 Nov 19:25 IST; Lane R2 codes against it)
-Every body that carries a strategy's order, trigger or alert (paper book order rows, order answers, trigger rows and
-answers, alert rows, strategy list rows) carries, with these exact names:
+## The field contract (frozen 28 Nov 19:25 IST; Lane R2 codes against it; two clarifications 21:55)
+Every body that carries a strategy's order, trigger or alert (the order door's answer, the trigger list and its answers, the
+active alerts, the strategy list rows) carries, with these exact names:
 
 | Field | Type | Meaning |
 |---|---|---|
-| `position_kind` | `"paper"` \| `"real"` \| `"unknown"` \| `"none"` | the STORED tag (strategies.position_tag); `none` = no order yet; `unknown` = tag NULL or unreadable (fail closed) |
+| `position_kind` | `"paper"` \| `"real"` \| `"unknown"` \| `"none"` | the STORED tag (`strategy_position_tags`); `none` = no order yet; `unknown` = no tag and an order, or unreadable (fail closed) |
 | `position_kind_text` | string \| null | the one sentence of the row (catalogue `position_kind_real` / `position_kind_unknown`); null for paper and none |
-| `stored_not_sent` | `true` \| absent | present and `true` ONLY when the answer is about a REAL position: the action was stored in the app and nothing was sent to Zerodha |
-| `record` | object \| null | `{"action": "open"\|"add"\|"exit"\|"stop"\|"stop_fired", "stored_at": ISO-8601 with offset, "price": Decimal text}` of the latest stored record the body is about; null when none |
+| `stored_not_sent` | `true` \| `null` | `true` ONLY when the answer is about a REAL position (the action was stored in the app; nothing was sent to Zerodha). Paper bodies carry `null` (clarification: null, not absent) |
+| `record` | object \| `null` | `{"action": "open"\|"add"\|"exit"\|"stop"\|"stop_fired", "stored_at": ISO-8601 with offset, "price": Decimal text, "text": the record's one catalogue line}` (clarification: `text` added, e.g. "Exit stored 10:05 at 39.15. Not sent to Zerodha. Place it in Kite."). Null for paper and when none is stored |
 
-Rules for the frontend: `stored_not_sent: true` means show the catalogue line "Not sent to Zerodha. Place it in Kite.";
-never show a P&L "as if filled" from `record.price`; a real row's quantity and P&L stay the Zerodha figure. Paper bodies
-never carry `stored_not_sent` and carry `"record": null`.
+Where: the order door's answer (`POST /paper/strategies/{id}/orders`, top level), `GET/POST .../triggers` and
+`GET /real/strategies/{id}/triggers` (top level, and per row `stored_not_sent` and `record` of that stop), `GET /api/alerts/active`
+(per alert: the position's newest record; a reached stop reads `stop_fired`), `GET /strategies` (per row).
+Rules for the frontend: show `record.text` as the one line under the row; never show a P&L "as if filled" from `record.price`; a real
+row's quantity and P&L stay the Zerodha figure; a real position's armed stop now reads `state: "armed"` (`not_applicable_text` stays in
+the shape, null for real; it is set only when the kind is `unknown`). The order door answers a real exit with HTTP 201 and the book of the
+paper orders that exist (none for a sent basket: every figure of the app's own is absent, `state: "PAUSED"`, `status_word: "Running"`).
 
 ## For the owner lane
-(none yet)
+1. `routes/tracking.py` `POST /strategies/{id}/tracking/exit` still refuses a real position (409, "This is a real position, so no paper order is placed for it."): its answer (`TrackingOut`) is built from a paper book a real position does not have. The Exit on a row goes through `POST /paper/strategies/{id}/orders` (frontend `addToPaper`), which stores the record. If the tracking route is still linked for a real row, Lane R2 should call the orders route.
+2. Rows for `docs/process/friction-log.md` (outside this lane's files), for the coordinator to add: (a) the cloud test database is shared by the gate and by a developer's own runs: two test files in one pytest run, or a run beside a gate, pollute it ("Catalogue update refused: would drop 750 of 750 ... contracts") and cost two 20-minute reruns; the fix is `bash scripts/orchestrator/cloud_services.sh --reset` and ONE file per run (or per-file database copies for the developer loop); (b) a lane's message to the coordinator is refused until the owner approves the session's device trust, which the lane cannot ask for: the first push is then the only report; (c) `tests_app/reply_inventory.py` needs a reviewer note per new string owner, written by hand.
+3. Two tests fail on the build head itself, independent of this lane: `tests_app/test_exit_door.py::test_monitor_and_tracking_exit_at_once_one_wins_no_deadlock[before_claim]` and `[before_place]` (their fixture runs `ALTER TABLE public.paper_alerts DISABLE TRIGGER USER`; the table no longer exists). Not touched.
+4. Lane B2's `execution_plan_store` could write the tag at Execute (`strategy_store.claim_tag(conn, strategy_id)` in the plan's transaction) instead of waiting for the first read. Optional.
+5. A held position's add and open (ADR-292 (4)) still go to `paper_orders` (Q3 interim); `paper_store.place` still refuses an exit on a held position (the order door sends the exit to a record before it gets there).
 
 ## Decided for the owner
-1. The tag is stored in a NEW insert-only table `strategy_position_tags` (strategy_id PK, tag paper|real), not a column on
-   `strategies`: the strategies guard trigger is pinned in the app-role allow-list (a column would mean rewriting that
-   pinned chain). Same meaning as the brief's `strategies.position_tag`: written once, never updated (guard OF063
-   refuses UPDATE and DELETE, even for the owner role). Migration `0063_position_tags` (next after 0062 on the build).
-2. No trigger writes the tag: the allow-list refuses an unexpected trigger on paper_orders, execution_plans and
-   strategy_held_entries (found by running the migration). The code writes it once, first write wins:
-   `paper_store.place` (under the strategy lock, at the first paper order -> paper) and `strategy_store.claim_tag` for a
-   basket sent by Execute (stored on the first read of its kind -> real). I could not hook Execute's own insert (Lane B2's
-   file). Effect: between an Execute and the first read the tag may be absent, and an absent tag with an order reads
-   `unknown` (fail closed) only if the claim itself fails; otherwise the read stores `real` first.
-3. A held entry (ADR-292) stays real whatever is stored: its basket is stored first (tag paper, same transaction), the held
-   row after it, and routes/paper stores them in that order. `kind_of` therefore reads: held -> real; else the stored
-   tag. The stored row is untouched (guard test pins it).
-4. n7 (`test_exit_door_real_fd3`): the kind is read ONCE, BEFORE the commit (the door's check); that read decides and the
-   answer after the commit reuses it. Pinned as `calls == 1` (was `>= 2`, the old FD5 expectation).
+1. The tag is stored in a NEW insert-only table `strategy_position_tags` (strategy_id PK, tag paper|real), not a column on `strategies`: the strategies guard trigger is pinned in the app-role allow-list (a column would mean rewriting that pinned chain). Same meaning as the brief's `strategies.position_tag`: written once, never updated (guard OF063 refuses UPDATE and DELETE, even for the owner role). Migration `0063_position_tags` (next after 0062 on the build).
+2. No trigger writes the tag: the allow-list refuses an unexpected trigger on paper_orders, execution_plans and strategy_held_entries (found by running the migration). The code writes it once, first write wins: `paper_store.place` (under the strategy lock, at the first paper order -> paper) and `strategy_store.claim_tag` for a basket sent by Execute (stored on the first read of its kind -> real). Between an Execute and the first read the tag is absent; an order with no tag reads `unknown` only if the claim itself fails, otherwise the read stores `real` first.
+3. A held entry (ADR-292) stays real whatever is stored: its basket is stored first (tag paper, same transaction), the held row after it. `kind_of` reads: held -> real; else the stored tag. The stored row is untouched (guard test pins it).
+4. n7 (`test_exit_door_real_fd3`): the kind is read ONCE, BEFORE the commit (the door's check); that read decides and the answer after the commit reuses it. Pinned as `calls == 1` (was `>= 2`, the old FD5 expectation).
 5. Backfill: held -> real; else a paper order -> paper; else an execution plan -> real; no order -> no row.
+6. One record per action per request: a basket of "exit A + add A'" stores two records (unique on user, request key, action), so a repeated press stores one of each. Several legs of one action are one record with a list of legs; `record.price` is the first leg's.
+7. Checks a real action runs (the same door as paper): market closed (60) refuses before anything is stored; the size of every order and leg total over an EMPTY book (the broker's quantity is not in this app, so a leg total is checked on the stored basket alone: looser than paper); the request key (the same `"paper"` door key, it is the same route; `request_key.py` is not edited); the unknown-kind block (503, nothing stored). Not run for a real position: the adjustment limit and the paper-order reducing check (both read a paper book), stop cancelling and suggestion linking.
+8. A real position's open legs, for a stop and for the worker's fire, are its own recorded paper legs when it has any (a held position), else the stored plan's legs "as last read" (Q4 interim). A stop on a leg the plan does not have is refused (`paper_trigger_leg_not_open`); an index exit records every leg.
+9. A reached stop: `claim_fire` (once per trigger) -> one `stop_fired` record -> one alert (informational History row, the same alert module) -> no paper order, no broker call. A leg without a live price stays armed (the paper rule). Other armed stops of the strategy stay armed after one fires (Q2 interim).
+10. A held position's exit is a record; a basket that MIXES an exit with add/open on a held position is refused 409 (`user_input_request_not_available`, no new sentence: one basket, one place).
+11. Stages 2 and 3 are pushed together (one push): they share the route, the worker and the catalogue, and the core proof needs both.
 
 ## Question for the owner
-(none yet)
+Q1 (interim built: NO). Does a stored exit close the app's view? Interim: the row stays open and shows the record line until Zerodha shows zero quantity; status stays "Running". Recommendation: the same; the broker is the authority.
+Q2 (interim: a fired stop is claimed once and stops; other armed stops stay; a stored manual exit does NOT cancel stops yet). After a stored exit or a fired stop, should the watcher keep alerting? Recommendation: one reminder alert 15 minutes later if Zerodha still shows the quantity ("Exit stored at 10:05; Zerodha still shows this position open"), and cancel the strategy's armed stops when a stored exit covers every leg.
+Q3 (interim: leave as is). A held condor's add and open stay paper orders that change the shown book; only its exit goes to records. Recommendation: move held add and open to records too, so a held position's book never changes by anything the user stores.
+Q4 (interim: the plan's legs "as last read", or a held position's recorded paper legs). Where does the worker read a real position's open legs? Recommendation: the Zerodha snapshot read already used by `routes/positions.py`; confirm it is reachable from the worker's separate process, then replace `PaperMonitor._closing_legs`.
 
-## New wording for the owner to read
-(none yet)
+## New wording for the owner to read (all pending owner read; pinned in tests/errors/template_pins.json)
+- `position_kind_real` (replaces "Real position: exit and protect it in Kite. ..."): "Real position. Zerodha shows its quantity and P&L. Exits and stops you store here are not sent. Place them in Kite."
+- `monitoring_why_exit_not_applicable` (replaces "Not being watched: this is a real position, ..."; the worker no longer emits it): "Watching this real position. An alert only; nothing is sent."
+- Gates `real_position_exit_refused` / `_open_refused` / `_add_refused` (the paper store's structural refusal; the tracking exit route): "This is a real position, so no paper order is placed for it." / "Your exit, add or stop for a real position is stored from its row; nothing is sent to Zerodha." / "Placing a paper order on a real position." / "Use the row's Exit or Stops, then place it in Kite."
+- `real_exit_dialog`: "This stores your exit in the app as a record and a reminder. It does not place an order and does not change your Zerodha position. Place it in Kite."
+- `real_exit_stored`: "Exit stored. Not sent to Zerodha. Place it in Kite. This position stays open here until Zerodha shows it closed."
+- `real_stop_stored`: "Stop stored for this real position. When it is reached you get an alert. Nothing is sent to Zerodha. Place the exit in Kite."
+- `real_add_stored`: "Add stored. Not sent to Zerodha. Place it in Kite."
+- `real_record_exit` / `_add` / `_open`: "Exit|Add|Open stored {HH:MM} at {price}. Not sent to Zerodha. Place it in Kite."
+- `real_record_stop`: "Stop stored {HH:MM} at {price}. When it is reached you get an alert. Nothing is sent to Zerodha. Place the exit in Kite."
+- `real_record_stop_fired`: "Stop reached {HH:MM} at {price}. Stored as an exit record. Not sent to Zerodha. Place it in Kite."
+- Alert body of a reached real stop (`real_alert_body_one` / `_one_named` / `real_alert_body`): "{what}; exit stored at {price}. Not sent to Zerodha. Place it in Kite." (and the one-leg-named and several-legs shapes).
 
 ## New test files
-- tests_app/test_position_tag_r1_1128.py (tag never flips for every order kind and record action; claim rules; migration round trip and refusal; insert-only guards)
-- rewritten: tests_app/test_position_kind_adr330_64.py (kind_of takes the stored tag), tests_app/test_exit_door_real_fd3.py n7 (one read)
+- tests_app/test_position_tag_r1_1128.py (24): the tag never flips for every order kind and every record action; claim rules; migration round trip and downgrade refusal; insert-only guards; no broker column.
+- tests_app/test_real_records_r1_1128.py (12): exit, add, open and stop on a real position stored as records, no paper order; a repeated press with one request key stores one; market closed refuses; unreadable kind 503; held exit is a record and held add stays paper; paper unchanged; no reader names the record table (the structural guard "no reader counts a record").
+- tests_app/test_real_stop_fired_r1_1128.py (4): CORE PROOF (design note section 6, a to g): a reached real stop gives one alert with the sentence, one `stop_fired` record, zero paper orders, tag real, kind unchanged, paper book empty and list row `has_paper_order` false, the egress seam saw no call; claimed once; below its level nothing; an unreadable kind leaves it armed.
+- Rewritten (the old rule pinned a refusal): test_exit_door_real_fd3 (r6, n1 order post, n7 one read, the sentence), test_fields_r2_fd2 (877 exit, stop, real read, keep, unknown 503, list shape), test_held_entry (held exit is a record), test_held_stop_ra_1128 (f1 fires as a record, t1 patches `_kind_in_fire`), test_na_closed_fe4_1128 (a real position reads what paper reads), test_r6_r7_fe3_1128 (r6), test_review_fe3_1128 (f4, f5), test_real_position_stops_fe2_1128, test_plan_watch (r6: a held position reads live lines), test_alert_routes (field set), test_position_kind_adr330_64 (kind_of takes the tag), tests_app/reply_inventory.py (regenerated; three reviewer notes written), tests/errors/template_pins.json (17 re-pinned or new, all "pending owner read").
 
 ## Not done
-Stage 2 (record store and door), stage 3 (worker, alerts, catalogue sentences), the section-6 database test, reply fields `stored_not_sent` and `record`.
+- Contract fields on `GET /paper/strategies/{id}` (the book) and `GET /strategies/{id}/tracking` for a real position: those answer as before; only the order door, the stops answers, the active alerts and the strategy list carry the fields.
+- `routes/tracking.py` for a real position (see "For the owner lane" 1).
+- The Opus review of the money-path diff (the brief requires one per stage): not run from this lane (see Reviews).
+- The browser walk (Lane R2's screens).
+
+## Reviews
+Opus review of stages 2 and 3: NOT run (this lane has no way to start a helper session that the coordinator can read). For the coordinator: review `backend/ofo_app/real_action_store.py`, `paper_limit.record_checked`, `routes/paper.py` (`_store_records`, `_records_door`, `_record_stop`, `_answer`), `paper_monitor._fire_real` and `_closing_legs` for: a record counted as a fill; any path that reaches `paper_store.place` or a broker for a real position.
 
 | task / model / minutes |
 |---|
-| lane build / Sonnet / running |
+| lane build, tests, reruns / Sonnet / about 160 |

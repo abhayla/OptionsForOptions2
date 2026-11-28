@@ -124,7 +124,8 @@ def test_the_expiry_kind_sentence_is_the_owners_to_read_when_the_catalogue_holds
 
 # --- #877: the paper route refuses an exit or a stop request for a real position ---------------------------------
 
-REAL_SENTENCE = "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."
+# Lane R1 (ADR-330 (73)) rewrites the #877 tests below: a REAL position's exit and stop on the paper route are stored
+# (records, nothing sent) and listed as armed; only a kind that could not be read is refused (503, fail closed).
 
 
 async def _held(db):
@@ -141,7 +142,7 @@ async def _orders(db, stored) -> int:
                              {"i": stored.id})).scalar_one()
 
 
-async def test_877_an_exit_for_a_real_position_on_the_paper_route_is_refused_and_nothing_is_stored(db, notified):
+async def test_877_an_exit_for_a_real_position_is_stored_as_a_record_and_no_paper_order(db, notified):
     from test_paper_armed_exits import _order as _body_of  # noqa: PLC0415
     from test_paper_routes import _new  # noqa: PLC0415
     app, stored, ids = await _held(db)
@@ -149,21 +150,21 @@ async def test_877_an_exit_for_a_real_position_on_the_paper_route_is_refused_and
     async with _client(app) as c:
         reply = await c.post(f"/paper/strategies/{stored.id}/orders",
                              json={"orders": [_body_of(_new(ids[0], "BUY", 65, "30", "exit"))]})
-    assert reply.status_code == HTTPStatus.CONFLICT, reply.text
-    assert REAL_SENTENCE in reply.json()["what_happened"] + " " + reply.json()["impact"]
-    assert await _orders(db, stored) == before
+    assert reply.status_code == HTTPStatus.CREATED, reply.text
+    assert reply.json()["stored_not_sent"] is True and reply.json()["record"]["action"] == "exit"
+    assert await _orders(db, stored) == before  # a record, never a paper order
 
 
-async def test_877_a_stop_for_a_real_position_on_the_paper_route_is_refused_and_nothing_is_stored(db, notified):
+async def test_877_a_stop_for_a_real_position_on_the_paper_route_is_stored_armed_and_recorded(db, notified):
     from ofo_app import paper_trigger_store  # noqa: PLC0415
     app, stored, ids = await _held(db)
     async with _client(app) as c:
         for body in ({"kind": "leg_stop", "contract_id": ids[0], "direction": "above", "level": "120.00"},
                      {"kind": "conditional_exit", "above": "23100"}):
             reply = await c.post(f"/paper/strategies/{stored.id}/triggers", json=body)
-            assert reply.status_code == HTTPStatus.CONFLICT, reply.text
-            assert REAL_SENTENCE in reply.json()["what_happened"] + " " + reply.json()["impact"]
-    assert await paper_trigger_store.list_for(db, stored.id) == []
+            assert reply.status_code == HTTPStatus.CREATED, reply.text
+            assert reply.json()["stored_not_sent"] is True
+    assert len(await paper_trigger_store.list_for(db, stored.id)) == 2  # noqa: PLR2004
 
 
 async def test_877_a_paper_position_still_exits_and_stops_on_the_paper_route(db, notified):
@@ -183,12 +184,14 @@ async def test_877_a_paper_position_still_exits_and_stops_on_the_paper_route(db,
 # --- the real-mode read of armed and fired exits: the same shape as the paper read -----------------------------------
 
 async def test_the_real_read_of_exits_has_the_papers_shape_and_an_empty_list_when_none_is_stored(db, notified):
-    app, stored, _ids = await _held(db)  # a real position: the paper route refuses to set any stop for it
+    app, stored, _ids = await _held(db)  # a real position with no stop stored yet
     async with _client(app) as c:
         real = await c.get(f"/real/strategies/{stored.id}/triggers")
         paper = await c.get(f"/paper/strategies/{stored.id}/triggers")
         assert real.status_code == HTTPStatus.OK, real.text
-        assert real.json() == paper.json() == {"triggers": [], "already_set": False, "already_armed": []}
+        empty = {"triggers": [], "already_set": False, "already_armed": [], "position_kind": "real",
+                 "position_kind_text": real.json()["position_kind_text"], "stored_not_sent": True, "record": None}
+        assert real.json() == paper.json() == empty
         assert (await c.get("/real/strategies/999999999/triggers")).status_code == HTTPStatus.NOT_FOUND
 
 
@@ -207,14 +210,14 @@ async def test_the_real_read_names_an_armed_and_a_fired_exit_as_the_paper_read_d
     assert real["triggers"][0]["level"] in ("120.00", "5.00")  # exact decimal text
 
 
-async def test_877_keeping_an_exit_of_a_real_position_is_refused_too(db, notified):
+async def test_877_keeping_an_exit_of_a_real_position_answers_and_leaves_the_stored_stop_armed(db, notified):
     from ofo_app import paper_trigger_store as triggers  # noqa: PLC0415
     app, stored, _ids = await _held(db)
     tid = await triggers.add(db, stored.id, triggers.NewTrigger("conditional_exit", "above", D("23100"),
-                                                                underlying="NIFTY"))  # a legacy row
+                                                                underlying="NIFTY"))
     async with _client(app) as c:
         reply = await c.post(f"/paper/strategies/{stored.id}/triggers/{tid}/keep")
-    assert reply.status_code == HTTPStatus.CONFLICT, reply.text[:200]
+    assert reply.status_code == HTTPStatus.OK, reply.text[:200]  # nothing marked, nothing to keep: no churn
     assert [(r.trigger.id, r.cancelled_at is None) for r in await triggers.list_for(db, stored.id)] == [(tid, True)]
 
 
@@ -246,6 +249,6 @@ async def test_877_an_unknown_position_kind_is_refused_too_fail_closed(db, notif
                            json={"orders": [_body_of(_new(ids[0], "BUY", 65, "30", "exit"))]})
         stop = await c.post(f"/paper/strategies/{stored.id}/triggers",
                             json={"kind": "conditional_exit", "above": "23100"})
-    assert out.status_code == HTTPStatus.CONFLICT, out.text[:120]
-    assert stop.status_code == HTTPStatus.CONFLICT, stop.text[:120]
+    assert out.status_code == HTTPStatus.SERVICE_UNAVAILABLE, out.text[:120]  # Lane R1: 503, nothing stored
+    assert stop.status_code == HTTPStatus.SERVICE_UNAVAILABLE, stop.text[:120]
     assert await _orders(db, stored) == before

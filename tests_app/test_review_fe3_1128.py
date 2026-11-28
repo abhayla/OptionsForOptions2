@@ -14,6 +14,7 @@ from test_paper_monitor import (  # noqa: F401
     Market,
     _exit_below,
     _monitor,
+    _stops,
     _strategy,
     _trigger_state,
     db,
@@ -96,7 +97,7 @@ async def test_f5_b_a_kind_that_cannot_be_read_at_the_fire_leaves_the_exit_armed
 
 
 # ---- F4: the report names a real position's old stop in every branch ----------------------------------------------
-async def test_f4_a_real_positions_stop_still_reads_not_applicable_when_the_book_cannot_be_read(db, monkeypatch):  # noqa: F811
+async def test_f4_a_real_positions_stop_reads_book_not_read_like_paper_when_the_book_cannot_be_read(db, monkeypatch):  # noqa: F811
     market = Market()
     stored, _ids, keys = await _strategy(db)
     await held_entry_store.record(db, stored.id, OPEN_AT, None)  # a real position (ADR-292)
@@ -109,7 +110,7 @@ async def test_f4_a_real_positions_stop_still_reads_not_applicable_when_the_book
     monitor = _monitor(db, market)
     clock = [0.0]
     monitor._monotonic = lambda: clock[0]
-    await monitor.step()  # loaded: the stop is not applicable (real)
+    await monitor.step()  # loaded: the real position's stop is judged like a paper one's (Lane R1, ADR-330 (73))
     monkeypatch.setattr(strategy_store, "kinds_of", _raises)
     monitor.notify()
     await monitor.step()
@@ -122,16 +123,18 @@ async def test_f4_a_real_positions_stop_still_reads_not_applicable_when_the_book
         [monitoring_state.Entry(stored.id, monitoring_state.ACTIVE, "", "", now)], now)
     got = (await monitoring_state.read_states(client, [stored.id], now, heartbeat=_fresh))[stored.id]
     print("READ", got)
-    assert (got.status, got.why) == (monitoring_state.PAUSED, monitoring_state.EXIT_NOT_APPLICABLE), got
+    assert (got.status, got.why) == (monitoring_state.PAUSED, monitoring_state.BOOK_NOT_READ), got
 
 
 # ---- F5: the kind is read again inside the fire --------------------------------------------------------------------
-async def test_f5_a_strategy_that_became_real_after_the_list_was_loaded_is_not_stopped(db, monkeypatch):  # noqa: F811
+async def test_f5_a_strategy_that_became_real_after_the_list_was_loaded_is_stopped_as_a_record(db, monkeypatch):  # noqa: F811
     market, stored, tid, monitor, _client, _clock = await _loaded(db, monkeypatch)
     await held_entry_store.record(db, stored.id, OPEN_AT, None)  # now a real position; the monitor was not told
     market.tick(INDEX, CROSSED)
-    assert await monitor.step() == 0
-    assert await _trigger_state(db, tid) == (False, False), "left armed, never fired on a real position (ADR-330 (64))"
+    # Lane R1 (ADR-330 (73)): the fire reads the kind again; real -> an alert and ONE record, never a paper stop order
+    assert await monitor.step() == 1
+    assert await _trigger_state(db, tid) == (True, False), "fired once, as a record (no paper order)"
+    assert await _stops(db, stored.id) == []
 
 
 # ---- F6: a restore that could not READ the old snapshot is tried again -----------------------------------------------

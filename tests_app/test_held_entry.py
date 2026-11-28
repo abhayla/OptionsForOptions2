@@ -250,10 +250,11 @@ async def test_an_add_order_with_a_held_block_is_422(db):
 
 
 # ---- GC-TRACK1 k09: broker changes are recorded with the existing exit and add forms (no new code) ----
-async def test_add_orders_on_a_held_condor_move_the_figures_and_an_exit_is_refused_and_the_held_row_stays(db):
+async def test_add_orders_on_a_held_condor_move_the_figures_and_an_exit_is_a_record_and_the_held_row_stays(db):
     """GC-TRACK1 k09 (ADR-292 (4)) records a broker ADD with the paper form; ADR-330 (64) (owner 27 Nov: a real position
-    has no exit in the app, I-158) refuses the EXIT form for a held condor: 409, nothing stored (FD5 item 1: this test
-    still expected the exit to be stored and was red on FD3's head)."""
+    has no exit in the app, I-158) refused the EXIT form for a held condor. Lane R1 (ADR-330 (73)) rewrites that: the
+    exit is stored as a RECORD (201, ``stored_not_sent``), never a paper order, so the book and the held row are
+    unchanged; the add stays a paper order (Q3 interim)."""
     app, stored, *_ = await _setup(db)
     assert (await _post(app, stored, _held_body(stored, {"entry_at": ENTERED.isoformat(), "broker": "Upstox"}))
             ).status_code == HTTPStatus.CREATED
@@ -261,7 +262,9 @@ async def test_add_orders_on_a_held_condor_move_the_figures_and_an_exit_is_refus
     sold_call, bought_call = stored.saved.contract_ids[:2]
     leg = {"side": "BUY", "quantity": 65}
     out = await _post(app, stored, {"orders": [{"contract_id": sold_call, "kind": "exit", "price": "1.00", **leg}]})
-    assert out.status_code == HTTPStatus.CONFLICT, out.text
+    assert out.status_code == HTTPStatus.CREATED, out.text
+    assert out.json()["stored_not_sent"] is True and out.json()["record"]["action"] == "exit"
+    assert await _stored(db, stored.id) == (4, held_before)  # four legs; the exit is a record, not an order
     added = await _post(app, stored, {"orders": [{"contract_id": bought_call, "kind": "add", "price": "13.00",
                                                   **leg}]})
     assert added.status_code == HTTPStatus.CREATED, added.text

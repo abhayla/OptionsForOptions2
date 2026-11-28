@@ -1586,7 +1586,7 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
 
 def _no_paper_book(stored: Any, at: datetime.datetime, cancelled: Sequence[Mapping[str, Any]]) -> PaperBookOut:
     """Lane R1: the answer for a REAL position that has no paper book (a sent basket): no figure of the app's own (the
-    quantity and P&L are the broker's), the state PAUSED, the word the one status word. Every required figure is absent."""
+    quantity and P&L are the broker's), the state PAUSED, the one status word. Every required figure is absent."""
     required = {k: None for k, f in PaperBookOut.model_fields.items() if f.is_required()}
     return PaperBookOut.model_validate(required | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": stored.saved.definition.underlying,
@@ -2185,7 +2185,7 @@ async def _triggers_out(db: Any, strategy_id: int, already_set: bool = False,
     marks = await _adjustment_marks(db, await paper_store.load(db, strategy_id), rows)
     try:
         if kind is None:  # the list routes (no commit before them); the trigger routes pass the kind read before it
-            kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown") if rows else "paper"
+            kind = (await store.kinds_of(db, [strategy_id])).get(strategy_id, "unknown")  # Lane R1: always (the fields)
     except SQLAlchemyError:  # FD5 N7: this answer is built AFTER the commit; a stop that was stored or cancelled is
         _LOG.warning("triggers answer: the position kind could not be read; its lines read unknown", exc_info=True)
         kind = "unknown"  # answered as success, the lines fail closed (no live paper stop)

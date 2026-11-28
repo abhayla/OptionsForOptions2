@@ -25,7 +25,7 @@ FIRED = datetime.datetime(2026, 11, 25, 11, 2, 20, tzinfo=IST)
 STOPPED = datetime.datetime(2026, 11, 25, 11, 5, 1, tzinfo=IST)
 ACTIVE_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "no_longer_true_since",
                "no_longer_true_line", "escalated_at", "worse_line", "answers",
-               "position_kind", "position_kind_text"}  # the last two: ADR-330 (64)
+               "position_kind", "position_kind_text", "stored_not_sent", "record"}  # the last four: ADR-330 (64), (73)
 HISTORY_KEYS = {"id", "strategy_id", "strategy_name", "kind", "text", "fired_at", "fired_line", "escalated_at",
                 "worse_line", "answer", "answer_label", "answered_at", "closed_reason"}
 

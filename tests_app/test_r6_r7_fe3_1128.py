@@ -22,14 +22,16 @@ async def _worker_says_watched(client, sid, at):
     return (await monitoring_state.read_states(client, [sid], at, heartbeat=_fresh))[sid]
 
 
-async def test_r6_a_stop_on_a_real_position_is_told_once_and_reported_not_applicable(db, monkeypatch, caplog):  # noqa: F811
+async def test_r6_a_stop_on_a_real_position_is_judged_not_told_not_applicable(db, monkeypatch, caplog):  # noqa: F811
+    """Lane R1 (ADR-330 (73)) rewrites FE3 R6: the stop of a real position is watched like a paper one's; nothing is
+    told as "not applicable" (only an unreadable kind is) and the report never names it so."""
     market = Market()
     stored, _ids, keys = await _strategy(db)
     await held_entry_store.record(db, stored.id, OPEN_AT, None)  # ADR-292: held at the broker = a real position
     tid = await _exit_below(db, stored.id)
     market.tick(keys[0], "41.00")
     market.tick(keys[1], "12.50")
-    market.tick(INDEX, "22800.00")  # below the level: nothing fires, and it is said
+    market.tick(INDEX, "22800.00")
     client = _Client()
     monkeypatch.setattr(paper_monitor, "_bus_client", lambda: client)
     monitor = _monitor(db, market)
@@ -37,11 +39,11 @@ async def test_r6_a_stop_on_a_real_position_is_told_once_and_reported_not_applic
         await monitor.step()
         monitor.notify()
         await monitor.step()
+    assert monitor.not_applicable == {}
     told = [r for r in caplog.records if "not applicable" in r.getMessage() and f"trigger {tid} " in r.getMessage()]
-    assert len(told) == 1, "told once in the log per stop"
+    assert told == []
     got = await _worker_says_watched(client, stored.id, market.at)
-    print("READ", got)
-    assert (got.status, got.why) == (monitoring_state.PAUSED, monitoring_state.EXIT_NOT_APPLICABLE), got
+    assert got.why != monitoring_state.EXIT_NOT_APPLICABLE, got
 
 
 async def test_r7_no_list_known_and_the_book_unreadable_never_reads_watched(db, monkeypatch):  # noqa: F811

@@ -252,8 +252,9 @@ class PaperMonitor:
             armed = await self._paper_only(session, await triggers.armed(session))
             orders = await triggers.orders_of(session, sorted({a.trigger.strategy_id for a in armed}))
             open_ids = {sid: _open(o) for sid, o in orders.items()}
-            for sid, legs in (await self._real_legs(session, armed)).items():  # Lane R1: a real position has no paper book
-                open_ids[sid] = legs
+            for sid, legs in (await self._real_legs(session, armed)).items():  # Lane R1: no paper book
+                if not open_ids.get(sid):  # a held position's recorded paper legs win; a sent basket has none
+                    open_ids[sid] = legs
             ids = sorted({a.trigger.contract_id for a in armed if a.trigger.contract_id is not None}
                          | {c for a in armed if a.trigger.kind == "conditional_exit"
                             for c in open_ids[a.trigger.strategy_id]})
@@ -287,7 +288,7 @@ class PaperMonitor:
 
     async def _real_legs(self, session: Any, armed: Sequence[triggers.ArmedTrigger]) -> dict[int, list[int]]:
         """Lane R1: the contracts of each armed REAL strategy, from its stored plan "as last read" (Q4 interim), for the
-        index exits that watch its legs. A strategy whose plan cannot be read is left out (its leg stops still watch)."""
+        index exits that watch its legs. A plan that cannot be read leaves its strategy out (leg stops still watch)."""
         from ofo_app import strategy_store  # noqa: PLC0415 - late: the one stored-plan reader
         out: dict[int, list[int]] = {}
         for a in armed:
@@ -693,10 +694,9 @@ class PaperMonitor:
         ``stop_fired`` record. It writes no paper order and calls no broker endpoint: the position, its quantity and its
         P&L stay the broker's figure. The legs are the stored plan's, "as last read" (Q4 interim). The claim is the
         paper path's (``claim_fire``: once per trigger); a stop another process claimed first stores nothing."""
-        from ofo_app import real_action_store, strategy_store  # noqa: PLC0415 - late, like the kind reader
+        from ofo_app import real_action_store  # noqa: PLC0415 - late, like the kind reader
         a, t = w.armed, w.armed.trigger
-        saved = (await strategy_store.load(session, a.user_ref, t.strategy_id)).saved
-        legs = dict(zip(saved.contract_ids, saved.definition.legs, strict=True))
+        legs = await self._closing_legs(session, a)
         targets = [t.contract_id] if t.kind == "leg_stop" else sorted(legs)
         if t.kind == "leg_stop" and t.contract_id not in legs:
             return {"cancelled": set(await triggers.cancel(session, t.strategy_id, t.id)), "fired": set()}
@@ -711,8 +711,7 @@ class PaperMonitor:
             return {"fired": {t.id}, "cancelled": set()}  # already fired elsewhere: nothing stored, never watched again
         await real_action_store.record(
             session, user_ref=a.user_ref, strategy_id=t.strategy_id, action="stop_fired",
-            legs=[real_action_store.Leg(c, "SELL" if legs[c].action.value == "BUY" else "BUY", legs[c].quantity,
-                                        prices[c]) for c in targets],
+            legs=[real_action_store.Leg(c, legs[c][0], legs[c][1], prices[c]) for c in targets],
             stored_at=now, reason=str(reason), trigger_id=t.id)
         body = real_action_store.alert_body(reason, [(texts[c], prices[c]) for c in targets],
                                             names_contract=t.kind == "leg_stop")
@@ -721,6 +720,22 @@ class PaperMonitor:
             restore={"body": real_action_store.REAL_ALERT_BODY_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
+
+    @staticmethod
+    async def _closing_legs(session: Any, a: triggers.ArmedTrigger) -> dict[int, tuple[str, int]]:
+        """Lane R1: contract id -> (the closing side, the quantity in units) of a REAL position's open legs. A held
+        position's own recorded paper legs when it has any (ADR-292 (4): the user records each broker change); else the
+        stored plan's legs "as last read" (Q4 interim: the broker's own read is not reachable from this process)."""
+        from ofo_app import strategy_store  # noqa: PLC0415 - late: the one stored-plan reader
+        book = await paper_store.load(session, a.trigger.strategy_id)
+        if book:
+            net = {int(p.instrument_id): p.net_quantity
+                   for p in net_positions([o.order.as_paper() for o in book], {}).positions if p.net_quantity}
+            if net:
+                return {c: ("SELL" if q > 0 else "BUY", abs(q)) for c, q in net.items()}
+        saved = (await strategy_store.load(session, a.user_ref, a.trigger.strategy_id)).saved
+        return {c: ("SELL" if leg.action.value == "BUY" else "BUY", leg.quantity)
+                for c, leg in zip(saved.contract_ids, saved.definition.legs, strict=True)}
 
     @staticmethod
     async def _kind_in_fire(session: Any, strategy_id: int) -> str:

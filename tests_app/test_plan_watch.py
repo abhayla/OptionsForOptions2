@@ -376,7 +376,7 @@ def _armed_only(out: dict) -> list[dict]:
     return [x for x in out["lines"] if x["kind"] in ("index_exit", "leg_stop")]
 
 
-async def test_r6_a_held_real_position_reads_its_armed_lines_not_applicable_with_no_price(app_db_url, monkeypatch):  # noqa: F811
+async def test_r6_a_held_real_position_reads_its_armed_lines_live_like_paper(app_db_url, monkeypatch):  # noqa: F811
     """R6 (ADR-330 (64)): the armed rows stay stored, but a held (real) position never shows them as live: each reads
     ``not_applicable`` with the position-kind sentence, no price and no distance."""
     from ofo.marketdata.kite_provider import IST  # noqa: PLC0415
@@ -390,9 +390,8 @@ async def test_r6_a_held_real_position_reads_its_armed_lines_not_applicable_with
     assert status == OK, out
     armed = _armed_only(out)
     assert {x["kind"] for x in armed} == {"index_exit", "leg_stop"}
-    for x in armed:
-        assert (x["state"], x["now"], x["distance_rs"], x["distance_pct"], x["reason"]) == (
-            "not_applicable", None, None, None, REAL_LINE), x
+    for x in armed:  # Lane R1 (ADR-330 (73)): live lines now; only an unreadable kind reads not applicable
+        assert x["state"] != "not_applicable" and x["reason"] != REAL_LINE, x
 
 
 async def test_r6_an_unknown_kind_reads_its_armed_lines_not_applicable_with_the_unknown_sentence(app_db_url,  # noqa: F811

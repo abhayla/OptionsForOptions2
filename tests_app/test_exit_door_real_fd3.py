@@ -14,7 +14,9 @@ from test_paper_save_paths_fx2 import _count, db  # noqa: F401 - fixture
 from test_paper_triggers_routes import notified  # noqa: F401 - fixture
 from test_strategy_store import _client
 
-REAL_SENTENCE = "Real position: exit and protect it in Kite. Stops and alerts here cover paper trades only."
+# Lane R1 (ADR-330 (73)): the tracking exit and the paper store still take no PAPER order for a real position; the
+# sentence now says so and where the exit is stored (the order door stores it as a record: test_real_records_r1_1128)
+REAL_SENTENCE = "This is a real position, so no paper order is placed for it."
 
 
 async def _held_book(db):
@@ -89,11 +91,9 @@ async def test_item3_a_failing_kinds_read_propagates_and_is_never_no_kinds(db):
     assert await strategy_store.kinds_of(Broken(), []) == {}  # nothing asked, nothing read
 
 
-async def test_r6_an_old_armed_stop_on_a_real_position_reads_not_applicable_never_live(db, notified):
-    """Coordinator 09:12 / Opus review R6: the row stays stored (nothing is removed without the owner), but the list
-    never offers it as a live stop: state ``not_applicable`` with the position-kind sentence; paper is unchanged."""
-    from decimal import Decimal  # noqa: PLC0415
-
+async def test_r6_an_armed_stop_on_a_real_position_reads_armed_with_its_line_never_not_applicable(db, notified):
+    """Lane R1 (ADR-330 (73)) rewrites FD3 R6: the stop of a REAL position is judged and listed like a paper one's;
+    only an unreadable kind reads ``not_applicable``. Paper is unchanged."""
     from ofo_app import paper_trigger_store as triggers  # noqa: PLC0415
     from test_paper_triggers_routes import _open  # noqa: PLC0415
     app, stored, ids = await _open(db)
@@ -105,9 +105,9 @@ async def test_r6_an_old_armed_stop_on_a_real_position_reads_not_applicable_neve
     await held_entry_store.record(db, stored.id, datetime.datetime(2026, 11, 27, 10, 0, tzinfo=IST), "Zerodha")
     async with _client(app) as c:
         for path in (f"/paper/strategies/{stored.id}/triggers", f"/real/strategies/{stored.id}/triggers"):
-            rows = (await c.get(path)).json()["triggers"]
-            assert [(t["id"], t["state"]) for t in rows] == [(tid, "not_applicable")], path
-            assert rows[0]["not_applicable_text"] == REAL_SENTENCE
+            body = (await c.get(path)).json()
+            assert [(t["id"], t["state"], t["not_applicable_text"]) for t in body["triggers"]] == [(tid, "armed", None)]
+            assert body["position_kind"] == "real" and body["stored_not_sent"] is True
     assert [r.cancelled_at for r in await triggers.list_for(db, stored.id)] == [None]  # kept, not cancelled
 
 
@@ -170,15 +170,17 @@ async def test_n1_the_store_itself_refuses_an_open_on_a_real_position_and_the_ki
     assert await _kind(db, stored) == "real"  # never flipped to paper
 
 
-async def test_n1_an_order_post_on_a_sent_basket_is_a_409_with_the_real_sentence_and_nothing_stored(db):
+async def test_n1_an_order_post_on_a_sent_basket_is_stored_as_a_record_never_as_a_paper_order(db):
+    """Lane R1 (ADR-330 (73)) rewrites FD5 N1: the order door answers 201 with the stored record, no paper order is
+    written, and the kind stays real (the store itself still refuses a paper order: the test above)."""
     from test_paper_armed_exits import _order  # noqa: PLC0415
     from test_paper_routes import _new  # noqa: PLC0415
     app, stored, ids = await _sent_basket(db)
     async with _client(app) as c:
         reply = await c.post(f"/paper/strategies/{stored.id}/orders",
                              json={"orders": [_order(_new(ids[0], "SELL", 65, "39.15"))]})
-    assert reply.status_code == HTTPStatus.CONFLICT, reply.text[:200]
-    assert REAL_SENTENCE in reply.json()["what_happened"] + " " + reply.json()["impact"]
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert reply.json()["stored_not_sent"] is True and reply.json()["record"]["action"] == "open"
     assert await _count(db, stored.id) == 0
     assert await _kind(db, stored) == "real"
 

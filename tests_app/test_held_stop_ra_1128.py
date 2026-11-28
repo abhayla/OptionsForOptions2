@@ -29,7 +29,11 @@ CROSSED = "22800.00"  # below the exit level 22,850.00
 
 
 @pytest.mark.parametrize("at", [OPEN_AT, AFTER_CLOSE], ids=["market_open", "market_closed"])
-async def test_ra_f1_a_stop_armed_before_the_held_row_exists_never_fires(db, caplog, at):  # noqa: F811
+async def test_ra_f1_a_stop_armed_before_the_held_row_exists_fires_as_a_record_never_a_paper_order(db, caplog, at):  # noqa: F811
+    """Lane R1 (ADR-330 (73)) rewrites RA F1: the held position is REAL and its stop is judged like a paper one's: with
+    the market open it fires ONCE as a ``stop_fired`` record (no stop order, nothing sent); with the market closed it
+    stays armed and nothing is stored (the same market rule as paper)."""
+    from sqlalchemy import text  # noqa: PLC0415
     market = Market(at)
     stored, _ids, keys = await _strategy(db)  # paper orders, then the stop, THEN the held row
     tid = await _exit_below(db, stored.id)
@@ -37,20 +41,24 @@ async def test_ra_f1_a_stop_armed_before_the_held_row_exists_never_fires(db, cap
     await held_entry_store.record(db, stored.id, OPEN_AT, None)  # ADR-292: held at the broker = a real position
     market.tick(keys[0], "41.00")
     market.tick(keys[1], "12.50")
-    market.tick(INDEX, CROSSED)
+    market.tick(INDEX, "22900.00")  # above the level first: the monitor fires on a crossing, not on a state
     monitor = _monitor(db, market)
-    with caplog.at_level(logging.INFO, logger=paper_monitor.log.name):
-        fired = await monitor.step() + await monitor.step()
-        monitor.notify()  # a reload: the report must not repeat
-        market.tick(INDEX, "22790.00")
-        fired += await monitor.step()
-    print("FIRED", fired, "STOPS", await _stops(db, stored.id), "NOT APPLICABLE", dict(monitor.not_applicable))
-    assert fired == 0
-    assert await _stops(db, stored.id) == [], "no stop order for a held position"
-    assert await _trigger_state(db, tid) == (False, False), "left armed: neither fired nor cancelled"
-    told = [r for r in caplog.records if "not applicable" in r.getMessage()]
-    assert monitor.not_applicable == {tid: "real"}
-    assert len(told) == 1, "reported once"
+    fired = await monitor.step()
+    market.tick(INDEX, CROSSED)
+    fired += await monitor.step() + await monitor.step()
+    market.tick(INDEX, "22790.00")
+    fired += await monitor.step()
+    records = (await db.execute(text("SELECT action, trigger_id FROM public.real_action_records "
+                                     "WHERE strategy_id = :s"), {"s": stored.id})).all()
+    print("FIRED", fired, "STOPS", await _stops(db, stored.id), "RECORDS", records)
+    assert await _stops(db, stored.id) == [], "no stop order for a real position"
+    assert monitor.not_applicable == {}
+    if at == OPEN_AT:
+        assert fired == 1 and [tuple(r) for r in records] == [("stop_fired", tid)]
+        assert await _trigger_state(db, tid) == (True, False)  # fired
+    else:
+        assert fired == 0 and records == []
+        assert await _trigger_state(db, tid) == (False, False), "left armed: the market is closed"
 
 
 # ---- Coordinator item 7 (G1): the server kinds ``stop`` and ``settle`` at the store's door ----------------------
@@ -132,9 +140,9 @@ async def test_ra_t1_a_stop_the_fire_skips_because_the_kind_is_not_paper_now_is_
     market.tick(keys[1], "12.50")
     market.tick(INDEX, "22900.00")  # above the level first: the monitor fires on a crossing, not on a state
 
-    async def not_paper(_session, _sid):
-        return False
-    monkeypatch.setattr(paper_monitor.PaperMonitor, "_still_paper", staticmethod(not_paper))
+    async def not_known(_session, _sid):  # Lane R1: the fire's own read (``_kind_in_fire``) cannot tell the kind
+        return "unknown"
+    monkeypatch.setattr(paper_monitor.PaperMonitor, "_kind_in_fire", staticmethod(not_known))
     monitor = _monitor(db, market)
     with caplog.at_level(logging.WARNING, logger=paper_monitor.log.name):
         fired = await monitor.step()

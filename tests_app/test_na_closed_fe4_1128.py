@@ -40,22 +40,15 @@ async def _read(db, monkeypatch, at, *, real):  # noqa: F811
     return await _worker_says_watched(client, stored.id, at)
 
 
-async def test_n3_a_real_positions_old_stop_reads_not_applicable_after_the_close(db, monkeypatch):  # noqa: F811
-    got = await _read(db, monkeypatch, AFTER_CLOSE, real=True)
-    print("AFTER CLOSE", got)
-    assert (got.status, got.why) == (monitoring_state.PAUSED, monitoring_state.EXIT_NOT_APPLICABLE), got
+# Lane R1 (ADR-330 (73)) rewrites N3: a REAL position's stop is judged like a paper one's, so at every hour (open, after
+# the close, a weekend) the real trade reads exactly what the same paper trade reads, never "not applicable".
+import pytest  # noqa: E402
 
 
-async def test_n3_a_real_positions_old_stop_reads_not_applicable_on_a_weekend(db, monkeypatch):  # noqa: F811
-    got = await _read(db, monkeypatch, SATURDAY, real=True)
-    assert (got.status, got.why) == (monitoring_state.PAUSED, monitoring_state.EXIT_NOT_APPLICABLE), got
-
-
-async def test_n3_a_paper_trade_is_not_called_not_applicable_when_closed(db, monkeypatch):  # noqa: F811
-    got = await _read(db, monkeypatch, AFTER_CLOSE, real=False)
-    assert got.why != monitoring_state.EXIT_NOT_APPLICABLE, got
-
-
-async def test_n3_open_market_still_reads_not_applicable(db, monkeypatch):  # noqa: F811
-    got = await _read(db, monkeypatch, OPEN_AT, real=True)
-    assert (got.status, got.why) == (monitoring_state.PAUSED, monitoring_state.EXIT_NOT_APPLICABLE), got
+@pytest.mark.parametrize("at", [AFTER_CLOSE, SATURDAY, OPEN_AT], ids=["after_close", "weekend", "open"])
+async def test_n3_a_real_position_reads_what_the_same_paper_trade_reads_never_not_applicable(db, monkeypatch, at):  # noqa: F811
+    real = await _read(db, monkeypatch, at, real=True)
+    paper = await _read(db, monkeypatch, at, real=False)
+    print("REAL", real, "PAPER", paper)
+    assert real.why != monitoring_state.EXIT_NOT_APPLICABLE, real
+    assert (real.status, real.why) == (paper.status, paper.why), (real, paper)

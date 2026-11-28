@@ -27,7 +27,7 @@ from test_paper_monitor import (  # noqa: F401 - fixture
 CROSSED = "22800.00"  # below the exit level 22,850.00
 
 
-async def test_an_old_armed_stop_on_a_real_position_is_never_fired(db, caplog):  # noqa: F811
+async def test_a_stop_on_a_real_position_is_judged_never_a_paper_order_nor_not_applicable(db, caplog):  # noqa: F811
     market = Market()
     stored, _ids, keys = await _strategy(db)
     await held_entry_store.record(db, stored.id, OPEN_AT, None)  # ADR-292: held at the broker = a real position
@@ -42,12 +42,13 @@ async def test_an_old_armed_stop_on_a_real_position_is_never_fired(db, caplog): 
         market.tick(INDEX, "22790.00")
         fired += await monitor.step()
     print("FIRED", fired, "STOPS", await _stops(db, stored.id), "NOT APPLICABLE", dict(monitor.not_applicable))
-    assert fired == 0
-    assert await _trigger_state(db, tid) == (False, False), "left unfired, not cancelled"
+    # Lane R1 (ADR-330 (73)): judged like a paper one: it fires ONCE (an alert and a record), never a paper stop order,
+    # never told as not applicable
+    assert fired == 1
+    assert await _trigger_state(db, tid) == (True, False), "fired once"
     assert await _stops(db, stored.id) == [], "no stop order for a real position"
-    assert monitor.not_applicable == {tid: "real"}
-    told = [r for r in caplog.records if "not applicable" in r.getMessage()]
-    assert len(told) == 1, "reported once"
+    assert monitor.not_applicable == {}
+    assert [r for r in caplog.records if "not applicable" in r.getMessage()] == []
 
 
 async def test_a_paper_strategy_still_fires_and_is_not_reported_not_applicable(db):  # noqa: F811
