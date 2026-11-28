@@ -70,6 +70,29 @@ export function hasShape(data, keys = []) {
   return !!data && typeof data === 'object' && !Array.isArray(data) && keys.every((k) => k in data)
 }
 
+/** Lane FJ r3: ONE rule for slow honest answers. The page's own time limit must not be shorter than the server's budget for the route, or a slow answer is
+ *  shown as a failure (W-17 Alerts Active, W-13 History, W-02/03/31 the Positions plan-watch batch, W-03 the expiry list). Each entry: the route and the
+ *  server's own budget in ms; the read's limit is twice that, at least SLOW_READ_MIN_LIMIT_MS. A caller's own `timeout` always wins; an unlisted route keeps
+ *  the shared 10 s. Past the limit it is a real failure: the failure sentence. */
+export const SLOW_READ_MIN_LIMIT_MS = 30000
+export const SLOW_READ_BUDGETS_MS = [
+  [/^\/alerts\/(active|answered)(\?|$)/, 12000],
+  [/^\/paper\/alerts\/records(\?|$)/, 12000],
+  [/^\/plan-watch\?/, 15000], // the batch route budget (round 2 build)
+  [/^\/catalogue\/[^/?]+\/expiries(\?|$)/, 12000],
+]
+export function readLimitFor(url) {
+  const hit = SLOW_READ_BUDGETS_MS.find(([re]) => re.test(String(url ?? '')))
+  if (!hit) return undefined
+  const twice = hit[1] * 2
+  return twice > SLOW_READ_MIN_LIMIT_MS ? twice : SLOW_READ_MIN_LIMIT_MS
+}
+api.interceptors.request.use((config) => {
+  const limit = String(config.method ?? 'get').toLowerCase() === 'get' ? readLimitFor(config.url) : undefined
+  if (limit !== undefined && config.timeout === api.defaults.timeout) config.timeout = limit
+  return config
+})
+
 api.interceptors.response.use(
   (response) => (unreadableBody(response) ? Promise.reject({ message: NEUTRAL_ERROR, status: response.status, unreadable: true }) : response),
   // REQ-119 AC-3: a request the page itself cancelled (newer request of its kind) is 'superseded' - no message, no status.

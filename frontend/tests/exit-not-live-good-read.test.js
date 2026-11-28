@@ -192,19 +192,11 @@ const dlg = (w) => w.findComponent(PaperConfirmDialog)
 const listRead = async (list) => { answers['GET /tracking'] = ok(list); await vi.advanceTimersByTimeAsync(TRACKING_REFRESH_MS); await flushPromises() }
 
 describe('Positions: the Exit dialog on a GOOD list read whose legs are not live', () => {
-  it('good read not live: dialog open, blocked, the sentence names the legs, Confirm off, nothing posted', async () => {
-    const w = await positions(LIST_DOWN)
-    expect(dlg(w).props('open')).toBe(true)
+  // Lane FJ r3 (28 Nov, PC O-A-12): a greyed Exit opens no dialog, link included (exit-greyed-no-dialog-r3-fj.test.js); the dialog is blocked only when it was open and a read turned not live
+  it('opened while live, then not live, then live again: blocked, then unblocked, the sentence gone', async () => {
+    const w = await positions(LIST_LIVE)
+    await listRead(LIST_DOWN)
     expect(dlg(w).props('blocked')).toBe(true)
-    const err = dlg(w).props('error')
-    expect(err.startsWith('No price for ')).toBe(true) // Lane FJ r3 (TD O-3)
-    for (const o of dlg(w).props('orders')) expect(err).toContain(o.text) // every ticked leg is named
-    expect(w.text() + document.body.textContent).toContain(err)
-    expect(calls.filter((c) => c.method === 'POST')).toHaveLength(0)
-  })
-
-  it('the next good read with prices live: blocked off, sentence gone', async () => {
-    const w = await positions(LIST_DOWN)
     await listRead(LIST_LIVE)
     expect(dlg(w).props('open')).toBe(true)
     expect(dlg(w).props('blocked')).toBe(false)
@@ -221,15 +213,18 @@ describe('Positions: the Exit dialog on a GOOD list read whose legs are not live
     expect(dlg(w).props('error')).toMatch(/^No price for /)
   })
 
-  it('a leg\'s price_state missing (unknown): fail closed', async () => {
+  it('a leg\'s price_state missing (unknown): fail closed, no dialog from the link; opened live then unknown it is blocked', async () => {
     const w = await positions(LIST_NO_FIELD)
-    expect(dlg(w).props('open')).toBe(true)
-    expect(dlg(w).props('blocked')).toBe(true)
-    expect(dlg(w).props('error')).toMatch(/^No price for /)
+    expect(dlg(w).props('open')).toBe(false)
+    const v = await positions(LIST_LIVE)
+    await listRead(LIST_NO_FIELD)
+    expect(dlg(v).props('blocked')).toBe(true)
+    expect(dlg(v).props('error')).toMatch(/^No price for /)
   })
 
   it('doExit called directly (not via the button) while a ticked leg is not live on a GOOD read: no POST, the not-live sentence stays', async () => {
-    const w = await positions(LIST_DOWN)
+    const w = await positions(LIST_LIVE)
+    await listRead(LIST_DOWN)
     expect(dlg(w).props('open')).toBe(true)
     await w.vm.$.setupState.doExit(dlg(w).props('orders'))
     await flushPromises()

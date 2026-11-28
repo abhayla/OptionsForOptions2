@@ -40,7 +40,7 @@ describe('I-76 Alerts > Active while the read is pending', () => {
       if (ms) await vi.advanceTimersByTimeAsync(ms)
       expect(w.find('[data-testid="alerts-empty"]').exists()).toBe(false)
       expect(w.text()).not.toContain(PAPER_ALERTS_EMPTY)
-      expect(w.get('[data-testid="alerts-loading"]').text()).toBe('Loading...')
+      expect(w.get('[data-testid="alerts-loading"]').text().startsWith('Loading...')).toBe(true) // FJ r3: after 4 s a second plain line (STILL_LOADING_TEXT) may follow
     }
     await vi.advanceTimersByTimeAsync(200)
     await flushPromises()

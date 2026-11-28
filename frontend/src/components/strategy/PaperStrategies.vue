@@ -324,18 +324,32 @@ const goodReadToken = shallowRef(null)
 const planViews = shallowRef(new Map())
 const planIds = computed(() => shown.value.filter((g) => g.openCount).map((g) => g.id).sort((a, b) => a - b))
 const batchKeys = []
+// Lane FJ r3 (PC W-03): a row the batch answers "not_read" is no answer yet: it shows "Updating the numbers..." (view.retrying) and is asked again in the next
+// batch through the same page-wide queue, alone, at most NOT_READ_RE_ASKS times per good read; after that the plain not-read line shows. The other rows are untouched.
+const NOT_READ_RE_ASKS = 3
+const reAsks = new Map() // id -> re-asks made since the last good read
 function readPlanBatches() {
+  reAsks.clear()
   while (batchKeys.length) cancelPlanWatchRead(batchKeys.pop())
-  const ids = planIds.value
+  askBatches(planIds.value, 'positions-batch')
+}
+const retryRounds = []
+function askBatches(ids, name) {
   for (let i = 0; i < ids.length; i += PLAN_WATCH_BATCH_MAX_ROWS) {
     const chunk = ids.slice(i, i + PLAN_WATCH_BATCH_MAX_ROWS)
-    const key = `positions-batch-${i}`
+    const key = `${name}-${i}`
     batchKeys.push(key)
     submitPlanWatchRead(key, 'compact', async () => {
       const got = await readPlanWatchBatch(chunk)
       const next = new Map(planViews.value)
-      for (const [id, v] of got) if (v.state !== 'superseded') next.set(id, v)
+      const again = []
+      for (const [id, v] of got) {
+        if (v.state === 'superseded') continue
+        const made = reAsks.get(id) ?? []
+        if (v.state === 'not_read' && made.length < NOT_READ_RE_ASKS) { reAsks.set(id, [...made, 'ask']); again.push(id); next.set(id, { ...v, retrying: true }) } else next.set(id, v)
+      }
       planViews.value = next
+      if (again.length) askBatches(again.sort((a, b) => a - b), `positions-retry-${retryRounds.push('r')}`)
     })
   }
 }
@@ -437,6 +451,7 @@ function openExitFromLink(id) {
     const rows = g ? g.positions.filter(canExit) : []
     if (!rows.length) exitRec.note(id, EXIT_NOTE)
     else if (exitGate.blocked.value) exitRec.note(id, exitGate.reason.value ?? EXIT_NOTE)
+    else if (noPriceIdsOf(g, rows.map((p) => p.contractId))) exitRec.note(id, exitEndText('no_price', namesOfIds(g, noPriceIdsOf(g, rows.map((p) => p.contractId))))) // O-A-12: the Exit button is greyed for these legs, so the link opens no dialog either
     else ask(g, rows)
   } catch {
     exitRec.note(id, EXIT_NOTE)
@@ -554,6 +569,8 @@ function cancelExit() {
 }
 
 function ask(g, rows) {
+  // O-A-12: the same rule as the greyed button, for any caller (a click that ignores `disabled`, a key, a link): a blocked Exit opens no dialog
+  if (exitGate.blocked.value || noPriceIdsOf(g, rows.map((p) => p.contractId))) return
   adoptLock(g.id, readSeq + 1) // a lock of another tab or an earlier page instance comes back before anything is offered
   const orders = exitRowsFor(rows)
   const names = rows.map((p) => p.name)

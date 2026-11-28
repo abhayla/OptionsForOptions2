@@ -39,7 +39,7 @@
       <AdjustPlanSheet :open="sheetOpen" :strategy-id="strategyId" :edit="!!read.plan" @close="sheetOpen = false" @saved="(next) => { read = next }" />
     </div>
     <!-- GC-ICLIVE D-24: the armed (or fired) index conditional exits, the server's level text; a failed read says so, never "none set" -->
-    <p v-for="x in exitsView.rows" :key="x.id" class="mt-1" :data-testid="`plan-entry-exit-${x.id}`">{{ exitLineText(x.direction, x.level_text, x.state) }}</p>
+    <p v-for="x in exitsView.rows" :key="x.id" class="mt-1" :data-testid="`plan-entry-exit-${x.id}`">{{ isNotApplicable(x) ? NOT_APPLICABLE_REAL_TEXT : exitLineText(x.direction, x.level_text, x.state) }}</p>
     <p v-if="exitsView.kind === 'failed'" class="mt-1 text-xs text-red-700" data-testid="plan-entry-exits-failed">{{ EXITS_LOAD_FAILED_TEXT }}</p>
     <!-- I-24 (Lane FC): a real-mode trade has no exits read yet: said plainly, never "none" -->
     <p v-if="exitsView.kind === 'real_unreadable'" class="mt-1 text-xs text-ink-muted" data-testid="plan-entry-exits-real-unreadable">{{ EXITS_REAL_UNREADABLE_TEXT }}</p>
@@ -54,7 +54,7 @@ import { getActivePinia } from 'pinia'
 import { useBuilderHold } from '@/stores/builderHold'
 import api from '@/services/api'
 import { fetchPlan } from '@/lib/adjustPlan'
-import { EXITS_REAL_UNREADABLE_TEXT, exitsViewOf } from '@/lib/paperTriggers'
+import { EXITS_REAL_UNREADABLE_TEXT, NOT_APPLICABLE_REAL_TEXT, exitsViewOf, isNotApplicable } from '@/lib/paperTriggers'
 import { saveStamp, savedSince } from '@/lib/planSaveClock'
 import { checkStaleLine, EXITS_LOAD_FAILED_TEXT, exitLineText, LIMITS_LOADING_TEXT, LIMITS_LOAD_FAILED_TEXT, LIMITS_NONE_TEXT, PLAN_LOADING_TEXT, PLAN_LOAD_FAILED_TEXT } from '@/lib/sharedStateText'
 
