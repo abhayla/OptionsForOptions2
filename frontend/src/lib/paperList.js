@@ -82,6 +82,8 @@ function readClosed(c, underlying) {
     exitText: text(c.average_exit_text),
     reasonText: text(c.reason_text), // N-47: the server's settlement / stop sentence, as the builder's closed rows print it
     booked: text(c.booked_text),
+    // I-91 (F3): the server's own Unbooked / P&L of a closed leg and its reason, when it sends them; never formed here (ADR-008)
+    unbooked: text(c.unbooked_text), pnl: text(c.pnl_text), pnlReason: text(c.pnl_reason_text),
   }
 }
 
