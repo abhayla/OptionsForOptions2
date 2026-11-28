@@ -4,7 +4,7 @@
      strip shows in every state. Zerodha is a quiet line only: no connect control anywhere on this page (AC-5). No money. -->
 <script setup>
 import { builderLinkOf } from '@/lib/strategyLinks'
-import { computed, onMounted, ref } from 'vue'
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue'
 import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import api, { NEUTRAL_PARTS } from '@/services/api'
 import IndexStrip from '@/components/layout/IndexStrip.vue'
@@ -46,8 +46,9 @@ const recent = computed(() =>
 // same GET /strategies this page reads; unread = the alert count route the bell reads (D-29); P&L = the Positions total (lib/paperPnl).
 // A failed read of one figure says so in that figure only; the browser forms no money and counts only rows (no arithmetic).
 const pnl = usePaperPnl()
+const rereadFailed = ref(false) // I-66 (F3): a background re-read of the list failed: the count is not current, so it shows a dash, never the old number
 const runningCell = computed(() => {
-  if (errorParts.value) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
+  if (errorParts.value || rereadFailed.value) return { text: PAPER_NO_FIGURE, note: FIGURE_READ_FAILED_TEXT }
   if (strategies.value === null) return { text: PAPER_NO_FIGURE, note: null }
   return { text: String(strategies.value.filter(isRunning).length), note: null }
 })
@@ -59,7 +60,7 @@ const unreadCell = computed(() => {
 const pnlCell = computed(() => {
   const c = pnl.totalCell.value
   if (c.kind === 'loading') return { text: PAPER_NO_FIGURE, note: null }
-  return { text: c.text, suffix: c.label, note: c.note, leftOut: c.leftOut ?? null, closedNote: c.closedNote ?? null } // c.label is the charges suffix, never the figure's name
+  return { text: c.text, suffix: c.label, note: c.note, leftOut: c.leftOut ?? null, closedNote: c.closedNote ?? null, storedAsOf: c.storedAsOf ?? null } // c.label is the charges suffix, never the figure's name
 })
 const figures = computed(() => [
   { id: 'running', label: HOME_RUNNING_LABEL, ...runningCell.value },
@@ -76,7 +77,30 @@ async function loadHome() {
     errorParts.value = e?.parts ?? NEUTRAL_PARTS
   }
 }
-onMounted(() => { readActive().then(takeActive, dropActive); loadHome() })
+// I-66 (F3, Lane W2 D-W2-2): the running count is re-read every REREAD_MS and when the page is focused again (the Positions rhythm), so it
+// never keeps a number the data has moved past; a failed re-read says so on that card only.
+const REREAD_MS = 30_000
+let rereadTimer = null
+let seq = 0
+async function reread() {
+  const mine = ++seq
+  try {
+    const list = noteShownDate((await api.get('/strategies')).data)?.strategies
+    if (!Array.isArray(list)) throw new Error('unreadable answer')
+    if (mine !== seq) return
+    strategies.value = list
+    rereadFailed.value = false
+  } catch {
+    if (mine === seq) rereadFailed.value = true
+  }
+}
+const onBack = () => { if (typeof document === 'undefined' || document.visibilityState !== 'hidden') reread() }
+onMounted(() => {
+  readActive().then(takeActive, dropActive); loadHome()
+  rereadTimer = setInterval(reread, REREAD_MS)
+  window.addEventListener('focus', onBack)
+})
+onBeforeUnmount(() => { clearInterval(rereadTimer); window.removeEventListener('focus', onBack); seq++ })
 </script>
 
 <template>
@@ -90,6 +114,7 @@ onMounted(() => { readActive().then(takeActive, dropActive); loadHome() })
         <dd class="text-lg font-semibold tabular-nums" :data-testid="`home-${f.id}-figure`">{{ f.text }}</dd>
         <p v-if="f.note" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-note`">{{ f.note }}</p>
         <p v-if="f.closedNote" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-closed`">{{ f.closedNote }}</p>
+        <p v-if="f.storedAsOf" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-as-of`">{{ f.storedAsOf }}</p>
         <p v-if="f.leftOut" class="text-xs text-ink-muted" :data-testid="`home-${f.id}-left-out`">{{ f.leftOut }}</p>
       </div>
     </dl>

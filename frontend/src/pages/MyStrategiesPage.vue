@@ -55,6 +55,7 @@ const closedText = (s) => {
 const route = useRoute()
 const router = useRouter()
 const completedOnly = computed(() => route.meta.completedOnly === true)
+const hasCompleted = computed(() => rows.value.some(isCompleted))
 const rows = ref([])
 const loaded = ref(false)
 const busy = ref(false)
@@ -78,6 +79,9 @@ let readNo = 0
 // so instead of "No saved strategy matches ..." or "No strategy ..." (new sentence, pending owner read)
 const refreshing = ref(false)
 const LOADING_LIST_TEXT = 'Loading your strategies...'
+// FJ2-9 (T2-17; ADR-259: a completed strategy leaves this list and is listed on Strategies > Completed Strategies): when the only trades are completed ones, this page says where they are (new sentence, pending owner read)
+const COMPLETED_ELSEWHERE_TEXT = 'No open strategies. Your completed strategies are listed under Strategies > Completed Strategies.'
+const emptyText = computed(() => (completedOnly.value ? 'No strategy is completed yet.' : rows.value.some(isCompleted) ? COMPLETED_ELSEWHERE_TEXT : 'You have no saved strategies yet. Save a draft from the Strategy Builder and it will appear here.'))
 async function loadList() {
   const mine = ++readNo
   refreshing.value = true
@@ -185,7 +189,7 @@ async function confirmRename(row) {
     <p v-else-if="refreshing && !shown.length" class="text-sm text-ink-muted" role="status" data-testid="list-refreshing">{{ LOADING_LIST_TEXT }}</p>
     <EmptyState
       v-else-if="!shown.length" data-testid="list-empty"
-      :message="completedOnly ? 'No strategy is completed yet.' : 'You have no saved strategies yet. Save a draft from the Strategy Builder and it will appear here.'"
+      :message="emptyText"
     />
     <template v-else>
       <div v-if="visible.length" class="mb-2 flex flex-wrap items-center gap-3 text-[13px]" data-testid="bulk-bar">
@@ -266,5 +270,9 @@ async function confirmRename(row) {
       <button type="button" class="link" data-testid="result-dismiss" @click="deleteFlow.dismissUndo()">Dismiss</button>
     </p>
     <DraftDeleteStatus :flow="deleteFlow" />
+    <!-- I-203 (F3, ADR-259): a closed trade leaves this list by design; say where it went (new sentence, pending owner read) -->
+    <p v-if="loaded && !loadFailed && !errorParts && !completedOnly && hasCompleted" class="mt-3 text-xs text-ink-muted" data-testid="completed-pointer">
+      Completed strategies are listed under Strategies &gt; Completed Strategies.
+    </p>
   </section>
 </template>

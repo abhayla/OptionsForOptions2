@@ -9,6 +9,7 @@
      New file, copy from: none. -->
 <script setup>
 import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
+import LoadFailed from '@/components/common/LoadFailed.vue'
 import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import { useRoute } from 'vue-router'
 import api, { NEUTRAL_PARTS, hasShape } from '@/services/api'
@@ -69,16 +70,25 @@ const realState = computed(() => {
 // fd2: no Zerodha session is a 200 with broker_connected:false (real_pnl.state "not_connected" and its reason); only exactly false counts, so an old reply is unchanged
 const brokerOff = computed(() => result.value?.broker_connected === false)
 const NOT_CONNECTED_LINE = 'No broker is connected, so no real positions are shown.' // new wording, pending owner read (28 Nov 2026): used only when the server sent no reason
-const brokerOffLine = computed(() => { const r = result.value?.real_pnl?.reason; return typeof r === 'string' && r.trim() !== '' ? r : NOT_CONNECTED_LINE })
+// FJ2-3 (TG D-TG-3): a server string that is a JSON object or list (a stringified 409 body in a reason / caption field) is never printed: it is dropped, and the plain sentence below stands in.
+const plain = (t) => (typeof t === 'string' && t.trim() !== '' && !/^[\s]*[{[]/.test(t) ? t : null)
+const brokerOffLine = computed(() => plain(result.value?.real_pnl?.reason) ?? NOT_CONNECTED_LINE)
+// I-207 (F3, TG D-TG-3): a refused read while the connection read says not connected is ONE plain sentence: the server's own sentence when it
+// reads as a sentence (never JSON or a class code), else the not-connected line. Printed once, in the Real block; the totals card says only the dash.
+const looksRaw = (t) => plain(t) === null || /error_class|[A-Z]+_[A-Z]+/.test(t)
+const refusedLine = computed(() => { const w = errorParts.value?.what_happened; return errorParts.value === NEUTRAL_PARTS || looksRaw(w) ? NOT_CONNECTED_LINE : w.trim() })
 // ADR-330 (10), (24): the Real P&L total is the server's real_pnl, every string printed as sent (no arithmetic here). A refused read
 // shows its own message as the reason; only a reply with no real_pnl key keeps the legacy "not shown yet" line.
 const realTotals = computed(() => {
   if (figureOld.value && !errorParts.value) return { text: null, reason: OLD_FIGURE_TEXT, caption: null, note: null }
-  if (errorParts.value) return { text: null, reason: errorParts.value.what_happened ?? null, caption: null, note: null }
+  // FJ2-3 + I-207: with no broker session the block below says it once (one sentence + Retry): the card keeps its dash and does not repeat it
+  if (errorParts.value) return { text: null, reason: notConnected.value ? null : (looksRaw(errorParts.value.what_happened) ? null : errorParts.value.what_happened), caption: null, note: null }
+  // I-113 (F3, TC walk AF-07 / D-13): a read that says no broker is connected never prints a figure, even if the reply still carries one
+  if (brokerOff.value) return { text: null, reason: plain(result.value?.real_pnl?.reason), caption: null, note: null } // the server's own clean reason beside the dash; a JSON-looking one is dropped (the block says the plain sentence once)
   const r = result.value?.real_pnl
   if (result.value && !r) return { text: typeof result.value.pnl_text === 'string' ? result.value.pnl_text : null, legacy: true }
   if (!r) return null
-  return { text: r.state === 'stated' ? r.pnl_text : null, reason: r.reason, caption: r.caption, note: r.excludes_note }
+  return { text: r.state === 'stated' ? r.pnl_text : null, reason: plain(r.reason), caption: plain(r.caption), note: plain(r.excludes_note) }
 })
 // ADR-330 (56): the page's one price notice reads the index answer (market closed: the banner with the close time; feed down: the not-live line)
 const marketAnswer = ref(null)
@@ -150,6 +160,7 @@ onBeforeUnmount(() => {
     </div>
     <div v-if="filter !== 'paper'" :data-state="realState" data-testid="real-state">
     <p v-if="loading" class="text-sm text-ink-muted" data-testid="positions-loading">Reading your positions from Zerodha.</p>
+    <div v-else-if="errorParts && notConnected" data-testid="positions-not-connected"><LoadFailed :text="refusedLine" prefix="positions-error" @retry="loadReal" /></div>
     <ListLoadFailed v-else-if="errorParts" :parts="errorParts" compact prefix="positions-error" @retry="loadReal" />
     <p v-else-if="brokerOff" class="text-sm text-ink-muted" data-testid="positions-not-connected">{{ brokerOffLine }}</p>
     <div v-else-if="result" class="grid gap-4 text-sm">

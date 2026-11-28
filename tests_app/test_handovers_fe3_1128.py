@@ -21,8 +21,9 @@ AT = datetime.datetime(2026, 11, 28, 11, 0, tzinfo=datetime.timezone(datetime.ti
 
 def test_the_closed_market_entries_sentences_read_as_fd4_pins_them():
     assert str(render_explanation("exit_market_closed_entries", day=datetime.date(2026, 11, 30))) == \
-        "Orders can be placed from 09:15 on Monday 30 Nov."
-    assert str(render_explanation("exit_market_closed_entries_no_day")) == "Orders can be placed when it opens."
+        "The market is closed. Orders can be placed from 09:15 on Monday 30 Nov."
+    assert str(render_explanation("exit_market_closed_entries_no_day")) == (
+        "The market is closed. Orders can be placed when it opens.")
 
 
 def test_every_why_code_has_its_own_sentence():

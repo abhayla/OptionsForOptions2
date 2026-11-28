@@ -15153,6 +15153,27 @@
           "name": {
             "title": "Name"
           },
+          "position_kind": {
+            "anyOf": [
+              {
+                "pattern": "^[A-Za-z0-9_\\-.]{1,64}$",
+                "type": "string"
+              },
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind"
+          },
+          "position_kind_text": {
+            "anyOf": [
+              {},
+              {
+                "type": "null"
+              }
+            ],
+            "title": "Position Kind Text"
+          },
           "revision": {
             "title": "Revision",
             "type": "integer"

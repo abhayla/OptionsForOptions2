@@ -13,7 +13,7 @@
     <p v-for="l in noteLines" :key="l.key" class="mt-2 text-xs text-ink-muted" data-testid="paper-exit-link-note">{{ l.text }}</p>
     <p v-if="loading" class="mt-2" data-testid="paper-loading">Reading your paper strategies.</p>
     <!-- D-05 r3: a failed refresh is a banner above the last loaded list, whose figures are paused (full-page error only when nothing ever loaded), so an open Stops panel and what was typed in it stay -->
-    <ErrorMessage v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" />
+    <ListLoadFailed v-if="!loading && errorParts" class="mt-2" :parts="errorParts" compact prefix="paper-error" @retry="onRetry" />
     <p v-if="pageLine" class="mt-2 text-sm text-ink-muted" role="status" data-testid="paper-paused-notice">{{ pageLine }}</p>
     <div v-if="realStops && !exitOnlyFor" class="mt-3 rounded-lg border border-line p-3" data-testid="real-stops-panel" :data-strategy="realStops.id">
       <p class="font-semibold" data-testid="real-stops-title"><span class="mr-1 rounded bg-surface-muted px-1 text-xs font-semibold" data-testid="paper-real-tag">REAL</span>Stops, strategy {{ realStops.id }}</p>
@@ -44,6 +44,7 @@
       <!-- ADR-330 (15): the server's line under the Paper total ("Includes N closed strategies"), printed as sent, only when served -->
       <p v-if="totals && !compact && !headlineAbove && totals.closedNote" class="mt-1 text-xs text-ink-muted" data-testid="totals-closed-note">{{ totals.closedNote }}</p>
       <p v-if="totals && !compact && totals.leftOut" class="mt-1 text-xs text-ink-muted" data-testid="totals-left-out">{{ totals.leftOut }}</p>
+      <p v-if="totals && !compact && !headlineAbove && totals.storedAsOf && !stale" class="mt-1 text-xs text-ink-muted" data-testid="totals-as-of">{{ totals.storedAsOf }}</p>
       <label class="mt-2 flex items-center gap-2"><input v-model="showClosed" type="checkbox" data-testid="show-closed" /> {{ SHOW_CLOSED_LABEL }}</label>
       <p v-if="!shown.length" class="mt-2" data-testid="paper-all-closed">{{ ALL_CLOSED_TEXT }}</p>
       <!-- GC-UI 6b D-C14 (ADR-201 (2); S-118): the builder's Paper tab is a compact list - name, positions count, the server's paper total
@@ -136,7 +137,7 @@
                     <td data-testid="paper-instrument"><span v-if="p.side" class="mr-1 rounded bg-surface-muted px-1 font-semibold">{{ p.side }}</span> <span>{{ p.name }}</span></td>
                     <td data-testid="paper-qty">{{ p.qtyText }}<span v-if="p.qtyNote" class="block text-xs text-ink-muted" data-testid="paper-qty-note">{{ p.qtyNote }}</span></td>
                     <td data-testid="paper-avg">{{ pnlText(p.averageText) }}</td>
-                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpText !== null" class="block text-xs text-ink-muted" data-testid="paper-ltp-at">{{ istClock(p.priceAt) ?? QUOTE_TIME_UNAVAILABLE_TEXT }}</span><span v-if="!stale && p.ltpReason && p.ltpText === null && !quiet(p.ltpReason)" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
+                    <td data-testid="paper-ltp">{{ pnlText(p.ltpText) }}<span v-if="p.ltpText !== null" class="block text-xs text-ink-muted" data-testid="paper-ltp-at">{{ istStamp(p.priceAt) ?? QUOTE_TIME_UNAVAILABLE_TEXT }}</span><span v-if="!stale && p.ltpReason && p.ltpText === null && !quiet(p.ltpReason)" class="block text-xs text-ink-muted" data-testid="paper-ltp-reason">{{ p.ltpReason }}</span></td>
                     <td data-testid="paper-leg-booked">{{ pnlText(p.booked) }}</td>
                     <td data-testid="paper-leg-unbooked" :class="toneOf(p.unbooked)">{{ stale ? pnlText(null) : p.noPrice ?? pnlText(p.unbooked) }}</td>
                     <td data-testid="paper-leg-pnl" :class="toneOf(p.total)">{{ pnlText(p.total) }}</td>
@@ -182,11 +183,11 @@
 <script setup>
 import { NAME_FLOOR_CLASS } from '@/lib/nameFloor'
 import { fetchSavedDraft, strategyListLabel } from '@/lib/saveDraft'
-import { istClock } from '@/lib/displayFormat'
+import { istClock, istStamp } from '@/lib/displayFormat'
 import { QUOTE_TIME_UNAVAILABLE_TEXT } from '@/lib/sharedStateText'
 import { computed, onBeforeUnmount, onMounted, ref, shallowRef, watch } from 'vue'
 import api, { NEUTRAL_ERROR, NEUTRAL_PARTS } from '@/services/api'
-import ErrorMessage from '@/components/common/ErrorMessage.vue'
+import ListLoadFailed from '@/components/common/ListLoadFailed.vue'
 import PaperStops from '@/components/strategy/PaperStops.vue'
 import PlanWatch from '@/components/strategy/PlanWatch.vue'
 import MonitoringBadge from '@/components/common/MonitoringBadge.vue'
@@ -208,7 +209,7 @@ import { usePaperRefresh } from '@/lib/usePaperRefresh'
 import { EXITED_NOW_LABEL, HELD_TO_EXPIRY_LABEL } from '@/lib/paperDrafts'
 import { KIND_UNREAD_LINE, REAL_ROW_TEXT, isActionableKind, recordLineOf } from '@/lib/positionKind'
 import { PAPER_STATE, addToPaper, paperPostOutcome } from '@/lib/tracking'
-import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock } from '@/lib/unknownLocks'
+import { sameLock, adoptedExitLock, bookOfPositions, decideLock, dropExitLock, dropOrderKey, exitLockFor, exitLockIds, exitUnitsOf, expectedKeyOf, onExitLocksChanged, orderKeyFor, saveExitLock, sentNow } from '@/lib/unknownLocks'
 import { useRouter } from 'vue-router'
 import { signOf } from '@/lib/chartCard'
 
@@ -346,6 +347,7 @@ const pausedNow = computed(() => pausedText(lastGoodAt.value))
 const summary = computed(() => ({
   totalAfter: totals.value ? (quiet(totals.value.totalAfter.reason) ? { ...totals.value.totalAfter, reason: null } : totals.value.totalAfter) : null, // UX-A09: the page notice says it once
   closedNote: totals.value ? totals.value.closedNote : null,
+  storedAsOf: totals.value ? totals.value.storedAsOf ?? null : null, // F3 MUST: the oldest stored-close time, with its date, for the totals strip
   stale: stale.value || (!loading.value && !!errorParts.value), // a failed FIRST read (no list held) is paused too, with the same reason as the list (ADR-330 (10))
   pausedLine: pausedNow.value, // FJ2-1: the paused sentence with the time of the last good prices, for the totals strip
   loaded: !loading.value && items.value !== null,
@@ -437,7 +439,7 @@ function show({ data, token }) {
     if (dialogState.value === PAPER_STATE.REFUSED) dialogState.value = PAPER_STATE.READY // a good read unlocks a refused, unchanged Confirm; the server's text stays
     lastGoodAt.value = typeof data?.answered_at === 'string' ? data.answered_at : null // UX-A01: the time of the prices the page still shows
     goodReadToken.value = token // the token travels with the answer from the read that made it
-    settle(items.value, token?.seq ?? 0, token?.sentAt ?? Date.now())
+    settle(items.value, token?.seq ?? 0, token?.sentAt ?? NaN) // Opus round 2 (R2-6, Lane F3): no send time = no decision (decideLock keeps the lock), never the answer's time
     const act = () => { openExitFromLink(exitId); if (!hadExit && !props.exitOnlyFor) openStopsFromLink() }
     if (read.groups.some((g) => g.readable && g.positionKind === null) || exitId !== null || router?.currentRoute.value.query.strategy !== undefined) readKinds().then(act, act) // the exit link of a real position names no paper group: its kind comes from the same read
     else act()
@@ -528,16 +530,18 @@ function fail(e) {
 
 const { refresh, refreshNow } = usePaperRefresh({
   key: () => 'list',
-  read: async () => { const token = { seq: ++readSeq, sentAt: Date.now() }; return { data: (await api.get('/paper/strategies')).data, token } },
+  read: async () => { const token = { seq: ++readSeq, sentAt: sentNow() }; return { data: (await api.get('/paper/strategies')).data, token } },
   onData: show,
   onError: fail,
 })
 onMounted(refresh)
 // N-21: a Save / Cancel / fired stop in the Stops panel: read the list now, not at the next tick (no new timer)
+// FJ2-9 (T3-10): the one failed-load rule: a Retry under the failed read (the list, if one is held, stays under the banner)
+function onRetry() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 function onStopsChanged() { try { refreshNow() } catch { /* the list says its own read failed */ } }
 
 // a read that changes the open contracts of the group being exited ends the exit's open question
-function settle(now, seq = 0, sentAt = Date.now()) {
+function settle(now, seq = 0, sentAt = NaN) {
   adoptLocks(now, seq)
   decideUnresolved(now, seq, sentAt)
   const c = confirm.value
@@ -550,7 +554,7 @@ function settle(now, seq = 0, sentAt = Date.now()) {
 }
 // a good read that started after the unknown reply decides it: stored (every exited leg reduced), unchanged, or something else.
 // A "not stored" is only the page's guess: a later good read showing the legs reduced replaces it with placed (the server is the authority).
-function decideUnresolved(now, seq, sentAt = Date.now()) {
+function decideUnresolved(now, seq, sentAt = NaN) {
   for (const r of Object.values(exitRec.recs)) {
     if ((r.state !== 'unknown' && r.state !== 'not_stored') || seq <= r.readSeq) continue // started before the reply: it may predate the exit
     const id = r.key
@@ -594,12 +598,25 @@ function adoptLock(id, seq, now) {
   return true
 }
 function adoptLocks(now, seq) { for (const id of new Set([...exitLockIds(), ...(now ?? []).map((g) => String(g.id))])) adoptLock(id, seq, now) } // every listed strategy too: an unreadable store locks them all
+// Lane W2 (I-139): another tab DECIDED a lock this page was holding (its POST answered, or its read decided it) and removed it from the store: the store is the authority, so the record this page
+// kept for it ends too, at once and not after the window. What is on screen is old (the exit may have been stored), so an open dialog of that strategy closes with the changed-elsewhere note and the
+// list is read again before anything is offered. A page's own decisions never come here (the storage event reaches only OTHER tabs).
+function releaseForeignDecided() {
+  const gone = (items.value ?? []).map((g) => String(g.id)).filter((id) => exitRec.cur(id)?.state === 'unknown' && !exitLockFor(id))
+  if (!gone.length) return
+  for (const id of gone) {
+    if (confirm.value && String(confirm.value.id) === id) endExit('changed', confirm.value.names, null, id)
+    else exitRec.drop(id)
+  }
+  try { refreshNow() } catch { /* the list says its own read failed */ }
+}
 let offLocks = null
 onMounted(() => {
   offLocks = onExitLocksChanged(() => { // another tab of this browser wrote a lock: it holds here too, an open dialog of that strategy turns to the unknown sentence at once
     if (!items.value) return
     adoptLocks(items.value, readSeq + 1)
     if (confirm.value && isUnknown(confirm.value.id)) dialogState.value = PAPER_STATE.UNKNOWN
+    releaseForeignDecided()
   })
 })
 onBeforeUnmount(() => { offLocks?.() })
@@ -630,7 +647,7 @@ function cancelExit() {
 }
 
 function ask(g, rows) {
-  // ADR-330 (60): the Exit control always opens the dialog and the dialog decides (an unresolved unknown outcome, a not-live read or a leg without a price show their sentence there, Confirm off). ask() returns early only when the gate is blocked for busy / pending / checking (not for not-live); a busy post or unreadable rows end here with their note.
+  // ADR-330 (60): the Exit control always opens the dialog and the dialog decides (an unresolved unknown outcome, a not-live read or a leg without a price show their sentence there, Confirm off). ask() returns early only when the gate is blocked for busy or checking (not for not-live; this page's usePaperExit gets no `pending` or `unresolved` input, so the gate never blocks for those); a busy post or unreadable rows end below with their note, and an unresolved unknown outcome is read from the lock (isUnknown, the dialog's UNKNOWN state, Confirm off), not from the gate.
   if (exitGate.blocked.value && !exitGate.notLive.value) return
   adoptLock(g.id, readSeq + 1) // a lock of another tab or an earlier page instance comes back before anything is offered
   const orders = exitRowsFor(rows)
@@ -677,7 +694,7 @@ async function doExit(orders, _held = null, _ticked = false, dialogKey = null) {
       saveExitLock(c.id, gave)
       exitRec.settle(c.id, attempt, 'unknown', '', { readSeq, at: gaveUp, lock: exitLockFor(c.id) ?? gave })
     }
-    if (outcome === PAPER_STATE.REFUSED) { // a definite answer (a 4xx, 580 / 581 / 583 too): nothing stored, the lock and the key end; the next attempt is a new action
+    if (outcome === PAPER_STATE.REFUSED) { // a definite answer (a 4xx, 580 / 583 too; a 581 is UNKNOWN, see paperPostOutcome): nothing stored, the lock and the key end; the next attempt is a new action
       dropExitLock(c.id, { key, at: lock.at }); dropOrderKey(c.id, 'exit')
       exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // all four parts + the legs
     }

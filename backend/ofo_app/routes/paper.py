@@ -107,6 +107,7 @@ from ofo_app.api_models import ApiModel, CatalogueText, Money
 from ofo_app.db import get_db, release_connection
 from ofo_app.errors import ClosedRoute, Failure, refuse_request
 from ofo_app.live_push import POLL_SECONDS, LiveFeed
+from ofo_app.order_outcome import guard_paper_outcome  # B2: the unknown-outcome block, every paper order route
 from ofo_app.paper_reasons import (
     breakevens_reason_text,
     extremes_reason_text,
@@ -606,6 +607,23 @@ async def _snapshot(ctx: MarketContext, feed: LiveFeed | None, underlying: str, 
     return snapshot
 
 
+async def _stored_close_snapshot(ctx: MarketContext | None, underlying: str, ids: list[str]):
+    """Lane RA2 item 1 (D-TG-1; ADR-330 (60), ADR-212): with NO broker session the book may still hold the stored last
+    close (``last_close_store`` seeds it while the market is closed). One plain read through the same ``_snapshot`` (no
+    feed, so no hold and no wait): used only when the snapshot says the market is closed (an open market never serves
+    a stored figure), else None. Display only: stops, exits and fills read ``leg_price`` and never see this."""
+    if ctx is None or not ids:
+        return None
+    snapshot = await _snapshot(ctx, None, underlying, ids)
+    return snapshot if snapshot.market_closed else None
+
+
+def _served(connected: bool, snapshot: Any, prices: dict[int, paper.Price]) -> bool:
+    """The books read as served when a session is connected, or when no session is but the stored close prices at
+    least one open contract (the figures then carry the close's own time); else NOT_CONNECTED, as before."""
+    return connected or (snapshot is not None and any(paper.is_live(p) for p in prices.values()))
+
+
 def _paper(orders: Sequence[paper_store.StoredOrder]) -> list[PaperOrder]:
     return [o.order.as_paper() for o in orders]
 
@@ -745,14 +763,22 @@ def _today(snapshot: Any) -> datetime.date | None:
     return None if snapshot is None else snapshot.valuation.astimezone(paper.IST).date()
 
 
+def _day_snapshot(snapshot: Any, connected: bool) -> Any:
+    """RA2 item 1 (Opus review F3): the snapshot a stored close came from carries the close's own date, never today's;
+    with no session the book day and the Today total follow the answer's own date."""
+    return snapshot if connected else None
+
+
 def _book_day(snapshot: Any, answered_at: datetime.datetime) -> datetime.date:
     """D-40: the India date an expiry is judged against: the snapshot's, else the answer's own (no snapshot)."""
     return _today(snapshot) or answered_at.astimezone(paper.IST).date()
 
 
-def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],
-             prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None) -> dict:
-    """The strategy's figures from the one engine at the live prices of its open contracts."""
+def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked_contracts.TrackedContract],  # noqa: PLR0913
+             prices: dict[int, paper.Price], connected: bool, today: datetime.date | None = None,
+             stored_close: bool = False) -> dict:
+    """The strategy's figures from the one engine at the live prices of its open contracts. ``stored_close``: no
+    session, the prices are the stored last close (RA2 item 1): state LIVE, ``as_of`` = the oldest price time."""
     view = strategy_money_view(_paper(orders), prices).lifecycle()  # D-10: the book's totals, split at every flat point
     positions = [_position(p, found[int(p.instrument_id)], prices.get(int(p.instrument_id))) for p in view.positions]
     why = _closing_reasons(orders)
@@ -770,6 +796,8 @@ def _figures(orders: Sequence[paper_store.StoredOrder], found: dict[int, tracked
         as_of = paper.paused_as_of(prices.values())  # the engine's own rule (ofo.tracking.paper), not a second way
     else:
         state, pause = "LIVE", None
+        if stored_close:  # ADR-330 (60): a stored close is labelled with its own as-of time (the oldest leg's)
+            as_of = min((p.at for p in prices.values() if paper.is_live(p) and p.at is not None), default=None)
     # ADR-311: a paused book names the contracts with no price (every total stays paused); expired = retired contract
     # leg_index = the leg's place among ALL the book's legs (closed ones count), as on the tracking page
     cids = [int(p.instrument_id) for p in view.positions]
@@ -1070,13 +1098,18 @@ async def _book(db: Any, stored: Any, orders: Sequence[paper_store.StoredOrder],
     if connected and keys:
         await release_connection(db)  # D-36 (c): the feed hold below waits up to FORWARD_WAIT_S
         snapshot = await _snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
+    elif keys:
+        snapshot = await _stored_close_snapshot(ctx, underlying, keys)  # RA2 item 1: no session, the stored close
     prices = _prices(open_ids, found, snapshot)
-    base = _figures(orders, found, prices, connected, _book_day(snapshot, answered_at))
+    served = _served(connected, snapshot, prices)
+    base = _figures(orders, found, prices, served, _book_day(_day_snapshot(snapshot, connected), answered_at),
+                    stored_close=served and not connected)
     charges = _charges(orders, found, underlying, rates)
     figures = (base | _summary(orders, found, prices, base, snapshot, underlying, exited_absent=False, rates=rates)
                | charges | _after(orders, found, prices, charges, underlying, rates))
     figures |= await settle_line_after_close(db, answered_at, figures)
-    figures["plan_final_text"] = await _plan_final(db, stored, orders, figures, _book_day(snapshot, answered_at))
+    figures["plan_final_text"] = await _plan_final(db, stored, orders, figures,
+                                                       _book_day(_day_snapshot(snapshot, connected), answered_at))
     return PaperBookOut.model_validate(figures | {
         "strategy_id": stored.id, "name": sf.shown_name(stored.name), "underlying": underlying,
         "answered_at": answered_at, "orders": _order_rows(orders, found),
@@ -1139,12 +1172,18 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
         await release_connection(db)  # D-36 (c): the feed holds below wait; the session re-checks out afterwards
         for underlying, wanted in keys.items():
             snapshots[underlying] = await _snapshot(ctx, feed, underlying, wanted)  # type: ignore[arg-type]
+    elif keys:
+        for underlying, wanted in keys.items():
+            if (stored := await _stored_close_snapshot(ctx, underlying, wanted)) is not None:  # RA2 item 1
+                snapshots[underlying] = stored
     held_rows = await held_entry_store.read_many(db, [b.strategy_id for b in books])
     out, decays = [], []
     for b in sorted(books, key=_newest_first, reverse=True):
         snapshot = snapshots.get(b.underlying)
         prices = _prices(_open_ids(b.orders), found, snapshot)
-        figures = _figures(b.orders, found, prices, connected, _book_day(snapshot, answered))
+        served = _served(connected, snapshot, prices)
+        figures = _figures(b.orders, found, prices, served, _book_day(_day_snapshot(snapshot, connected), answered),
+                           stored_close=served and not connected)
         summary = _summary(b.orders, found, prices, figures, snapshot, b.underlying, exited_absent=True, rates=rates)
         decays.append(_decay(figures, found, snapshot, b.underlying))
         open_legs = sum(1 for p in figures["positions"] if p["net_quantity"] != 0)
@@ -1161,7 +1200,7 @@ async def list_paper_strategies(db: Annotated[Any, Depends(get_db)],  # noqa: PL
     totals = _totals([out[i] for i in kept], [decays[i] for i in kept], expired, len(live) - len(kept),
                      sum(1 for s in out if s["open_count"] == 0 or s["state"] == "EXITED"))  # ADR-330 (15)
     sorted_books = sorted(books, key=_newest_first, reverse=True)
-    day = today_day([snapshots.get(b.underlying) for b in sorted_books], answered)
+    day = today_day([_day_snapshot(snapshots.get(b.underlying), connected) for b in sorted_books], answered)
     today = today_totals([_today_item(out[i], decays[i], sorted_books[i]) for i in live], day)
     return PaperListOut.model_validate({"strategies": out, "totals": totals, "today": today, "answered_at": now(),
                                        "shown_date": shown_date})
@@ -1488,7 +1527,8 @@ async def _refuse_real_position(db: Any, strategy_id: int) -> str:
 
 
 @router.post("/paper/strategies/{strategy_id}/orders", status_code=201, response_model=PaperBookOut,
-             dependencies=[Depends(_stamp_request), Depends(guard_paper_order)])  # IC e2e 5
+             dependencies=[Depends(_stamp_request), Depends(guard_paper_order),
+                           Depends(guard_paper_outcome, scope="function")])  # IC e2e 5
 async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR0913 - FastAPI dependencies
                              db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -1729,10 +1769,11 @@ def leg_stop_lines(risk: ExitRisk, names: Mapping[str, Any], terms: Mapping[str,
 
 def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = False,  # noqa: PLR0913
                   terms: Mapping[str, Any] | None = None, underlying: str = "",
-                  at_zero: Decimal | None = None) -> ExitRiskOut:
+                  at_zero: Decimal | None = None, fired: bool = False) -> ExitRiskOut:
     """The yes answer says only what is known: the Max Loss figures (the catalogue's "No fixed maximum" when unlimited)
     when the engine gave them, and the sold legs left with less cover. Nothing known to say -> cannot_tell.
-    ``leg_stop``: the figures are worded as the leg-stop line (ADR-330 (6)) instead of the exit confirmation's."""
+    ``leg_stop``: the figures are worded as the leg-stop line (ADR-330 (6)) instead of the exit confirmation's.
+    ``fired`` (RA2 item 9): an index exit that HAS fired is worded in the past tense, not as the preview."""
     if leg_stop and risk.exposed and terms is not None and underlying:  # ADR-330 (55): the three lines
         three = leg_stop_lines(risk, names, terms, underlying, at_zero)
         if three is not None:
@@ -1745,12 +1786,13 @@ def _exit_warning(risk: ExitRisk, names: Mapping[str, Any], leg_stop: bool = Fal
     lines = []
     if before is not None and after is not None:
         lines.append(_stop_line(before, after) if leg_stop else render_explanation(
-            "paper_exit_widens_loss", before=before_text, after=after_text))
+            "paper_exit_fired_loss" if fired else "paper_exit_widens_loss", before=before_text, after=after_text))
     if risk.exposed:
         legs_text = names[risk.exposed[0]]
         for other in risk.exposed[1:]:
             legs_text = render_explanation("paper_alert_legs", rest=legs_text, leg=names[other])
-        lines.append(render_explanation("paper_exit_less_protected", legs=legs_text))
+        lines.append(render_explanation("paper_exit_fired_less_protected" if fired else "paper_exit_less_protected",
+                                        legs=legs_text))
     if not lines:
         return _exit_risk_answer("cannot_tell")
     warning = lines[0] if len(lines) == 1 else render_explanation("paper_exit_warning_join", first=lines[0],
@@ -1894,7 +1936,7 @@ def index_exit_answer(booked: Sequence[Any], exits: Mapping[int, Decimal], terms
     risk = exit_risk(_paper(booked), legs, terms, priced=True)
     if risk.state != "yes":
         return _exit_risk_answer(risk.state)
-    return _exit_warning(risk, names)
+    return _exit_warning(risk, names, fired=True)  # only the monitor asks: this exit has fired (RA2 item 9)
 
 
 def _leg_name(state: Mapping[int, Any], stored: Any, trigger: Any) -> str:
@@ -2194,7 +2236,8 @@ async def _validated_triggers(db: Any, strategy_id: int, body: TriggerIn,
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers", status_code=201, response_model=TriggersOut,
-             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
+             dependencies=[Depends(guard_paper_order),  # IC e2e 5: scenario mode = own scenario only
+                           Depends(guard_paper_outcome, scope="function")])
 async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913
                              user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],
@@ -2228,7 +2271,8 @@ async def add_paper_triggers(strategy_id: int, body: TriggerIn, db: Annotated[An
 
 
 @router.delete("/paper/strategies/{strategy_id}/triggers/{trigger_id}", response_model=TriggersOut,
-             dependencies=[Depends(guard_paper_order)])  # IC e2e 5: scenario mode = own scenario only
+             dependencies=[Depends(guard_paper_order),  # IC e2e 5: scenario mode = own scenario only
+                           Depends(guard_paper_outcome, scope="function")])
 async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],
                                user_ref: Annotated[str, Depends(current_user_ref)]) -> TriggersOut:
     await _load_strategy(db, user_ref, strategy_id)
@@ -2252,7 +2296,7 @@ async def cancel_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[
 
 
 @router.post("/paper/strategies/{strategy_id}/triggers/{trigger_id}/keep", response_model=TriggersOut,
-             dependencies=[Depends(guard_paper_order)])
+             dependencies=[Depends(guard_paper_order), Depends(guard_paper_outcome, scope="function")])
 async def keep_paper_trigger(strategy_id: int, trigger_id: int, db: Annotated[Any, Depends(get_db)],  # noqa: PLR0913
                              user_ref: Annotated[str, Depends(current_user_ref)],
                              ctx: Annotated[MarketContext | None, Depends(get_market_context)],

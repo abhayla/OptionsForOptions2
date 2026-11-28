@@ -91,7 +91,7 @@ describe('UX-A06: a settled trade shows the closed sentence in the Plan watch bo
       'POST /strategies/outcome': never, 'POST /strategies/leg-edit': never, 'GET /strategies/63/plan-watch': never }
     const w = await open(63)
     expect(w.findComponent(PlanWatch).props('closed')).toBe(true)
-    expect(t(w, 'plan-watch-closed').text()).toBe('This trade is closed; nothing is watched.')
+    expect(t(w, 'plan-watch').exists()).toBe(false) // F2 (W-29 step 57, ADR-330 (57)): a closed trade has no Plan watch box
     expect(calls.some((c) => c.url.includes('plan-watch'))).toBe(false)
   })
 })

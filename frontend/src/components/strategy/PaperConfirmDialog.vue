@@ -31,9 +31,9 @@
       </li>
     </ul>
     <!-- D-03 part B (ADR-317 (7)): the server's one line per armed index exit, judged on the legs after these orders; nothing is moved -->
-    <p v-if="armedUnchecked" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits-unchecked">{{ ARMED_UNCHECKED }}</p>
-    <ul v-if="armedLines.length" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits">
-      <li v-for="line in armedLines" :key="line" data-testid="paper-armed-exit">{{ line }}</li>
+    <p v-if="armedUncheckedShown" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits-unchecked">{{ ARMED_UNCHECKED }}</p>
+    <ul v-if="armedShown.length" class="mt-3 text-sm text-ink-muted" data-testid="paper-armed-exits">
+      <li v-for="line in armedShown" :key="line" data-testid="paper-armed-exit">{{ line }}</li>
     </ul>
     <!-- GC-TRACK1 k10 (ADR-292): the strategy's first basket may be a condor already held at the user's broker -->
     <div v-if="firstBasket && rows.length && rows.every((r) => r.kind === 'open')" class="mt-3 text-sm" data-testid="held-form">
@@ -150,7 +150,8 @@ function noteServerTime(data) {
   openedAtMs.value = Date.now()
 }
 const ageNowMs = computed(() => props.nowMs || clockReadingMs(serverClock.value, openedAtMs.value))
-const ageLine = computed(() => priceAgeLine(rows.value, { nowMs: ageNowMs.value, notLive: !!props.notLiveLine }))
+// FJ2-9 (O-P-01): a blocked exit says the page's one reason; FJ2-6 (ADR-330 (60), (63)): with the market closed the dialog says ONE thing, the server's closed line; "the server prices the exit when you confirm" would promise a confirm that cannot happen
+const ageLine = computed(() => (marketState.value === 'closed' || props.blocked ? { state: '', text: '' } : priceAgeLine(rows.value, { nowMs: ageNowMs.value, notLive: !!props.notLiveLine })))
 
 // GC-TP step 3b2: the title says what the list holds (adds, exits or both)
 const title = computed(() => (kindLocked.value ? 'Exit positions' : paperDialogTitle(props.orders, props.kind))) // an unreadable kind has no kind word (positionKindWord throws on purpose); the title stays neutral
@@ -217,7 +218,9 @@ async function askExitRisk() {
   // the WHOLE basket (exits and entries) is judged on the legs after all of it; rows not yet valid wait for the user's edit
   const basket = props.open && props.strategyId && rows.value.some((r) => r.kind === 'exit') ? rows.value : []
   if (!basket.length) { exitState.value = ''; exitWarning.value = ''; return }
-  if (basket.some((r) => !paperLotsOk(r.lots) || (r.kind !== 'exit' && !paperPriceOk(r.price)))) { exitState.value = 'checking'; exitWarning.value = ''; return }
+  // FJ2-4 (D-TG-2): a row not yet valid (an Add with no usable price: a leg moved to another expiry has no live or planned price) means no judgment can be asked yet;
+  // the row's own reason says what to fix and Confirm is off by `ready`, so the dialog says nothing here instead of "Checking..." for ever
+  if (basket.some((r) => !paperLotsOk(r.lots) || (r.kind !== 'exit' && !paperPriceOk(r.price)))) { exitState.value = ''; exitWarning.value = ''; return }
   exitState.value = 'checking'
   let state = 'unchecked'
   let line = ''
@@ -239,20 +242,31 @@ const ARMED_UNCHECKED = 'Could not check your armed exits.' // pending owner rea
 const armedLines = ref([])
 const armedUnchecked = ref(false)
 let armedSeq = 0
+// FJ2-4 + Opus round 2 (R2-1): the server judges every line on the legs after ALL the rows, so the question always carries the WHOLE basket, and a line is shown only for the very
+// basket it was asked for (`armedSigAsked` = the rows' contract / side / lots / kind at the time of the ask). An Add with no usable price (a leg moved to another expiry has no live or
+// planned price) is sent with the smallest tick, ARMED_ASK_TICK: the read-only question reads contracts, sides and units only, never a price, and that value is never shown or sent as an order.
+const ARMED_ASK_TICK = '0.05'
+const armedSigOf = (list) => list.map((r) => `${r.contract_id}|${r.side}|${String(r.lots).trim()}|${r.kind}`).join(';')
+const armedSigNow = computed(() => armedSigOf(rows.value))
+const armedSigAsked = ref('')
+const armedOrderOf = (r) => ({ ...orderOf(r), price: r.kind === 'exit' ? '0' : paperPriceOk(r.price) ? String(r.price).trim() : ARMED_ASK_TICK })
+const armedShown = computed(() => (armedSigAsked.value === armedSigNow.value ? armedLines.value : []))
+const armedUncheckedShown = computed(() => armedUnchecked.value && armedSigAsked.value === armedSigNow.value)
 async function askArmedExits() {
   const seq = ++armedSeq
-  const basket = props.open && props.strategyId && rows.value.length && ready.value ? rows.value : []
+  const basket = props.open && props.strategyId && rows.value.length && rows.value.every((r) => paperLotsOk(r.lots)) ? rows.value : []
+  const sig = armedSigOf(basket)
   let lines = []
   let unchecked = false
   if (basket.length) {
     try {
-      const { data } = await api.get(`/paper/strategies/${props.strategyId}/armed-exits`, { params: { orders: JSON.stringify(basket.map(orderOf)) } })
+      const { data } = await api.get(`/paper/strategies/${props.strategyId}/armed-exits`, { params: { orders: JSON.stringify(basket.map(armedOrderOf)) } })
       noteServerTime(data)
       if (Array.isArray(data?.lines)) lines = data.lines.filter((l) => typeof l === 'string' && l)
       else unchecked = true
     } catch { lines = []; unchecked = true }
   }
-  if (seq === armedSeq) { armedLines.value = lines; armedUnchecked.value = unchecked }
+  if (seq === armedSeq) { armedLines.value = lines; armedUnchecked.value = unchecked; armedSigAsked.value = sig }
 }
 watch(() => [props.open, props.orders, props.strategyId, rows.value.map((r) => `${r.lots}/${r.price}`).join()], askArmedExits, { immediate: true })
 

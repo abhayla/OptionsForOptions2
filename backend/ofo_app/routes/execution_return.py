@@ -412,14 +412,14 @@ async def _return(req: _Request, underlying: str, read: _Outside) -> ReturnOut:
     carry the tags the book was read by; a plan recorded since (another press) is the broker-unconfirmed refusal."""
     history = await plans.plans_for(req.db, req.user_ref, req.strategy_id)
     if frozenset(o.tag for p in history for o in p.orders) != read.tags:
-        raise _refuse("gate_broker_unconfirmed")
+        raise _refuse("execution_return_changed")  # RA2 item 9: the true cause, not "could not confirm Zerodha"
     catalogue, zerodha, book, tags = read.catalogue, read.zerodha, read.book, read.tags
     adopted = await books.adopted_for(req.db, req.user_ref, req.strategy_id)
     # R3 (W-151): adopted holdings and the strategy revision were read before the waits; a change since (another tab
     # adopted a holding or saved the strategy) refuses before anything is closed or stored (ADR-276 first-fill facts)
     revision = (await store.load(req.db, req.user_ref, req.strategy_id)).revision
     if tuple(adopted) != read.adopted or revision != read.revision:
-        raise _refuse("gate_broker_unconfirmed")
+        raise _refuse("execution_return_changed")  # RA2 item 9: the true cause, not "could not confirm Zerodha"
     world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha), adopted)
     live = await _settle_open_plan(req, history, book, world, read.facts)
     await _record_externals(req, book)

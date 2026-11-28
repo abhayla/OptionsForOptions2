@@ -122,7 +122,7 @@ describe('UX-A06 / UX-A09: Plan watch on a closed trade and with the feed paused
     const w = mount(PlanWatch, { props: { strategyId: 7, closed: true } })
     mounted.push(w)
     await flushPromises()
-    expect(t(w, 'plan-watch-closed').text()).toBe('This trade is closed; nothing is watched.')
+    expect(w.find('[data-testid="plan-watch"]').exists()).toBe(false) // F2 (W-29 step 57, ADR-330 (57)): no box, no sentence
     expect(calls).not.toContain('/strategies/7/plan-watch')
   })
   it('the read failed while prices are paused: prices are not live and the check resumes with them, not an error', async () => {

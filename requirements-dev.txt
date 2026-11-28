@@ -2,3 +2,5 @@
 ruff==0.15.12
 # Redis stand-in for the bus tests on a developer PC (REQ-113, finding F-58); CI uses a redis:7 service instead.
 fakeredis==2.40.0
+# Lua scripts in the fake Redis (Lane RA2 F7: the exit-slot clean-up is one atomic script; tests_app/test_exit_slot_cleanup_ra2_1128.py).
+lupa==2.8

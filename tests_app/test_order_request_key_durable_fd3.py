@@ -184,10 +184,11 @@ async def test_a_repeat_names_the_stops_the_first_request_cancelled(db, notified
     assert third.json()["cancelled_stops"] == named
 
 
-async def test_an_unknown_outcome_keeps_the_key_and_a_repeat_is_told_still_being_placed(
+async def test_an_unknown_outcome_leaves_a_hint_and_the_durable_table_decides_the_repeat(
         db, notified, keys, monkeypatch):
-    """FD2 review F7 route test: a request whose commit outcome is unknown (the exception comes AFTER the commit began)
-    never frees the key; the repeat is told 582 and places nothing."""
+    """FD2 review F7 route test, changed by B2 item 2: a request whose commit outcome is unknown never frees the Redis
+    hint, but the hint no longer refuses: the table has no row (nothing stored), so the repeat places once, and a third
+    press replays it."""
     from ofo_app.routes import paper as route  # noqa: PLC0415
     app, stored, *_ = await _setup(db)
     _use(app, keys)
@@ -204,8 +205,11 @@ async def test_an_unknown_outcome_keeps_the_key_and_a_repeat_is_told_still_being
     assert first.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, first.text[:200]
     monkeypatch.setattr(route, "_place_orders", real)
     again = await _post(app, stored, _body(orders, key))
-    assert again.status_code == HTTPStatus.CONFLICT and "still being placed" in again.text, again.text[:300]
-    assert await _count(db, stored) == 0  # nothing stored by either
+    assert again.status_code == HTTPStatus.CREATED, again.text[:300]
+    placed = await _count(db, stored)
+    assert placed == 2  # noqa: PLR2004 - the two orders, once
+    third = await _post(app, stored, _body(orders, key))
+    assert third.status_code == HTTPStatus.CREATED and await _count(db, stored) == placed
 
 
 async def test_a_stop_the_monitor_fired_first_is_not_named_as_cancelled(db, notified, keys):
