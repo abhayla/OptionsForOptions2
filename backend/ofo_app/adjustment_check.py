@@ -405,7 +405,7 @@ def state_of(tracked: Tracked, market: MarketInputs, spot: SpotAnswer, margin: M
         from ofo_app import settings_in_force as sif  # noqa: PLC0415 - it imports this module
         stops = sif.stops_of(resolved, sif.MoneyInputs(None if stop_base is None else stop_base.max_loss,
                                                        None if stop_base is None else stop_base.credit, stated_margin),
-                             sif.StageAt(kind, (expiry - now.date()).days))  # no kind: days_left stays None
+                             sif.StageAt(kind, (expiry - now.date()).days))  # kind "": no stage row
     return with_gamma(with_carry(pe.StrategyState(stops=stops,
         expiry_kind=kind or "weekly",  # type: ignore[arg-type]  # a placeholder: with no kind days_left is None
         days_left=(expiry - now.date()).days if kind else None, hhmm=hhmm, spot=value, shorts=shorts, pnl=pnl,

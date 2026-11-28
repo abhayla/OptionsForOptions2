@@ -52,8 +52,11 @@ _STATUS = text("SELECT status FROM public.strategies WHERE id = :id")
 _STALE = ("FROM public.paper_triggers WHERE strategy_id = :sid AND fired_at IS NULL AND cancelled_at IS NULL "
           "AND (CAST(:none AS BOOLEAN) OR (kind = 'leg_stop' AND NOT contract_id = ANY(CAST(:open AS BIGINT[]))))")
 _STALE_IDS = text("SELECT id " + _STALE + " ORDER BY id")
-_STALE_CANCEL = text("UPDATE public.paper_triggers SET cancelled_at = clock_timestamp() WHERE id IN (SELECT id "  # noqa: S608
-                     + _STALE + ") RETURNING id")
+# FD5 (Opus review F2): the conditions sit on the UPDATE's own row, not in a self-subquery: under READ COMMITTED a row a
+# concurrent cancel already took is re-checked against ITS new version and skipped, so ``RETURNING id`` names only what
+# THIS statement cancelled
+_STALE_CANCEL = text("UPDATE public.paper_triggers SET cancelled_at = clock_timestamp() "  # noqa: S608
+                     + _STALE.replace("FROM public.paper_triggers WHERE", "WHERE") + " RETURNING id")
 _SELECT = text(f"SELECT {_COLUMNS} FROM public.paper_orders "  # noqa: S608 constant columns
                "WHERE strategy_id = :id ORDER BY id")
 _SELECT_TRACKED = text("SELECT DISTINCT strategy_id FROM public.paper_orders "

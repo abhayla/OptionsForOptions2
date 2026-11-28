@@ -638,7 +638,8 @@ async def _return_with_change(app_engine, admin_engine, monkeypatch, change):
 async def test_r3_a_holding_adopted_during_the_read_refuses_the_return_and_stores_nothing(app_engine, admin_engine,
                                                                                           monkeypatch):
     """R3 (W-151): the adopted holdings were read before the Zerodha wait; another tab adopts one before the lock ->
-    409 ``execute_plan_changed``; the plan stays open and no first-fill facts are stored (ADR-276)."""
+    409 ``gate_broker_unconfirmed`` (the Execute-only "no order was prepared" sentence would be false: a plan exists);
+    the plan stays open and no first-fill facts are stored (ADR-276)."""
     from ofo.errors import render  # noqa: PLC0415
     from ofo_app import order_book_store as books  # noqa: PLC0415
     from test_execute_route import CORE_ID  # noqa: PLC0415
@@ -648,7 +649,7 @@ async def test_r3_a_holding_adopted_during_the_read_refuses_the_return_and_store
             f"{CORE_ID.exchange_segment}:{CORE_ID.exchange_token}", "BUY", 65, "NRML", D("7.00"), "adopt:r3:1"))
     resp, facts, status = await _return_with_change(app_engine, admin_engine, monkeypatch, adopt)
     assert resp.status_code == HTTPStatus.CONFLICT, resp.text
-    assert resp.json()["what_happened"] == render("execute_plan_changed").what_happened
+    assert resp.json()["what_happened"] == render("gate_broker_unconfirmed").what_happened
     assert (facts, status) == (None, "open")
 
 
@@ -669,7 +670,7 @@ async def test_r3_a_strategy_saved_during_the_read_refuses_the_return_and_stores
         monkeypatch.setattr(route.store, "load", load)
     resp, facts, status = await _return_with_change(app_engine, admin_engine, monkeypatch, save)
     assert resp.status_code == HTTPStatus.CONFLICT, resp.text
-    assert resp.json()["what_happened"] == render("execute_plan_changed").what_happened
+    assert resp.json()["what_happened"] == render("gate_broker_unconfirmed").what_happened
     assert (facts, status) == (None, "open")
 
 

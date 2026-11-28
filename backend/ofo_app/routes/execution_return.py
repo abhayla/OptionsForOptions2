@@ -419,7 +419,7 @@ async def _return(req: _Request, underlying: str, read: _Outside) -> ReturnOut:
     # adopted a holding or saved the strategy) refuses before anything is closed or stored (ADR-276 first-fill facts)
     revision = (await store.load(req.db, req.user_ref, req.strategy_id)).revision
     if tuple(adopted) != read.adopted or revision != read.revision:
-        raise _refuse("execute_plan_changed")
+        raise _refuse("gate_broker_unconfirmed")
     world = _World(catalogue, underlying, zerodha, *await _others(req, catalogue, zerodha), adopted)
     live = await _settle_open_plan(req, history, book, world, read.facts)
     await _record_externals(req, book)
