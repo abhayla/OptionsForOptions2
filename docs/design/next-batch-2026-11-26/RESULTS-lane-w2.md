@@ -1,4 +1,4 @@
-STATUS 21:55 | pushed c75f85d1d (gate TOTAL PASS); this push adds FJ2 4201d3af2 points 1 to 6, I-86, I-57 | next: re-confirm on the 22:45 build, group C rest | blocker: none
+STATUS 23:55 | all my tasks done (group A on a1d704225, group B on RA2/B3/F2/F3/FJ2/B2/B1b/F1b heads, group C partly); the owner's order of 23:35 read: no new tasks | next push: none after this one | blocker: none | SAFE TO CLOSE
 
 # Lane W2 results: per-item cloud proofs of the MUST fixes (28 Nov 2026)
 
@@ -73,6 +73,30 @@ PostgreSQL 16 + Redis; roles as in `app-tests.yml`; the API runs as the non-supe
 | I-86 API stopped, Retry on 10 lists | PARTIAL: 9 of 10 | `i86.js`, `i86-*.jpg` | Retry button on Home (1), Positions (2), Live, My Strategies, Completed, Option Chain, Alerts Active, Alerts History (2), Adjustments (1 each); the builder reads `... could not be read, so it is not shown. Try again.` with NO button; no raw error text on any |
 | I-57 Reset to playbook, changed markers or the Nothing differed line | PASS | `i57.js`, `i57-reset.jpg` | after typing Target 40 and saving, `Reset to playbook` > confirm: `Nothing differed from the playbook, so nothing was put back.` (the reset covers conditions, not the typed levels) |
 
+## Lane B2 on its own head b2e8e29c3 (contains a1d704225; migration 0063_order_attempts), scenario PATH-01
+The unknown outcome is an OPEN `order_attempts` row for strategy 1 (what a crashed request leaves). Scripts `b2.py`, `b2b.py` (no browser).
+| Point | Result | One line |
+|---|---|---|
+| 1 a second order-like request, other key and body, is refused and nothing stored | PASS | exit (new key, new body), exit of another leg, open/add with a new key, add with `prices_not_live_confirmed` toggled, and a stop change (POST triggers): each `409 STRATEGY_VALIDATION_590 An earlier order for this strategy has no known result yet.`; orders stored 0, trigger rows 0 |
+| 2 another strategy is not blocked | PASS (weak) | strategy 2 answers the scenario refusal `USER_INPUT_026`, not 590; scenario mode has one storing strategy, so a real second order was not shown |
+| 3 once the outcome is known the next request goes through | PASS | after 120 s with nothing stored the attempt closes `not_stored` and a valid exit answers 201 (orders 4 to 5); right after a stored order a second valid exit answers 201 at once (attempts: stored 2, not_stored 3); a fresh open attempt under 120 s still refuses |
+| 4 Execute screen with no cache service | PARTIAL | no browser click-through (Execute needs a live socket per leg); DB tests with `REDIS_URL` unset (fakeredis): `test_execute_revision`, `test_order_outcome_b2_1128`, `test_order_outcome_real_b2_1128`, `test_request_key_b2_1128` = 31 passed |
+
+## Lane B1b on its own head 686b24ccd (contains a1d704225; head 0063_basket_facts_spot_at), database `ofo_tg`, no session, market closed
+| Point | Result | One line |
+|---|---|---|
+| 1 a stored stop is never reported as failed | PARTIAL | the list read could not be made to fail live; `test_stored_stop_answer_ra2_1128` = 2 passed |
+| 2 adjustment history shows the stored close, not "paused" | PASS | `GET /strategies/1/adjustment-history`: totals pnl +3,250.00, `prices_reason` null (strategy 2 +1,495.00); the unpriced #3 stays pnl null `Paper P&L paused - prices not live` (right); `test_history_stored_close_b1b_1128` 3 passed |
+| 3 monitoring list with trade ids names each running trade market_closed | PASS | `?ids=1,2,3,5,6,7`: trades 1, 2, 3, 7 `market_closed` `The market is closed.`; 5 and 6 (no plan, real) `not_listed` |
+| 4 calendar cannot answer: NOT_CONNECTED | PARTIAL | cannot fake the calendar live; `test_unknown_calendar_book_b1b_1128` 2 passed (also `test_five_closed` 2, `test_monitoring_state` 10) |
+
+## Lane F1b on its own head 83baad95c (scenario PATH-01), `f1b.js`, `f1bc.js`
+| Point | Result | Proof | One line |
+|---|---|---|---|
+| unknown-result sentence has no "before trying again" | PASS | `f1b-a-sentence.jpg` | `We could not confirm the order. Check the Orderbook; no second order is sent until the answer is known.` |
+| "Two minutes have passed" follows the lock's clock, wall clock forward | PASS | `f1b-b-fwd.jpg`, `f1b-b-back.jpg` | wall clock +200 s and -200 s after a reload, 20 to 35 s real after the cut: the line is NOT shown, Confirm greyed |
+| builder Retry after a failed read | PASS | `f1b-c-builder-down.jpg` | API stopped: `This strategy's paper position could not be read, so it is not shown. Try again.` and a `Retry` button |
+
 ## Defects found
 - **D-W2-1 (I-188, FAIL of the clock-jump walk; commits e2da71f50 and a1d704225).** Steps: scenario PATH-01, Positions > Paper, tick a leg, Exit, Confirm with the request cut before the server; open a second tab, reload it with the browser's wall clock set +200 s (script: `sessionStorage w2off`, `Date.now()` shifted, `performance.now()` not) 46 s of real time after the cut; tick the leg, Exit, Confirm. Seen: Confirm was enabled and a POST went out (`90ff30a6`, the same key as the cut one). Expected: the lock holds until the monotonic window (120 s) has passed (Z2 review T3 in `lib/unknownLocks.js`: "a wall clock set forward never releases a lock early"). Cause (read from the header of `unknownLocks.js`): a fresh page instance has no monotonic stamp, so it trusts the wall age ONCE at first sight, clamped to window + 1 s: a reload with a forward-jumped clock reads as an expired lock. Cost: bounded, because the resend carries the SAME key, so the server answers the first request (see I-138); a different set of orders would be the risk. Screenshot `i188-5-clockjump.jpg`.
 - **D-W2-2 (I-66 / I-139 area; commit a1d704225).** Steps: scenario PATH-01; tab A on the builder of strategy 1; tab B on Positions > Paper stores an exit (201). Seen: tab A shows the unknown-outcome sentence (`The first exit's outcome is not known yet; no second exit is sent until the server's answer is known.`), `Updating the numbers...` on Max Profit / Max Loss and Exit all greyed for about two minutes although tab A sent nothing and tab B's answer was a plain 201; reload clears it. Expected: the second tab learns the exit is stored (the lock is dropped on the 201) and refreshes the figures within one poll; and the plan names a tag "old" on the summary card that does not exist in this build. Screenshots `i66-2-after.jpg`, `i66-2b-tabA-20s.jpg`. Fail-closed (safe), poor wording for the second tab. For the coordinator to say whether I-139's page lock (F1) is meant to fix it.
@@ -92,3 +116,11 @@ PostgreSQL 16 + Redis; roles as in `app-tests.yml`; the API runs as the non-supe
 - Group C beyond I-203/I-207/I-209: I-91, I-200, I-201, I-86 (API stopped, Retry on 10 lists), I-57, I-60, I-191, I-177, I-88: not walked yet.
 - I-188 builder add lock, I-41 (D-11, D-14, re-buy; re-buy is now walkable on strategy 1), I-131, I-182 on a live socket, and all of group B/C: waiting for the coordinator's commit names; group C is cheap to start.
 - I-09 (live market only) and PC ONLY parts: not walked, as briefed.
+
+## Found, not assigned
+- Scenario mode stores paper orders only for the served trade (strategy 1 on PATH-01); every other scenario trade refuses with `USER_INPUT_026`. Not a defect; it limits what a cloud walk can prove (second-strategy checks, B2 point 2).
+- With no session and a stored close, the market-closed gate runs before the real-position gate: `open` on a real position answers `MARKET_DATA_102`, only `exit` answers `STRATEGY_VALIDATION_584` (`ofo_tg` strategy 6). The open/add refusal is proved by the DB test only; not walkable live until the market opens.
+- Home, My Strategies and Alerts carry no monitoring badge (plan fault 3, not a code defect unless the owner wants it there).
+
+## SAFE TO CLOSE (branch head = the commit of this push)
+Done: group A (a1d704225), group B lane heads (RA2 4ec19fdd6, B3 d35ae8f54, F2 28c0e7be6, F3 937e80bbe, FJ2 4201d3af2, B2 b2e8e29c3, B1b 686b24ccd, F1b 83baad95c), I-86 and I-57. Not done: I-131, I-182 on a live socket, the I-188 builder add lock, I-41 (D-11, D-14, re-buy), I-91, I-200, I-201, I-60, I-191, I-177, I-88, the missing-strategy-row case of I-205, and every re-walk on the wave 1 build (Lane W3 has it). Worktrees `../wt-build`, `wt-b1`, `wt-b3`, `wt-f2`, `wt-f3`, `wt-fj2`, `wt-b2`, `wt-b1b`, `wt-f1b` are build copies for these walks; remove with plain `git worktree remove` when finished.
