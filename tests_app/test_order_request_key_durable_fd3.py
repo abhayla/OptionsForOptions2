@@ -187,8 +187,9 @@ async def test_a_repeat_names_the_stops_the_first_request_cancelled(db, notified
 async def test_an_unknown_outcome_leaves_a_hint_and_the_durable_table_decides_the_repeat(
         db, notified, keys, monkeypatch):
     """FD2 review F7 route test, changed by B2 item 2: a request whose commit outcome is unknown never frees the Redis
-    hint, but the hint no longer refuses: the table has no row (nothing stored). The outcome block refuses a repeat
-    inside the window (590); after it the repeat places once, and a third press replays it."""
+    hint, but the hint no longer refuses: the table has no row (nothing stored), and the outcome block lets a repeat of
+    the SAME key and body through (a different key or body is refused, test_order_outcome_b2_1128): it places once, a
+    third press replays it."""
     from ofo_app.routes import paper as route  # noqa: PLC0415
     app, stored, *_ = await _setup(db)
     _use(app, keys)
@@ -204,10 +205,7 @@ async def test_an_unknown_outcome_leaves_a_hint_and_the_durable_table_decides_th
     first = await _post(app, stored, _body(orders, key))
     assert first.status_code == HTTPStatus.INTERNAL_SERVER_ERROR, first.text[:200]
     monkeypatch.setattr(route, "_place_orders", real)
-    soon = await _post(app, stored, _body(orders, key))  # B2: the attempt's outcome is unknown: any request is refused
-    assert soon.status_code == HTTPStatus.CONFLICT and "no known result yet" in soon.text, soon.text[:300]
-    assert await _count(db, stored) == 0
-    monkeypatch.setattr("ofo_app.order_outcome.SETTLE_SECONDS", -1)  # the window has passed: known not stored
+    # B2: the SAME key and body is the designed way to learn the first outcome: the outcome block lets it through
     again = await _post(app, stored, _body(orders, key))
     assert again.status_code == HTTPStatus.CREATED, again.text[:300]
     placed = await _count(db, stored)

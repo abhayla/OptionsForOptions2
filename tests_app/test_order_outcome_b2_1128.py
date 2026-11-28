@@ -269,3 +269,36 @@ async def test_a_second_strategy_stores_while_the_first_has_an_open_attempt(db, 
     _, orders_a = _prices(stored_a)
     blocked = await _post(app_a, stored_a, _body(orders_a, uuid.uuid4()))
     assert blocked.status_code == HTTPStatus.CONFLICT and UNKNOWN in blocked.text
+
+
+async def test_the_same_key_and_body_after_a_crash_is_let_through_and_places_once_a_changed_body_is_not(
+        db, notified, keys, monkeypatch):
+    """Coordinator, 29 Nov 00:20 (ADR-017): a repeat of the SAME key and body is the designed way to learn the first
+    outcome: the block lets it through and the durable key answers (stores once, replays after); a different body or
+    another key stays refused."""
+    from ofo_app.routes import paper as route  # noqa: PLC0415
+    app, stored, *_ = await _setup(db)
+    _use(app, keys)
+    _, orders = _prices(stored)
+    key = uuid.uuid4()
+    real = route._place_orders
+
+    async def crash(db_, strategy_id, stored_, body, deps, stage):  # noqa: PLR0913
+        stage["commit_started"] = True
+        raise RuntimeError("the connection dropped during the commit")
+
+    monkeypatch.setattr(route, "_place_orders", crash)
+    assert (await _post(app, stored, _body(orders, key))).status_code == HTTPStatus.INTERNAL_SERVER_ERROR
+    monkeypatch.setattr(route, "_place_orders", real)
+    other_body = await _post(app, stored, _body(orders[:1], key))
+    other_key = await _post(app, stored, _body(orders, uuid.uuid4()))
+    for reply in (other_body, other_key):
+        assert reply.status_code == HTTPStatus.CONFLICT and UNKNOWN in reply.text, reply.text[:300]
+    assert await _count(db, stored) == 0
+    again = await _post(app, stored, _body(orders, key))  # the same press
+    assert again.status_code == HTTPStatus.CREATED, again.text[:300]
+    assert await _count(db, stored) == TWO_ORDERS
+    third = await _post(app, stored, _body(orders, key))
+    assert third.status_code == HTTPStatus.CREATED
+    assert await _count(db, stored) == TWO_ORDERS  # replayed, not stored again
+    assert (await _states(db, stored))[0] == "stored"

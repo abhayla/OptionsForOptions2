@@ -31,11 +31,14 @@ from __future__ import annotations
 
 import asyncio
 import contextlib
+import hashlib
+import json
 import logging
+import uuid
 from collections.abc import AsyncIterator
 from typing import Annotated, Any
 
-from fastapi import Depends
+from fastapi import Depends, Request
 from ofo.errors import UserFacingError
 from sqlalchemy import text
 from sqlalchemy.exc import SQLAlchemyError
@@ -59,10 +62,12 @@ STORE_TEMPLATE = "request_key_store_unavailable"
 
 _OWNS = text("SELECT 1 FROM public.strategies WHERE id = :s AND user_ref = :u")
 _OPEN = text(
-    "INSERT INTO public.order_attempts (user_ref, strategy_id, door, state) VALUES (:u, :s, :d, 'open') "
+    "INSERT INTO public.order_attempts (user_ref, strategy_id, door, request_key, body_sha256, state) "
+    "VALUES (:u, :s, :d, :k, :h, 'open') "
     "ON CONFLICT (strategy_id) WHERE state = 'open' DO NOTHING RETURNING id")
 _READ_OPEN = text(
-    "SELECT a.id, a.door, a.started_at, a.started_at < clock_timestamp() - make_interval(secs => :settle) AS settled, "
+    "SELECT a.id, a.door, a.request_key, a.body_sha256, a.started_at, "
+    "a.started_at < clock_timestamp() - make_interval(secs => :settle) AS settled, "
     "(EXISTS (SELECT 1 FROM public.paper_orders o WHERE o.strategy_id = a.strategy_id "
     "          AND o.created_at >= a.started_at AND o.kind NOT IN ('stop', 'settle')) "
     " OR EXISTS (SELECT 1 FROM public.execution_plans p WHERE p.strategy_id = a.strategy_id "
@@ -92,34 +97,55 @@ async def _end_transaction(db: Any, commit: bool) -> None:
         _LOG.warning("order outcome: could not end the guard's transaction", exc_info=True)
 
 
-async def open_attempt(db: Any, user_ref: str, strategy_id: int, door: str) -> int:
+async def _judge_earlier(db: Any, earlier: Any, key: uuid.UUID | None, body_sha: str | None) -> str:
+    """What to do with the strategy's open attempt: "adopt" (the same key and body again), "closed" (its outcome is
+    known now: stored by the evidence, or a PAPER attempt past the window with nothing stored; a REAL attempt never
+    closes by time), or "wait" (unknown: look again for a moment, then refuse). The transaction is ended in every
+    case but "closed"."""
+    if earlier.stored:
+        await db.execute(_CLOSE, {"st": "stored", "id": earlier.id})
+    elif key is not None and earlier.request_key == key and earlier.body_sha256 == body_sha:
+        await _end_transaction(db, commit=False)
+        return "adopt"
+    elif earlier.settled and earlier.door == "paper":
+        await db.execute(_CLOSE, {"st": "not_stored", "id": earlier.id})
+    else:
+        await _end_transaction(db, commit=False)
+        return "wait"
+    await db.commit()
+    return "closed"
+
+
+async def open_attempt(db: Any, user_ref: str, strategy_id: int, door: str,  # noqa: PLR0913
+                       key: uuid.UUID | None = None, body_sha: str | None = None) -> int:
     """Opens the strategy's one attempt and returns its id (committed). Refuses (nothing stored) while an earlier
-    attempt's outcome is unknown, or when the table cannot be used."""
+    attempt's outcome is unknown, or when the table cannot be used. A repeat of the SAME key and body as the open
+    attempt is let through (ADR-017: it is the designed way to learn the first outcome): it adopts that attempt, and the
+    door's durable key claim (``request_key.claim_in_transaction``) answers the first result or stores once, never
+    twice; any other key or body is refused."""
     try:
         if (await db.execute(_OWNS, {"u": user_ref, "s": strategy_id})).first() is None:
             await _end_transaction(db, commit=False)  # the door's own answer for a strategy that is not the user's
             raise _refused("user_input_request_not_available", Failure.NOT_FOUND)
         waited = 0.0
         for _ in range(3 + int(WAIT_SECONDS / POLL_SECONDS) + 1):
-            row = (await db.execute(_OPEN, {"u": user_ref, "s": strategy_id, "d": door})).first()
+            claim = {"u": user_ref, "s": strategy_id, "d": door, "k": key, "h": body_sha}
+            row = (await db.execute(_OPEN, claim)).first()
             if row is not None:
                 await db.commit()
                 return int(row[0])
             earlier = (await db.execute(_READ_OPEN, {"s": strategy_id, "settle": SETTLE_SECONDS})).first()
             if earlier is None:  # it closed between the two statements: try the claim again
                 continue
-            if earlier.stored:
-                await db.execute(_CLOSE, {"st": "stored", "id": earlier.id})
-            elif earlier.settled and earlier.door == "paper":  # never a REAL attempt: see the module docstring
-                await db.execute(_CLOSE, {"st": "not_stored", "id": earlier.id})
-            else:
-                await _end_transaction(db, commit=False)
+            verdict = await _judge_earlier(db, earlier, key, body_sha)
+            if verdict == "adopt":
+                return int(earlier.id)  # the same press again: the durable key decides what it gets
+            if verdict == "wait":
                 if waited >= WAIT_SECONDS:
                     raise _refused(UNKNOWN_TEMPLATE)
                 await asyncio.sleep(POLL_SECONDS)  # the first request may simply still be running: look again
                 waited += POLL_SECONDS
-                continue
-            await db.commit()
+            # "closed": the earlier attempt is known now; the loop claims the strategy
     except StrategyRefused:
         raise
     except (SQLAlchemyError, OSError, TimeoutError):
@@ -160,9 +186,11 @@ async def close_attempt(db: Any, attempt_id: int, error: BaseException | None) -
 
 
 @contextlib.asynccontextmanager
-async def attempt(door: str, strategy_id: int, db: Any, user_ref: str) -> AsyncIterator[None]:
+async def attempt(door: str, strategy_id: int, db: Any, user_ref: str,
+                  request: Request | None = None) -> AsyncIterator[None]:
     """Opens the strategy's attempt, runs the request, closes the attempt by how the request ended."""
-    attempt_id = await open_attempt(db, user_ref, strategy_id, door)
+    key, body_sha = await request_identity(request)
+    attempt_id = await open_attempt(db, user_ref, strategy_id, door, key, body_sha)
     try:
         yield
     except BaseException as error:
@@ -171,17 +199,33 @@ async def attempt(door: str, strategy_id: int, db: Any, user_ref: str) -> AsyncI
     await close_attempt(db, attempt_id, None)
 
 
+async def request_identity(request: Request | None) -> tuple[uuid.UUID | None, str | None]:
+    """The request's own ``client_request_id`` and a hash of the rest of its body (``seq`` aside: it changes on every
+    press of the same Confirm), read from the cached body; (None, None) for a keyless or unreadable body."""
+    try:
+        body = json.loads(await request.body()) if request is not None else None  # type: ignore[union-attr]
+        if not isinstance(body, dict) or not isinstance(body.get("client_request_id"), str):
+            return None, None
+        key = uuid.UUID(body["client_request_id"])
+        rest = {k: v for k, v in body.items() if k not in ("client_request_id", "seq")}
+        return key, hashlib.sha256(json.dumps(rest, sort_keys=True, separators=(",", ":")).encode()).hexdigest()
+    except (ValueError, TypeError, AttributeError):
+        return None, None
+
+
 async def guard_paper_outcome(strategy_id: int, db: Annotated[Any, Depends(get_db)],
-                              user_ref: Annotated[str, Depends(current_user_ref)]) -> AsyncIterator[None]:
+                              user_ref: Annotated[str, Depends(current_user_ref)],
+                              request: Request) -> AsyncIterator[None]:
     """The dependency of every paper order route (``scenario_mode.PAPER_ORDER_ROUTES``)."""
-    async with attempt("paper", strategy_id, db, user_ref):
+    async with attempt("paper", strategy_id, db, user_ref, request):
         yield
 
 
 async def guard_real_outcome(strategy_id: int, db: Annotated[Any, Depends(get_db)],
-                             user_ref: Annotated[str, Depends(current_user_ref)]) -> AsyncIterator[None]:
+                             user_ref: Annotated[str, Depends(current_user_ref)],
+                             request: Request) -> AsyncIterator[None]:
     """The dependency of the real Execute door (the Return door records an outcome and is not guarded)."""
-    async with attempt("real", strategy_id, db, user_ref):
+    async with attempt("real", strategy_id, db, user_ref, request):
         yield
 
 

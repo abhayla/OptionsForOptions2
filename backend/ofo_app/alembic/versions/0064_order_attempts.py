@@ -11,12 +11,13 @@ request for it is refused, whatever its key or body.
 
 Changes (owner-run, one transaction; ADDITIVE: ONE new table, nothing existing changed):
 - public.order_attempts(id, user_ref, strategy_id -> public.strategies(id) ON DELETE CASCADE (an attempt means
-  nothing without its strategy; the application role has no DELETE), door ('paper'|'real'), started_at, state
-  ('open'|'stored'|'not_stored'), resolved_at). A partial unique index allows ONE 'open' attempt per strategy:
-  opening is the atomic claim, so two tabs cannot both pass.
-- Grants to the application role: SELECT; INSERT on user_ref, strategy_id, door and state only (the
-  database sets started_at; a request cannot back-date or pre-close an attempt); UPDATE on state and resolved_at
-  only; no DELETE.
+  nothing without its strategy; the application role has no DELETE), door ('paper'|'real'), request_key and
+  body_sha256 (the request's own key and a hash of its body, NULL for a keyless request: a repeat of the SAME key and
+  body is let through the block, ADR-017), started_at, state ('open'|'stored'|'not_stored'), resolved_at). A partial
+  unique index allows ONE 'open' attempt per strategy: opening is the atomic claim, so two tabs cannot both pass.
+- Grants to the application role: SELECT; INSERT on user_ref, strategy_id, door, request_key, body_sha256 and state
+  only (the database sets started_at; a request cannot back-date or pre-close an attempt); UPDATE on state and
+  resolved_at only; no DELETE.
 - downgrade: drops the table.
 
 Old-code compatibility: additive; old code never reads or writes the table and keeps working. New code on an
@@ -51,7 +52,7 @@ def _load(filename: str, name: str):
 _BASE = _load("0009_minute_history.py", "ofo_migration_0009_for_0064")._BASE
 
 TABLE = "public.order_attempts"
-INSERT_COLUMNS = ("user_ref", "strategy_id", "door", "state")
+INSERT_COLUMNS = ("user_ref", "strategy_id", "door", "request_key", "body_sha256", "state")
 UPDATE_COLUMNS = ("state", "resolved_at")
 
 
@@ -66,6 +67,8 @@ def upgrade() -> None:
             user_ref    TEXT        NOT NULL CHECK (user_ref <> ''),
             strategy_id BIGINT      NOT NULL REFERENCES public.strategies (id) ON DELETE CASCADE,
             door        TEXT        NOT NULL CHECK (door IN ('paper', 'real')),
+            request_key UUID        NULL,
+            body_sha256 TEXT        NULL CHECK (body_sha256 IS NULL OR body_sha256 ~ '^[0-9a-f]{{64}}$'),
             started_at  TIMESTAMPTZ NOT NULL DEFAULT clock_timestamp(),
             state       TEXT        NOT NULL CHECK (state IN ('open', 'stored', 'not_stored')),
             resolved_at TIMESTAMPTZ NULL,
