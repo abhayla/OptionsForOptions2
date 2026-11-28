@@ -447,8 +447,9 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await _refuse_lots_over_limit(req, wanted, units, catalogue, underlying)  # ADR-330 (58): the paper door's function
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
+    await store.lock_strategy(req.db, req.user_ref, req.strategy_id)  # the paper door's order: lock, then claim
+    await _refuse_if_changed(req, stored, adopted)  # W-151 / R3: what the waits above could not see
     if req.key is not None and req.sent is not None:  # FD3 item 2: the durable claim, in THIS transaction
-        await store.lock_strategy(req.db, req.user_ref, req.strategy_id)  # the paper door's order: lock, then claim
         await request_key.claim_in_transaction(req.db, req.user_ref, req.key, req.strategy_id, req.sent, "real")
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
@@ -460,6 +461,16 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
         await request_key.finish_in_transaction(req.db, req.user_ref, req.key, {"plan_number": plan_number})
     return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
                    priced.planned_prices)
+
+
+async def _refuse_if_changed(req: _Request, stored: Any, adopted: tuple[books.AdoptedHolding, ...]) -> None:
+    """R3 (W-151): the adopted holdings and the strategy revision were read BEFORE the Zerodha, quote and margin waits,
+    which gave the lock back. Under the lock again, right before the plan is stored, both are read once more; either
+    one changed (another tab adopted a holding or saved the strategy) -> ``execute_plan_changed``, nothing stored."""
+    if tuple(await books.adopted_for(req.db, req.user_ref, req.strategy_id)) != tuple(adopted):
+        raise _refuse("execute_plan_changed")
+    if (await store.load(req.db, req.user_ref, req.strategy_id)).revision != stored.revision:
+        raise _refuse("execute_plan_changed")
 
 
 async def _refuse_lots_over_limit(req: _Request, wanted: list[ep.LegToPrice], held: Mapping[str, int],

@@ -13,6 +13,8 @@ store failed -> today's error. The last three are unchanged paths covered by ``t
 """
 from __future__ import annotations
 
+from decimal import Decimal as D
+
 import pytest
 from ofo.errors import render
 from sqlalchemy import text
@@ -59,9 +61,10 @@ async def _bump_revision(conn, user: str, sid: int, reviewed: int) -> int:
     return await _stored_revision(conn, sid)
 
 
-async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = False):
+async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = False, during=None):  # noqa: PLR0913
     """Store strategy 1, optionally move its revision on, POST Execute with ``body_of(revision_read)``; returns the
-    reply, the recorded Kite transport and the plan rows after."""
+    reply, the recorded Kite transport and the plan rows after. ``during(conn, user, sid)`` (R3) runs once, after the
+    margin wait (the LAST wait of the door), as another tab would between the reads and the plan write."""
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
     from test_strategy_store import _app, _client, _user  # noqa: PLC0415
@@ -76,6 +79,16 @@ async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = F
             reviewed = await _stored_revision(conn, sid)  # the version the user reviewed
             if bump:
                 assert await _bump_revision(conn, user, sid, reviewed) == reviewed + 1
+            if during is not None:
+                real_off_loop, fired = route._off_loop, []
+
+                async def off_loop(req, fn, *a, **k):
+                    out = await real_off_loop(req, fn, *a, **k)
+                    if getattr(fn, "__name__", "") == "checked_basket" and not fired:
+                        fired.append(1)
+                        await during(conn, user, sid)
+                    return out
+                monkeypatch.setattr(route, "_off_loop", off_loop)
             app = _app(_ConnMaker(conn), user)
             app.dependency_overrides[route.get_quote_reader] = _Quotes
             app.dependency_overrides[route.get_execute_clock] = lambda: (lambda: AT)
@@ -247,3 +260,36 @@ async def test_a_missing_or_malformed_revision_is_a_malformed_request(body, monk
     resp = await _post(app, "/strategies/1/execute", body)
     assert resp.status_code == 422, resp.text  # noqa: PLR2004
     assert resp.json()["code"] == INPUT_REFUSED
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_r3_a_holding_adopted_during_the_waits_refuses_the_plan_and_stores_nothing(app_engine, admin_engine,
+                                                                                         monkeypatch):
+    """R3 (W-151): the adopted holdings were read before the Zerodha and margin waits; another tab adopts a holding
+    during them -> 409 ``execute_plan_changed`` under the lock, no plan row (the plan was priced without it)."""
+    from ofo_app import order_book_store as books  # noqa: PLC0415
+    from test_execute_route import CORE_ID  # noqa: PLC0415
+
+    async def adopt(conn, user, sid):
+        await books.record_adopted(conn, user, sid, books.AdoptedHolding(
+            f"{CORE_ID.exchange_segment}:{CORE_ID.exchange_token}", "BUY", 65, "NRML", D("7.00"), "adopt:r3:1"))
+    resp, _kite, rows = await _run(app_engine, admin_engine, monkeypatch,
+                                   lambda rev: {"action": "ENTRY", "revision": rev}, during=adopt)
+    assert resp.status_code == 409, resp.text  # noqa: PLR2004
+    assert resp.json()["what_happened"] == PLAN_CHANGED
+    assert rows == 0
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_r3_a_strategy_saved_during_the_waits_refuses_the_plan_and_stores_nothing(app_engine, admin_engine,
+                                                                                        monkeypatch):
+    """R3 (W-151): the revision matched at the start; a save from another tab during the waits moves it -> 409, no
+    plan row."""
+    async def save(conn, user, sid):
+        reviewed = await _stored_revision(conn, sid)
+        assert await _bump_revision(conn, user, sid, reviewed) == reviewed + 1
+    resp, _kite, rows = await _run(app_engine, admin_engine, monkeypatch,
+                                   lambda rev: {"action": "ENTRY", "revision": rev}, during=save)
+    assert resp.status_code == 409, resp.text  # noqa: PLR2004
+    assert resp.json()["what_happened"] == PLAN_CHANGED
+    assert rows == 0
