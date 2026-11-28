@@ -1,4 +1,4 @@
-STATUS (28 Nov, IST): push 1 at 928eba42c (TOTAL PASS 1656.1s). CI-1 DONE: tests/test_alert_kinds.py reads the 0054 literals by ast (clean venv red 1 failed, green 13 passed; same-class search: no other file). I-184, I-126 closed; I-204 proven on fix branch, build re-run waits for wave 0; I-168 waits for B3 I-48; I-170/I-176: per-file tests_app run 452 of 511 files, no failure so far. Messages to the coordinator are refused (device trust); read this line.
+STATUS (28 Nov, IST): push 1 at 45f2cad06 (TOTAL PASS). CI-1 DONE. I-184, I-126 closed. I-170/I-176: 511 tests_app files run one by one; first pass 18 files / 28 tests failed, all named, cause = test database behind the code (migration 0062) and load; re-run of those 18 files alone: 0 failed. I-168: both files green on this build alone; B3's I-48 not on origin, re-run when it lands. I-204: proven on the fix branch, build re-run after wave 0. T free for the third-walker work. Messages to the coordinator are refused (device trust); read this line.
 
 # RESULTS: Lane T (test-only gaps and tooling)
 
@@ -16,10 +16,10 @@ below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables 
 | I-184 | "Three stale xfail strict markers in tests_app/test_slow_price_source_live_day.py" | grep of `xfail|strict` on the build head: nothing | 10 passed (file alone) | none needed (already clean) |
 | I-126 | "Two plan-watch tests read the real clock and fail Friday after 15:00" | pins 8ed916db, cdce22ce are ancestors of the build | `tests_app/test_plan_watch.py` 13 passed; the two pinned tests are `test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live` and `test_a_quote_answering_after_the_market_was_cut_is_not_asked` (they call `_pin_server_clock`) | none needed |
 | I-204 | "Three FE2 DB tests fail on the merged build (F-39)" | build e2da71f50: 3 failed, 2 passed (`real_position_exit_refused`) | fix branch origin/fix/r3-leftovers-1128 (951aa698c, worktree, removed after): 5 passed. Build re-run after wave 0: PENDING | none (fix is a5259db50 on that branch) |
-| I-168 | "Pool-not-held plan-watch tests fail on the unmodified build; test_d36 assumes a fresh database" | waits for Lane B3's I-48 on origin | PENDING | |
+| I-168 | "Pool-not-held plan-watch tests fail on the unmodified build; test_d36 assumes a fresh database" | first pass (under load, DB behind head): `test_pool_not_held_across_market_wait.py` 3 failed | alone on the r3 build with a database at head: `test_pool_not_held_across_market_wait.py` 5 passed, `test_d36_adjustment_counts.py` 6 passed. Re-run after Lane B3's I-48 lands: PENDING (not on origin) | none (no test change needed) |
 | CI-1 (coordinator, front of queue) | CI pull 881, job domain-tests, commit a1d70422: `tests/test_alert_kinds.py::test_the_migration_copies_the_table` ModuleNotFoundError: No module named 'alembic' | clean venv (pyyaml, jsonschema, pytest, mypy only): 1 failed, 12 passed | same venv: 13 passed; mutation (an extra answer in the 0054 literal) makes it fail, so the guard still runs; ruff clean | see git log |
-| I-170 | "27 DB tests in 12 files fail on a clean run" | see below | | |
-| I-176 | "11 of 29 failing tests never named" | see below | | |
+| I-170 | "27 DB tests in 12 files fail on a clean run" | 18 files, 28 tests failed (511 files run one by one, `OFO_TEST_DB_PER_FILE=1`, while the pre-push check used the machine) | the same 18 files alone, database at head 0062: 0 failed, 249 passed | none (no test change needed) |
+| I-176 | "11 of 29 failing tests never named" | all 28 failures named below (`-rf`) | 0 unnamed, 0 failing | none |
 
 ## Closing evidence
 
@@ -39,9 +39,15 @@ below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables 
 
 (New `*_t_1128.py` files: none so far.)
 
+## I-170 / I-176: the named list and causes
+
+22 tests in 15 files: `function public.expire_order_request_keys() does not exist`. The test database sat at migration 0061; my merge of the build brought 0062, so every downgrade-then-upgrade round trip ran `DROP FUNCTION` on a function that was never created. Files (tests): test_migration_0028_paper_orders (1), _0030_paper_settle_zero (1), _0031_adjustment_playbooks (1), _0043_scenario_marker (2), _0044_s06_carry_gap (2), _0045_rule_state_marker (1), _0052_held_entries (1), _0057_history_delete_entries (1), _0059_last_close (1), test_migration_actionable_alerts (1), test_migration_several_standard_playbooks (1), test_order_book_migration (1), test_reconciliation_store (1), test_strategy_closed_status (1), test_strategy_followups (1), test_strategy_planned_entry (1), and test_order_request_key_durable_fd3 (3, the same missing function). A further 3 tests in test_pool_not_held_across_market_wait failed on timing under load and pass alone. Fixed by `alembic upgrade head` on the test database, not by a test edit. Skip-only files (not failures): test_check_failed_fe3_1128 (3), test_execute_replay_api (1), test_index_leg_save (1), test_report_atomic_fe3_1128 (9); the files give "no Redis here" or "the test catalogue holds no INDEX row".
+
+Suggested tooling fix (scripts/ and tests_app/conftest.py are outside this lane's edit list): the per-file clone should fail fast with one line "test database at <rev>, code head <rev>: run alembic upgrade head" instead of 18 files of a misleading SQL error.
+
 ## Product causes found
 
-(Filled from the I-170 run.)
+None. No product code was at fault in any run.
 
 ## Decided for the owner
 
