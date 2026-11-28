@@ -1,4 +1,4 @@
-STATUS 09:30 | items 1-6 + additions a-c built, tests green (373 files / 4140 tests); item 7 browser walk + d + e: not yet | next push 09:45 | blocker: none
+STATUS 10:35 | items 2-6, a-c, TF built and gated (fea45e1 pushed, TF follows); item 1 PARTIAL: round 2 re-review REVISE, 4 findings parked (see Parked), GROUP A NOT READY; item 7 browser walk, d, e not run | next push 11:15 | blocker: none
 
 # RESULTS Lane FJ (frontend joins), branch fix/r3-frontend-joins-1128
 
@@ -9,7 +9,7 @@ Base: origin/integration/weekend-r2-1128 plus merges of fix/r2-builder-2, r2-exi
 | 1 lock + one key on every page | Fixed, not tested in a browser | paper-strategies-exit-lock-r3-fj: `expected [ { method: 'POST', ... } ] to have a length of 1 but got 2` (5 of 6 red) | 12/12, then round 2 `unknown-locks-class-r3-fj-round2` 20 of 23 red -> 23/23 |
 | 2 cancelled-stop lines (page half) | Fixed, not tested in a browser | builder-cancelled-stops-r3-fj: 3 of 5 red | 5/5 |
 | 3 plan screens and fields | Fixed, not tested in a browser | 6/9, 5/7, 4/6 red | green |
-| 4 chart after unmount | Fixed | new guard removed: 1 of 4 red | 4/4; drafts test 5 of 5 runs green |
+| 4 chart after unmount | Fixed (coordinator 09:28: Lane FK owns PayoffChart from here; this change is already in) | new guard removed: 1 of 4 red | 4/4; drafts test 5 of 5 runs green |
 | 5 no price names the contract | Fixed | 10 red | 12/12 |
 | 6 F6 parts, PriceNotice one rule | Fixed | 2/3 and 1/2 red | green |
 | 6 F5 stop sentence after unknown move | NOT built, see Question | | |
@@ -18,7 +18,7 @@ Base: origin/integration/weekend-r2-1128 plus merges of fix/r2-builder-2, r2-exi
 | c FB2 minors (refusals, 511 tick, Save As, shape read) | Fixed | 4/7 and [2,2,3,3,4,4] vs [2,3,4] | green |
 
 Opus review (items 1-2, commit 10cc777): REVISE, F1/F2 critical (builder and Positions locks read each other as "placed" or "moved"), F3 add lock written after the POST, F4-F7 minors. Round 2 fixed F1-F6 at class level: one writer and one decision (`decideLock`) in lib/unknownLocks.js. F7 not built (server key stays pending up to 600 s, so a same-key resend can meet 582 for up to 10 minutes: no double order, possible wait).
-A second Opus read of round 2 has not been done.
+Second Opus read of round 2 (commit fea45e1): REVISE. See Parked.
 
 ## For the owner lane
 - `StrategyOut` (`GET /strategies/{id}`) carries no `position_kind`; with it the builder could tell a real trade directly. Today: status_word "Running" + no paper book for that id.
@@ -50,6 +50,19 @@ A second Opus read of round 2 has not been done.
 3. TD O-4: should the table total follow the "Add booked P&L" switch (tiles move with it, the table total does not; OFF shows whole rupees, ON paise)?
 4. Execute page (real basket): does it need the same lock after an unknown outcome, and what should a repeat press do there? Not built.
 
+## Parked (item 1 stays PARTIAL; rule B1: two rounds spent, so parked with evidence, not a third round)
+Opus re-review of fea45e1 found a path where a second exit goes out with a NEW key while the first can still commit (the 27 Nov case, 2 of 4 lots twice). To file as deferred issues; the attack tests (a1, b1, c1, e1) are in the lane's scratchpad and are to be moved into frontend/tests/ with the fixes:
+1. CRITICAL `decideLock` verdict `changed` (unknownLocks.js ~102-110) ends the lock and drops the key inside the 130 s window when ANY other leg moved (a stop on another leg, expiry, another device). Callers: PaperStrategies.vue ~497, StrategyBuilderPage.vue ~895-896. Runs: Positions 503 on leg 776, read shows leg 784 at 0 and 776 unchanged => lock null, second POST new key; builder 2 of 4 lots the same. Recommended (fail-closed, not built): "moved" means an EXITED leg moved; an unrelated move counts as unchanged; the key is dropped only on stored or refused; `changed` never ends the lock before a read sent more than 130 s after the give-up.
+2. CRITICAL another tab decides while the first POST is still out: `adopted()` (~143-148) turns `out:true` into `out:false, at: now`; PaperStrategies.vue ~515 sets `readSeq: seq - 1` so the adopting read counts as "after the reply" though no reply exists; `out` is checked only on the unchanged branch (~113). Mutation: removing `lock.out === true ||` leaves all 23 round-2 tests green.
+3. MAJOR the builder checks the lock before `await readStops` (~743) and not after (~757 checks only exitBlocked); ~769 overwrites another tab's lock, ~808 drops it on 201. Run: builder Confirm with the triggers read held, Positions exit posts meanwhile, builder then posts too. Fix: re-check `exitLockFor` in the same synchronous step as `saveExitLock`, as Positions does (~574-583).
+4. MAJOR one refused storage write (`storageWorks = false`, unknownLocks.js ~19, 24, 37) makes every later read ignore storage, so another tab's lock is invisible (fail open). Fix: read storage whenever possible and merge with memory.
+5. MINOR a malformed entry without `before` locks forever (liveness); an `at` in the future holds until the clock passes it; the builder's add lock is memory-only (not held across reload or a second tab, same class as F3); round-2 tests do not catch mutations M4 and M6.
+F7 (server keeps the key pending up to 600 s, a same-key resend can meet 582) also stays.
+
+## TF defect (from test lane TF): builder `?strategy=1` says the paper position "could not be read" with no failed request
+Cause: `readPaperBook` threw "unreadable" when the book and the catalogue both answered but the catalogue held none of the book's contracts (D-TD-3 scenario day in the past). Fixed: that state has its own sentence and still blocks the page (fail closed); a failed or malformed read still says "could not be read". Test builder-open-unmatched-r3-fj (3 tests). Not changed: three sites that pass null to `unreadableParts` (book names a different strategy id than the URL; a re-read that is not a paper book) still say "could not be read"; they need their own wording, owner to decide.
+New wording (four parts): "This strategy's paper position was read, but its contracts are not in the catalogue for today, so it is not shown." / "The numbers on this page are not shown, so none of them can be mistaken for current values." / "Nothing was changed and no order was placed." / "Trying again will not help until the catalogue lists these contracts."
+
 ## Not done
 - Item 7 browser walk (unknown exit on builder and Positions with second tab, moved leg with stop, Add to Paper after close, Live card Plan door, list Retry) and the UX-AF2 / UX-B03 re-check: not run.
 - F5 as above; F7; builder's in-memory add lock still compares its local net key (never stored).
@@ -68,4 +81,4 @@ Live: repeat with a real unknown reply; check "Prices as of" / "Checked at" on t
 | Opus review items 1-2 | Opus | 11 |
 | round 2 fixes | Sonnet | 15 |
 
-NOT SAFE TO CLOSE yet: item 7 and a second review pending.
+NOT SAFE TO CLOSE: item 1 parked remainder, item 7 not run.
