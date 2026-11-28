@@ -294,6 +294,8 @@ class _Request:
     now: datetime.datetime
     clock: Callable[[], datetime.datetime]
     rates: ChargeRates | None
+    key: uuid.UUID | None = None  # FD3 item 2: the order request key, claimed in the plan's own transaction
+    sent: Mapping[str, Any] | None = None
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut, response_model_exclude_unset=True)
@@ -316,15 +318,20 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
         if session is None:
             raise _refuse("gate_broker_not_connected")
         if key is not None:  # ADR-017: a repeat of this press is refused by name and prepares nothing
+            if await request_key.lookup(db, user_ref, key, strategy_id, sent) is not None:  # FD3: the durable record
+                raise _refuse("request_key_already_prepared")
             first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
             if first is not None:  # never the same sealed Kite form twice: the repeat is refused by name
                 raise _refuse("request_key_already_prepared")
             claimed = True
-        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates),
-                             stored)
+        out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates,
+                                      key, sent), stored)
         out = echo_seq(out, body.seq)  # REQ-119 AC-1: before the commit, so a failed echo rolls the plan back
         committing = True  # from here an exception leaves the outcome unknown: the key stays claimed until it expires
         await db.commit()
+    except request_key.Repeated:  # FD3: another press with this key committed first (the durable claim)
+        await db.rollback()
+        raise _refuse("request_key_already_prepared") from None
     except store.StrategyStoreError as exc:
         await db.rollback()
         if claimed and not committing and key is not None:
@@ -431,12 +438,16 @@ async def _execute(req: _Request, stored: Any) -> ExecuteOut:
     await _refuse_lots_over_limit(req, wanted, units, catalogue, underlying)  # ADR-330 (58): the paper door's function
     await _gate(req, priced, context, catalogue, underlying)
     basket = await _basket(req, priced, catalogue, plan_number)
+    if req.key is not None and req.sent is not None:  # FD3 item 2: the durable claim, in THIS transaction
+        await request_key.claim_in_transaction(req.db, req.user_ref, req.key, req.strategy_id, req.sent, "real")
     try:
         plan = await plans.record_plan(req.db, req.user_ref, req.strategy_id, plan_number, req.action,
                                        _plan_orders(basket), strategy_version=store.built_from(stored))
     except plans.PlanStoreError:
         raise _refuse("gate_dependencies_unsatisfied") from None
     await order_audit.record_prepared(req.db, plan, actor=req.user_ref)  # same transaction: rolls back with the plan
+    if req.key is not None:
+        await request_key.finish_in_transaction(req.db, req.user_ref, req.key, {"plan_number": plan_number})
     return _answer(plan_number, basket, req.session.api_key, cost_out(basket.orders, req.rates, figures),
                    priced.planned_prices)
 

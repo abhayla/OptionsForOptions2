@@ -1482,14 +1482,25 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
     key = body.client_request_id
     sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id"})
     if key is not None:
+        # FD3 item 2: the durable record first (the record of truth); Redis is the fast path for "still running"
+        recorded = await request_key.lookup(db, user_ref, key, strategy_id, sent)
+        if recorded is not None:  # a repeat of a request that committed: its result, nothing stored
+            return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
+                               cancelled=recorded.get("cancelled_stops", []))
         first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
         if first is not None:  # a repeat: the first result, nothing stored
             return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
                                cancelled=first.get("result", {}).get("cancelled_stops", []))
-    stage = {"commit_started": False}
+    stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent}
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
             user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
+    except request_key.Repeated as repeat:  # another request with this key committed first: its result, nothing stored
+        await db.rollback()
+        await request_key.finish(keys, user_ref, key,
+                                 request_key.done(strategy_id, sent, {"cancelled_stops": repeat.result.get("cancelled_stops", [])}))
+        return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
+                           cancelled=repeat.result.get("cancelled_stops", []))
     except BaseException:
         if key is not None and not stage["commit_started"]:  # refused with nothing stored: the key is free again
             await request_key.free(keys, user_ref, key)
@@ -1547,6 +1558,8 @@ async def _place_orders(db: Any, strategy_id: int, stored: Any, body: PaperOrder
     # I-158: the armed set is read UNDER the strategy row lock (taken here, kept to the commit), so no other writer that
     # takes the lock can cancel one between this read and the read-back that names the cancelled stops
     await store.lock_strategy(db, user_ref, strategy_id)
+    if stage.get("key") is not None:  # FD3 item 2: the durable claim, in THIS transaction (commits with the orders)
+        await request_key.claim_in_transaction(db, user_ref, stage["key"], strategy_id, stage["sent"], "paper")
     armed_before = await _armed_leg_stops(db, strategy_id)  # F3: the stops this request may cancel
     try:
         book = await paper_limit.place_checked(
@@ -1572,6 +1585,8 @@ async def _place_orders(db: Any, strategy_id: int, stored: Any, body: PaperOrder
             raise StrategyRefused("held_entry_not_a_first_open_basket")  # rolled back below: nothing stored
         await _record_held(db, strategy_id, body.held)  # ADR-292: the held row and its first basket: one transaction
         cancelled_out = await _stops_out(db, stored, state, cancelled)
+        if stage.get("key") is not None:
+            await request_key.finish_in_transaction(db, user_ref, stage["key"], {"cancelled_stops": cancelled_out})
         stage["commit_started"] = True
         await db.commit()
     except store.StrategyStoreError as exc:

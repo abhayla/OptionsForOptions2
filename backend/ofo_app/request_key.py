@@ -1,8 +1,10 @@
 """Lane FD2 item 2 (issues #869, #871; ADR-017): the order request key ``client_request_id``.
 
 The page makes one UUID per Confirm and sends it with every resend of that Confirm. The server keeps the key for
-``KEY_TTL_S`` seconds (longer than the 120 s unknown-outcome window) in the app's short-lived store (Redis); a durable
-key store needs a migration (listed for Lane FD). A key goes through three states:
+``KEY_TTL_S`` seconds (longer than the 120 s unknown-outcome window) in the app's short-lived store (Redis), the fast
+path. FD3 item 2 (migration 0061): the record of truth is ``public.order_request_keys``, claimed in the SAME transaction
+as the orders (see the end of this module); a repeat after a Redis flush or expiry still finds it. A key goes through
+three states:
 
 * claimed (``pending``): the first request is placing; any other request with the key is told so and places nothing;
 * ``done``: the first request committed; a repeat gets the first result and places nothing;
@@ -22,6 +24,8 @@ from typing import Any, Protocol
 
 import redis.asyncio as aioredis
 from redis.exceptions import RedisError
+from sqlalchemy import text
+from sqlalchemy.exc import SQLAlchemyError
 
 from ofo_app import feed_bus, feed_mode
 from ofo_app.errors import Failure
@@ -150,3 +154,84 @@ async def free(store: KeyStore, user_ref: str, key: uuid.UUID) -> None:
         await store.release(scoped(user_ref, key))
     except KeyStoreDown:
         return
+
+
+# ---- the durable record (Lane FD3 item 2, migration 0061): public.order_request_keys ---------------------------------
+# The record of truth. The claim is written in the SAME transaction as the orders (or the sealed plan), so a crash can
+# neither store the orders without the key nor the key without the orders; a repeat reads the row. Redis stays the fast
+# path for "the first request is still running" (582). A table that cannot be read or written refuses the keyed
+# request by name (583) and stores nothing.
+
+_DB_CLAIM = text(
+    "INSERT INTO public.order_request_keys (user_ref, request_key, strategy_id, body_sha256, door, state) "
+    "VALUES (:u, :k, :s, :h, :d, 'pending') ON CONFLICT (user_ref, request_key) DO NOTHING RETURNING request_key")
+_DB_READ = text("SELECT strategy_id, body_sha256, door, state, result FROM public.order_request_keys "
+                "WHERE user_ref = :u AND request_key = :k")
+_DB_DONE = text("UPDATE public.order_request_keys SET state = 'done', result = CAST(:r AS jsonb), "
+                "finished_at = clock_timestamp() WHERE user_ref = :u AND request_key = :k AND state = 'pending'")
+DOORS = ("paper", "real")
+
+
+class Repeated(Exception):  # noqa: N818 - a signal, not a failure: the key was already used and committed
+    """The key is already recorded by a request that committed: ``result`` is what that request stored."""
+
+    def __init__(self, result: Mapping[str, Any]) -> None:
+        super().__init__("request key already used")
+        self.result: dict[str, Any] = dict(result)
+
+
+async def _read(db: Any, user_ref: str, key: uuid.UUID) -> Any:
+    try:
+        return (await db.execute(_DB_READ, {"u": user_ref, "k": key})).first()
+    except (SQLAlchemyError, OSError, TimeoutError):
+        raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY) from None
+
+
+def _judge(row: Any, strategy_id: int, body: Mapping[str, Any]) -> dict[str, Any]:
+    """The rules for a key that is already recorded: other strategy 580, other orders 581, still pending 582, else the
+    stored result of the request that committed."""
+    if int(row.strategy_id) != strategy_id:
+        raise _refused("request_key_other_strategy")
+    if row.body_sha256 != fingerprint(body):
+        raise _refused("request_key_different_body")
+    if row.state != DONE:
+        raise _refused("request_key_in_progress")
+    return dict(row.result or {})
+
+
+async def lookup(db: Any, user_ref: str, key: uuid.UUID, strategy_id: int, body: Mapping[str, Any]
+                 ) -> dict[str, Any] | None:
+    """None: the key is not recorded (this request is the first). Else the stored result of the request that committed
+    (a repeat; place nothing). Refused by name for another strategy, other orders, a pending row, an unreadable table."""
+    row = await _read(db, user_ref, key)
+    return None if row is None else _judge(row, strategy_id, body)
+
+
+async def claim_in_transaction(db: Any, user_ref: str, key: uuid.UUID, strategy_id: int, body: Mapping[str, Any],
+                               door: str) -> None:
+    """Write the claim in the caller's transaction (it commits or rolls back with the orders). When another request
+    committed the key first (this INSERT waits for it), raises ``Repeated`` with that request's result; the caller rolls
+    back and answers it. A table that cannot be written refuses the request (nothing stored)."""
+    if door not in DOORS:
+        raise ValueError(door)
+    try:
+        inserted = (await db.execute(_DB_CLAIM, {"u": user_ref, "k": key, "s": strategy_id, "h": fingerprint(body),
+                                                 "d": door})).first()
+    except (SQLAlchemyError, OSError, TimeoutError):
+        await db.rollback()
+        raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY) from None
+    if inserted is not None:
+        return
+    row = await _read(db, user_ref, key)
+    if row is None:  # the other request rolled back between our INSERT and this read: nothing is recorded, refuse
+        raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY)
+    raise Repeated(_judge(row, strategy_id, body))
+
+
+async def finish_in_transaction(db: Any, user_ref: str, key: uuid.UUID, result: Mapping[str, Any]) -> None:
+    """Mark the claim ``done`` with the result, in the same transaction, right before the commit."""
+    try:
+        await db.execute(_DB_DONE, {"u": user_ref, "k": key, "r": json.dumps(result, default=str)})
+    except (SQLAlchemyError, OSError, TimeoutError):
+        await db.rollback()
+        raise _refused("request_key_store_unavailable", Failure.UPSTREAM_BUSY) from None
