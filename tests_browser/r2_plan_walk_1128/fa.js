@@ -1,0 +1,17 @@
+// Lane TG R2-FA steps 1, 2, 4: Exit dialog on Positions, Stops panel save with the market closed
+const { launch, shot, body, MAIN } = require('./common')
+;(async () => {
+  const { browser, page } = await launch()
+  await page.goto(MAIN + '/positions/current-positions?tab=paper&strategy=1'); await page.waitForTimeout(10000)
+  const lines = async (re, n = 8) => (await body(page)).split(' | ').filter(l => re.test(l)).slice(0, n).map(l => l.slice(0, 220))
+  console.log('ref line before save:', JSON.stringify(await lines(/last close|A level you save|checked from the next market open|Index values unavailable/i)))
+  await page.getByLabel(/Above/i).first().fill('25000').catch(async () => page.locator('input').filter({ hasText: '' }).nth(0).fill('25000'))
+  await page.getByRole('button', { name: 'Save' }).first().click(); await page.waitForTimeout(4000)
+  console.log('after Save Above 25000:', JSON.stringify(await lines(/Saved|Already set|refus|could not|not checked|closed|exit above/i, 8)))
+  await shot(page, 'fa-stops-save')
+  await page.locator('input[type=checkbox]').nth(2).check(); await page.waitForTimeout(1000)
+  await page.getByRole('button', { name: /^Exit \(\d+\)$/ }).first().click(); await page.waitForTimeout(3500)
+  console.log('EXIT DIALOG:', (await page.getByRole('dialog').first().innerText()).replace(/\s+/g, ' ').slice(0, 800), '| Confirm disabled:', await page.getByRole('button', { name: 'Confirm' }).last().isDisabled())
+  await shot(page, 'fa-exit-dialog')
+  await browser.close()
+})()

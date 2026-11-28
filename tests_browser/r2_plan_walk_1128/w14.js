@@ -1,0 +1,27 @@
+// Lane TG W-14 (plan sheet messages), W-16 (completed trade read-only), W-19 (name on one line), W-31 (plan-watch requests)
+const { launch, shot, body, MAIN } = require('./common')
+;(async () => {
+  const { browser, page } = await launch()
+  await page.goto(MAIN + '/strategy/builder?strategy=1'); await page.waitForTimeout(7000)
+  await page.getByRole('button', { name: 'Edit plan' }).click(); await page.waitForTimeout(2000)
+  const dlg = page.getByRole('dialog').first()
+  const ins = dlg.locator('input:not([type=time]):not([type=date])')
+  const seen = async (label) => { if (!(await dlg.isVisible().catch(()=>false))) { console.log(label, '-> sheet closed (saved, no message)'); await page.getByRole('button', { name: 'Edit plan' }).click(); await page.waitForTimeout(2000); return } const t = (await dlg.innerText()).replace(/\s+/g, ' '); const m = t.match(/(Time exit date is[^.]*\.|Time exit is not valid\.|Target is not valid\.|Stop is not valid\.|Target \(Rs\) is not valid\.|Stop \(Rs\) is not valid\.|Max adjustments is not valid\.|Target and Target \(Rs\) show different values\.|Stop and Stop \(Rs\) show different values\.)/g); console.log(label, '->', JSON.stringify(m)) }
+  await dlg.locator('input[type=date]').fill('2026-11-01'); await dlg.getByRole('button', { name: 'Save plan' }).click(); await page.waitForTimeout(2500); await seen('date in the past')
+  await dlg.locator('input[type=date]').fill(''); await ins.nth(0).fill('abc'); await dlg.getByRole('button', { name: 'Save plan' }).click(); await page.waitForTimeout(2500); await seen('target abc')
+  await ins.nth(0).fill('61.54'); await ins.nth(1).fill('xyz'); await dlg.getByRole('button', { name: 'Save plan' }).click(); await page.waitForTimeout(2500); await seen('target rs xyz')
+  await ins.nth(1).fill('3000.00'); await ins.nth(2).fill('9'); await ins.nth(3).fill('500'); await dlg.getByRole('button', { name: 'Save plan' }).click(); await page.waitForTimeout(2500); await seen('stop 9 % vs Rs 500')
+  await ins.nth(2).fill(''); await ins.nth(3).fill('qq'); await dlg.getByRole('button', { name: 'Save plan' }).click(); await page.waitForTimeout(2500); await seen('stop rs qq')
+  await ins.nth(3).fill('100'); await ins.nth(4).fill('zz'); await dlg.getByRole('button', { name: 'Save plan' }).click(); await page.waitForTimeout(2500); await seen('max adj zz')
+  await shot(page, 'w14-sheet')
+  // W-16
+  await page.goto(MAIN + '/strategy/builder?strategy=4'); await page.waitForTimeout(7000)
+  const t = await body(page)
+  console.log('W-16 completed #4: Exit buttons', (await page.getByRole('button').allInnerTexts()).filter(x => /^Exit|Add to Paper|Review/.test(x)).join('|') || 'none', '| read-only text:', (t.match(/[^|]*(read-only|Completed|closed)[^|]*/gi) || []).slice(0, 3).join(' ;; '))
+  await shot(page, 'w16-completed')
+  // W-31: plan-watch requests per 45 s on Positions
+  let n = 0; page.on('request', (r) => { if (/plan-watch/.test(r.url())) n++ })
+  await page.goto(MAIN + '/positions/current-positions?tab=paper'); await page.waitForTimeout(45000)
+  console.log('W-31 plan-watch requests in 45 s on Positions (incl. first load):', n)
+  await browser.close()
+})()
