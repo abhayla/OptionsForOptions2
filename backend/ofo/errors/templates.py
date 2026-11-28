@@ -1107,7 +1107,7 @@ _STRATEGY_DRAFT_TEMPLATES: tuple[MessageTemplate, ...] = (
     # Lane B2 (ADR-016 to ADR-019, ADR-330 (58)): while an earlier order request of the strategy has no known result,
     # every further order request is refused whatever its key or body (``ofo_app.order_outcome``). New wording,
     # pending the owner's read.
-    _gate("order_outcome_unknown", _SV, 587,
+    _gate("order_outcome_unknown", _SV, 590,
           "An earlier order for this strategy has no known result yet.",
           "No order was stored by this request; another order now could double the position.",
           "Placing these orders.", "Read the strategy's orders, then try again in a couple of minutes."),

@@ -118,6 +118,7 @@ def _app_with_counters(counter: _Counter):
         yield  # pragma: no cover - makes this an async generator like get_db
 
     app.dependency_overrides[execute.get_kite_session] = kite_session
+    app.dependency_overrides[execute.guard_real_outcome] = lambda: None  # B2: the block reads the database
     app.dependency_overrides[get_db] = db
     return app
 
