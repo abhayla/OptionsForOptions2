@@ -102,3 +102,27 @@ async def test_connected_but_too_old_index_quote_needs_the_tick_adr330_39():
     got = await _spot(ctx, True)
     assert got == D("24087.30")
     assert isinstance(got, D)
+
+
+async def test_fr33_the_paper_doors_entry_facts_pass_the_feed_and_a_down_feed_with_the_tick_keeps_the_held_value():
+    """FR 3.3: ``routes.paper.entry_facts`` hands the route's feed to ``entry_facts_now`` (it was dropped, so an index
+    nobody held was never held on the fan-out); with the feed down and the user's tick the held index value starts the
+    facts, never a refusal."""
+    from ofo_app.routes import paper as paper_route  # noqa: PLC0415
+    seen = {}
+    real = readers.entry_facts_now
+
+    async def spy(ctx, underlying, sold, confirmed=False, feed=None):
+        seen["feed"] = feed
+        return await real(ctx, underlying, sold, confirmed=confirmed, feed=feed)
+    sold_leg = SimpleNamespace(instrument_type="CE", strike=D("24100"), expiry=datetime.date(2026, 12, 1))
+    state = {7: SimpleNamespace(stored=SimpleNamespace(listed=SimpleNamespace(contract=sold_leg)))}
+    orders = [SimpleNamespace(contract_id=7, side="SELL", kind="open")]
+    feed = object()
+    ctx = _ctx(connected=False, quote=_quote(D("24087.30")))
+    import pytest as _pytest  # noqa: PLC0415
+    with _pytest.MonkeyPatch.context() as mp:
+        mp.setattr(readers, "entry_facts_now", spy)
+        facts = await paper_route.entry_facts(ctx, "NIFTY", orders, state, confirmed=True, feed=feed)
+    assert seen["feed"] is feed
+    assert facts is not None and facts.entry_spot == D("24087.30")  # the held value, stored on the first fill
