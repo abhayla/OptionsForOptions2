@@ -56,7 +56,7 @@ from ofo_app import (
     tracked_book,
     tracked_contracts,
 )
-from ofo_app.catalogue_store import load_catalogue
+from ofo_app.catalogue_store import StoredContract, load_catalogue, load_contracts
 from ofo_app.db import get_sessionmaker
 from ofo_app.errors import Failure
 from ofo_app.outcome_oi import oi_of
@@ -206,6 +206,29 @@ async def nearest_expiry(db: Any, strategy_id: int) -> datetime.date | None:
                 if p.net_quantity != 0 and found.get(int(p.instrument_id)) is not None
                 and found[int(p.instrument_id)].stored is not None]
     return min(expiries, default=None)
+
+
+async def nearest_expiries(db: Any, strategy_ids: Iterable[int]) -> dict[int, datetime.date | None]:
+    """``nearest_expiry`` for many strategies in TWO statements whatever the count (W-13: the alert lists labelled each
+    trade with 3 to 4 statements of its own): one paper-orders read (owner check in the query), one contract read.
+    Same answer per strategy as ``nearest_expiry`` for a PAPER book (the nearest expiry among the open legs; a flat book
+    or a contract that does not read -> None). A strategy that is not in the result has no paper order (a real book, not
+    this user's, nothing traded): the caller asks ``nearest_expiry`` for it, one at a time."""
+    ids = sorted(set(strategy_ids))
+    papers = await paper_book.load_owned_many(db, current_user_ref(), ids)
+    stored = await load_contracts(db, {o.order.contract_id for rows in papers.values() for o in rows})
+    out: dict[int, datetime.date | None] = {}
+    for sid, orders in papers.items():
+        if not orders:
+            continue
+        book = net_positions([o.order.as_paper() for o in orders], {})
+        expiries = []
+        for p in book.positions:
+            found = stored.get(int(p.instrument_id))
+            if p.net_quantity != 0 and isinstance(found, StoredContract):
+                expiries.append(found.listed.contract.expiry)
+        out[sid] = min(expiries, default=None)
+    return out
 
 
 _ENTRY_SOURCE = "entry"  # = settings_in_force.BASE_ENTRY (imported lazily: that module imports the check)
