@@ -7,12 +7,15 @@ import { createMemoryHistory, createRouter } from 'vue-router'
 import { createPinia, setActivePinia } from 'pinia'
 import FIX from './fixtures/paper-strategies.json'
 
+import { legacy } from './_paperList'
+import { withPriceTexts } from './_priceTexts'
 let paperReply = null
+let answers = {}
 const posts = []
 vi.mock('@/services/api', async (importActual) => {
   const actual = await importActual()
   return { ...actual, default: {
-    get: (url) => (url === '/paper/strategies' ? Promise.resolve({ data: paperReply }) : Promise.reject({ status: 404, parts: null })),
+    get: (url) => { const a = legacy(answers, 'GET', url); if (a) return a(); return url === '/paper/strategies' ? Promise.resolve({ data: paperReply }) : Promise.reject({ status: 404, parts: null }) },
     post: (url) => { posts.push(url); return Promise.reject({ status: 404 }) }, delete: () => Promise.reject({ status: 404 }) } }
 })
 import PaperStrategies from '@/components/strategy/PaperStrategies.vue'
@@ -29,7 +32,7 @@ async function show(path, props = {}) {
   await flushPromises()
   return w
 }
-beforeEach(() => { setActivePinia(createPinia()); posts.length = 0 })
+beforeEach(() => { setActivePinia(createPinia()); posts.length = 0; answers = {} })
 
 describe('F1: only exactly paper or real is a kind on the paper list', () => {
   for (const kind of [undefined, 'none', 'unknown', 'REAL', '', null]) {
@@ -51,21 +54,37 @@ describe('F1: only exactly paper or real is a kind on the paper list', () => {
 })
 
 describe('F2: the link door and the alert door obey the same gate as the buttons', () => {
-  it('?exit=1 on an unknown group opens no dialog and posts nothing; on paper it opens', async () => {
-    paperReply = doc({ position_kind: 'unknown' })
-    const u = await show('/p?tab=paper&strategy=1&exit=1')
-    expect(document.body.querySelector('[data-testid="paper-confirm-button"]')).toBeNull()
-    expect(posts).toEqual([])
-    u.unmount()
-    paperReply = doc({ position_kind: 'paper' })
-    const p = await show('/p?tab=paper&strategy=1&exit=1')
-    expect(document.body.querySelector('[data-testid="paper-confirm-button"]')).not.toBeNull()
-    p.unmount()
+  const leg = (i) => withPriceTexts({ leg_index: i, instrument_id: `NSE_FO:${i + 1}`, action: i % 2 ? 'SELL' : 'BUY', instrument: i < 2 ? 'PE' : 'CE', strike: `${22300 + i * 100}.00`, expiry: '2026-11-03', quantity: 65,
+    entry_price: '114.25', entry_at: '2026-10-28T05:03:09Z', current_price: '113.60', price_state: 'live', price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null })
+  const tracking = (kind) => ({ strategies: [withPriceTexts({ strategy_id: 48, name: '"IC"', underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE', pause_reason: null, as_of: null, total: '71.50', booked: '0.00', unbooked: '71.50', legs: [leg(0), leg(1)], ...{ position_kind: kind } })], answered_at: '2026-10-28T06:00:00Z' })
+  const run = async (kind, path, props) => {
+    answers['GET /tracking'] = () => Promise.resolve({ data: tracking(kind) })
+    const r = createRouter({ history: createMemoryHistory(), routes: [{ path: '/:x(.*)*', component: { template: '<div/>' } }] })
+    r.push(path)
+    await r.isReady()
+    const w = mount(PaperStrategies, { props, global: { plugins: [r, createPinia()] } })
+    await flushPromises()
+    return w
+  }
+  it('?exit=48: paper and real open the dialog; unknown, missing and none open nothing and post nothing', async () => {
+    for (const [kind, opens] of [['paper', true], ['real', true], ['unknown', false], [null, false], ['none', false]]) {
+      posts.length = 0
+      const w = await run(kind, '/positions/current-positions?tab=paper&strategy=48&exit=48')
+      expect(w.findComponent(PaperConfirmDialog).props('open'), String(kind)).toBe(opens)
+      expect(posts).toEqual([])
+      w.unmount()
+    }
   })
-  it('exit-only door (the Alerts page) on an unknown group draws no dialog', async () => {
-    paperReply = doc({ position_kind: 'unknown' })
-    const w = await show('/p', { exitOnlyFor: '1' })
-    expect(document.body.querySelector('[data-testid="paper-confirm-button"]')).toBeNull()
+  it('the exit-only door (the Alerts page) follows the same gate', async () => {
+    for (const [kind, opens] of [['real', true], ['unknown', false]]) {
+      const w = await run(kind, '/x', { exitOnlyFor: '48' })
+      expect(w.findComponent(PaperConfirmDialog).props('open'), String(kind)).toBe(opens)
+      w.unmount()
+    }
+  })
+  it('a real exit opens a dialog of kind real, never paper', async () => {
+    const w = await run('real', '/positions/current-positions?tab=paper&strategy=48&exit=48')
+    expect(w.findComponent(PaperConfirmDialog).props('kind')).toBe('real')
     w.unmount()
   })
 })

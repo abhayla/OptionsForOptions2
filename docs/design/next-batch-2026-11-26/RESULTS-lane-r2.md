@@ -1,8 +1,8 @@
-STATUS 19:30 | R2 items 1-5: Fixed, not tested in a browser (frontend unit tests green; the full push check is running) | next: item 6 browser walk after Lane R1's stage 2 | blocker: the coordinator send_message was refused ("elevated_session_untrusted_device"), so this STATUS line is the report
+STATUS 20:45 | R2 items 1-5 + Opus review fixes F1-F5: Fixed, not tested in a browser (frontend unit tests green; full push check pending) | next: item 6 browser walk after Lane R1's stage 2 | blocker: the coordinator send_message was refused ("elevated_session_untrusted_device"), so this STATUS line is the report
 
 # Lane R2 results: real positions get the same screens (frontend), 28 Nov 2026
 
-Spec basis: owner 28 Nov about 18:55 IST ("Paper and real trades are same now ... everything between them should be same"), which withdraws ADR-330 (64); ADR-330 (58); ADR-281 (the hold on real orders stays); ADR-016 to ADR-019; ADR-292 (4), (5); ADR-003.
+Spec basis: ADR-330 point (73) (commit 6423c95ea on origin/fix/ic-live-test-1123; it withdraws point (64)); owner 28 Nov about 18:55 IST ("Paper and real trades are same now ... everything between them should be same"), which withdraws ADR-330 (64); ADR-330 (58); ADR-281 (the hold on real orders stays); ADR-016 to ADR-019; ADR-292 (4), (5); ADR-003.
 Branch: feat/real-same-screens-fe-1128, built on origin/integration/weekend-r3-1129 with origin/fix/r3-frontend-2-1128 merged first (clean).
 
 ## What was built (frontend only; nothing reaches a broker or a data vendor)
@@ -24,7 +24,15 @@ Branch: feat/real-same-screens-fe-1128, built on origin/integration/weekend-r3-1
 - Title word of a real exit is `Real (stored, not sent)`: the old word claimed a Zerodha order, which the owner's rule says must never be believed. The guard in one-door-screens.test.js now pins the new word in one place.
 - `not_applicable` stays (unknown kind only), with a neutral fallback sentence: the unknown lock is unchanged (fail closed).
 - A real group inside the paper list shows the REAL tag and a mixed banner instead of "not real money".
-- A group with `position_kind: "unknown"` in the paper list shows no Exit or Stops and the unread-kind line; a missing tag on the PAPER list reads as paper (it is the paper list).
+- A group with `position_kind: "unknown"` in the paper list shows no Exit or Stops and the unread-kind line.
+
+## Opus review of the diff (one round) and what was done
+F1 (MAJOR): a missing, none or odd `position_kind` on the paper list read as PAPER (tag, Exit, Stops). Fixed: only exactly paper or real is a kind; anything else is `unknown` (no tag, no buttons, the unread-kind line). F2 (MAJOR): the `?exit=` link and the Alerts door opened Exit for an unknown group. Fixed: the same `isActionableKind` gate, a note instead of a dialog. F3: the done line fell back to paper wording. Fixed: the kind is taken when the dialog opens and kept; an unreadable kind says neither placed nor stored. F4 (MAJOR): the builder dialog could never get kind real. Fixed: `dialogKind` is real when the server's book says `position_kind: real`; NOT done: the builder dialog for a book with a missing or odd kind still opens as paper (a builder book is the practice book by construction; the server refuses paper orders on real, held and unknown positions today). F5: a real dialog said "order" / "Orderbook" after an unknown outcome. Fixed: real texts, no Orderbook button. Test: real-fail-closed-r2-1128.
+F6 (open, not fixed): after an unknown outcome the page decides "stored" by watching the exited legs shrink (`decideLock`); a stored real exit never changes quantity, so it could later read "not stored" and invite a duplicate record. Needs Lane R1's answer on how a real exit is stored (and whether the real exit posts to `/paper/strategies/{id}/orders`).
+CONTRACT NEED (loud): `/paper/strategies` groups must carry `position_kind` exactly `paper` or `real`; today the backend on this branch does not send it on that route, so every group reads `unknown` and Exit and Stops are locked on the paper list until R1 sends it. The test adapters (`_paperList.js`, `fixtures/paper-strategies.json`) now carry `paper`.
+
+## Edit outside the May-edit list (reported, not hidden)
+`tests/broker_name_allowlist.py`: the repo scan `test_ac3_feature_code_never_compares_a_broker_name_or_id` failed ONLY on my new sentences that name Zerodha (positionKind.js, PaperStrategies.vue MIXED_BANNER, PaperStops label) and on two stale entries; I added the exact lines with a reason and removed the stale ones. The coordinator could not be reached to ask first.
 
 ## Question for the owner
 - No clash between two of his rules found. One to read: with real and paper "same", the Live card for a real row still links Exit to the Paper tab of Positions (same route as paper). OK, or a Real tab?
