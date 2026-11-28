@@ -1500,9 +1500,11 @@ class Worker:
         self._last_skip.pop(sid, None)
 
     def _fresh_read(self, sid: int) -> None:
-        """A fresh price read makes a trade watched again, except one paused for its unknown expiry kind: only a check
-        that finds an exit that can run clears that pause (second review F1)."""
-        if self.paused_reason.get(sid) is PriceState.EXPIRY_KIND_UNKNOWN:
+        """A fresh price read makes a trade watched again, except one paused for its unknown expiry kind (only a check
+        that finds an exit that can run clears that pause: second review F1) or one whose last check FAILED (its write
+        raised, or no preferences / gate read / alert values / preset: only a check that has run and passed clears it,
+        ``_check_passed``; Lane FE3 item 1)."""
+        if self.paused_reason.get(sid) in (PriceState.EXPIRY_KIND_UNKNOWN, PriceState.CHECK_FAILED):
             return
         self.status[sid] = MonitoringStatus.ACTIVE
         self.paused_reason.pop(sid, None)
@@ -1591,7 +1593,16 @@ class Worker:
         self._last_check[sid] = now
         self._checked_body[sid] = w.body
         _keep_recent(self.checks, (sid, now))
+        self._check_passed(sid)
         return True
+
+    def _check_passed(self, sid: int) -> None:
+        """Lane FE3 item 1: a check ran through to its end: a ``CHECK_FAILED`` pause ends here and nowhere else. A write
+        that fails after this point pauses the trade again (``_write_one``)."""
+        if self.paused_reason.get(sid) is PriceState.CHECK_FAILED:
+            self.status[sid] = MonitoringStatus.ACTIVE
+            self.paused_reason.pop(sid, None)
+            self.paused_why.pop(sid, None)
 
     def _note_index(self, w: Watched, read: PriceRead, now: datetime.datetime) -> None:
         """Lane FE (review F2): the index value this FRESH read used (the feed tick or the REST stand-in, with the time
@@ -2112,6 +2123,7 @@ class Worker:
         try:
             while not self._stop:
                 self._watch_writer()
+                await self._monitoring.retry_restore(self._clock())  # FE3 item 3 (F6); never raises
                 try:
                     await self.cycle()
                 except Exception as exc:  # one cycle's failure never ends the role (CancelledError is not one)

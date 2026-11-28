@@ -2639,6 +2639,11 @@ _EXPLANATIONS: tuple[ExplanationTemplate, ...] = (
     # Lane FD2 hand-over (28 Nov 2026), pending owner read: the pause when no exit rule can be checked because the expiry kind is unknown
     ExplanationTemplate("monitoring_why_expiry_kind_unknown", "rule",
                         "Every exit rule is not checked because whether this trade expires weekly or monthly is not known."),
+    # Lane FE3 (28 Nov 2026), pending owner read: the remaining reasons of the "not being watched" state
+    ExplanationTemplate("monitoring_why_exits_not_checked_yet", "rule", "Not being watched: the exits have not been checked yet."),
+    ExplanationTemplate("monitoring_why_book_not_read", "rule", "Not being watched: the book could not be read, so the exits cannot run."),
+    ExplanationTemplate("monitoring_why_exit_not_applicable", "rule",
+                        "Not being watched: this is a real position, and stops here cover paper trades only."),
     ExplanationTemplate("monitoring_why_stale", "rule", "The last price is too old, so no rule can fire."),
     ExplanationTemplate("monitoring_why_disconnected", "rule", "The price feed is not connected, so no rule can fire."),
     ExplanationTemplate("monitoring_why_leg_missing", "rule", "A leg of this trade has no price, so no rule can fire."),

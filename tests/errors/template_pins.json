@@ -5307,6 +5307,18 @@
     "sha256": "cda9274fc44cf2fd39bcc908f860d91fde1f00d39e0a8531517e12971f90b9db",
     "reviewed": "pending owner read"
   },
+  "explanation:monitoring_why_exits_not_checked_yet": {
+    "sha256": "0ebed6caa0f3f5e8f5ff02edc39f59d8a7d9a9d4784ebe3e734848703338d117",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitoring_why_book_not_read": {
+    "sha256": "dfce4974f6da9d9b2e866b989aef3af0ed7a6b3a37a9b0d0ef7c7ec444f34ad1",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitoring_why_exit_not_applicable": {
+    "sha256": "73c8c6da1d92857c8572f049384486133728b3510b88a217185529a921755e5e",
+    "reviewed": "pending owner read"
+  },
   "adjust_trigger_expiry_kind_unknown": {
     "sha256": "a62c13a4711c1bee319b976f1ee6d66b32c806a9edf21dede813e892af0c65b2",
     "reviewed": "pending owner read"

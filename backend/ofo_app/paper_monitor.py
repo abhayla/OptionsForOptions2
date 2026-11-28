@@ -87,6 +87,18 @@ EXIT_NOT_RUN_KIND: Final = "stop_fired"
 INDEX_WAIT_SECONDS: Final = 1.0
 
 
+#: Lane FE3 item 6: the wordings of the line of a leg stop that HAS fired (past tense, the figure at the fill), for
+#: reading a stored line back (``actionable_alerts.inform`` ``restore``); the list in ``paper_alert`` is not
+#: this lane's.
+FIRED_LINE_TEMPLATES: Final = ("paper_leg_stop_fired", "paper_leg_stop_fired_unlimited", "paper_leg_stop_fired_unknown")
+#: Lane FE3 item 2: a reload that could not read the book (armed triggers, position kinds, orders) is tried again this
+#: soon, and the last known watch list is kept for at most ``BOOK_UNREAD_MAX_S`` of failure (the same two minutes as the
+#: heartbeat rule, ``monitoring_state.SNAPSHOT_STALE_S``): past it no exit is judged and every trade is reported
+#: "not watched: could not read the book".
+READ_RETRY_SECONDS: Final = 5.0
+BOOK_UNREAD_MAX_S: Final = float(monitoring_state.SNAPSHOT_STALE_S)
+
+
 def exit_not_run_rule(trigger_id: int) -> str:
     """The ONCE-A-DAY rule of the "exit could not run" message (ADR-330 (44)): one message per exit (trigger) per India
     day, however many blocked ticks that day. The rule is this id: ``actionable_alerts.inform_once_per_day`` writes the
@@ -183,6 +195,8 @@ class PaperMonitor:
         self._na_strategies: dict[int, str] = {}  # strategy -> why its armed exits are not judged here (review F2)
         self.not_applicable: dict[int, str] = {}  # trigger id -> the position kind that has no stops here (told once)
         self._ever_loaded = False  # review F3: no armed exit is known until a reload has succeeded; no claim is made
+        self.book_unread_since: float | None = None  # FE3 item 2: monotonic time of the first failed reload in a row
+        self.read_failures = 0  # reloads that could not read the book (the counter the tests and the log name)
         self.fires = 0
         self.failures = 0
 
@@ -193,10 +207,34 @@ class PaperMonitor:
     def watched(self) -> dict[str, int]:
         return {k: len(v) for k, v in self._watch.items()}
 
+    def book_unread_too_long(self) -> bool:
+        """FE3 item 2: reloads have failed for longer than ``BOOK_UNREAD_MAX_S``: the kept watch list is no longer
+        judged (a position kind that cannot be read is never stopped here, ADR-330 (64): fail closed)."""
+        return self.book_unread_since is not None and self._monotonic() - self.book_unread_since > BOOK_UNREAD_MAX_S
+
     async def reload(self) -> None:
-        """Armed triggers (one query), their orders (one query), contracts (one batch); resubscribes the fan-out."""
+        """Armed triggers (one query), their orders (one query), contracts (one batch); resubscribes the fan-out.
+
+        FE3 item 2: a read that fails (the database, ``strategy_store.kinds_of``) never empties the list: the last known
+        watch is kept, the failure is counted and logged, and the next try is ``READ_RETRY_SECONDS`` away. The error
+        goes on to the caller (``step`` and ``run_forever`` log it); only a failure that lasts longer than
+        ``BOOK_UNREAD_MAX_S`` changes what the trades read (``book_unread_too_long``)."""
         self._dirty = False
         self._loaded_at = self._monotonic()
+        try:
+            await self._reload()
+        except asyncio.CancelledError:
+            raise
+        except Exception:
+            self.read_failures += 1
+            if self.book_unread_since is None:
+                self.book_unread_since = self._monotonic()
+                log.warning("paper monitor: the book could not be read; the last watch is kept", exc_info=True)
+            self._loaded_at = self._monotonic() - self._reload_seconds + min(self._reload_seconds, READ_RETRY_SECONDS)
+            raise
+        self.book_unread_since = None
+
+    async def _reload(self) -> None:
         feed = self._feed_source()
         async with self._sessions() as session:
             armed = await self._paper_only(session, await triggers.armed(session))
@@ -358,7 +396,12 @@ class PaperMonitor:
         if self._dirty or self._feed_source() is not self._feed or self._loaded_at is None or \
                 self._monotonic() - self._loaded_at >= (self._reload_seconds if self._ever_loaded
                                                         else min(self._reload_seconds, FIRST_LOAD_RETRY_SECONDS)):
-            await self.reload()
+            try:
+                await self.reload()
+            except asyncio.CancelledError:
+                raise
+            except Exception as exc:  # noqa: BLE001 - FE3 item 2: the kept watch goes on being judged this pass
+                log.error("paper monitor reload failed: %s", type(exc).__name__)
         fired = 0
         carried, self._carried = self._carried, []
         for quote in carried:
@@ -372,7 +415,7 @@ class PaperMonitor:
 
     async def on_quote(self, quote: NormalizedQuote) -> int:
         watching = self._watch.get(quote.instrument_id)
-        if not watching or self._feed is None:
+        if not watching or self._feed is None or self.book_unread_too_long():
             return 0
         now = self._feed.ctx.clock()
         if not may_act.market_open(self._feed.ctx, now):  # the ONE market rule (the feed's own answer)
@@ -469,7 +512,9 @@ class PaperMonitor:
         not_run: dict[int, str] = {}
         judged: list[_Watch] = []
         fired = 0
-        if feed is None:
+        if self.book_unread_too_long():  # FE3 item 2: nothing is judged on a list that cannot be confirmed
+            not_run = {w.armed.trigger.strategy_id: monitoring_state.BOOK_NOT_READ for w in self._exits}
+        elif feed is None:
             not_run = {w.armed.trigger.strategy_id: _why_of(w) for w in self._exits}
         elif may_act.market_open(feed.ctx, now):
             judged = list(self._exits)
@@ -490,11 +535,15 @@ class PaperMonitor:
                 elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once
                     fired += await self._exits_with_reading(group, reading, now, polled=True)
             self._report_not_applicable(not_run)
-            for w in judged:  # crossed on a reading but not run: the trade is not being checked through to the exit
-                if w.armed.trigger.id in self._blocked:
-                    not_run.setdefault(w.armed.trigger.strategy_id, monitoring_state.EXIT_NOT_PRICED)
+            self._report_blocked(judged, not_run)
         await self._report_exits(judged, not_run, now)
         return fired
+
+    def _report_blocked(self, judged: Sequence[_Watch], not_run: dict[int, str]) -> None:
+        """Crossed on a reading but not run: the trade is not being checked through to the exit."""
+        for w in judged:
+            if w.armed.trigger.id in self._blocked:
+                not_run.setdefault(w.armed.trigger.strategy_id, monitoring_state.EXIT_NOT_PRICED)
 
     def _report_not_applicable(self, not_run: dict[int, str]) -> None:
         """Review F2: a strategy whose armed exit is not judged here (a real position, or a kind that could not be read)
@@ -570,14 +619,14 @@ class PaperMonitor:
             # D-02: the stored (buys first) order
             recorded = [o.order.contract_id for o in stored if o.order.trigger_id == t.id]
             body = alert_body(reason, [(texts[c], prices[c]) for c in recorded], names_contract=t.kind == "leg_stop")
-            line = await self._max_loss_line(session, a, t, book, open_net, prices, now)
+            line = await self._max_loss_line(session, a, t, book, open_net, prices, now, texts)
             # ADR-330 (3b), owner Q2: the fired exit is an informational message (History + pop-up, never the bell),
             # raised through the one alert module in this same transaction
             values: dict[str, Any] = {"body": body} if line is None else {"body": body, "line": line}
             await actionable_alerts.inform(
                 session, a.user_ref, t.strategy_id, "stop_fired",
                 "stop_fired_note" if line is None else "stop_fired_note_with_line", values, at=now,
-                restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES})
+                restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES + FIRED_LINE_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
 
@@ -631,29 +680,39 @@ class PaperMonitor:
 
     @staticmethod
     async def _max_loss_line(session: Any, a: Any, t: stops.Trigger, book: Sequence[Any],  # noqa: PLR0913
-                             open_net: Mapping[int, int],
-                             prices: Mapping[int, Any], now: datetime.datetime) -> ExplanationText | None:
-        """UX-A03 (27 Nov): a stop that has ALREADY FIRED carries no "If this stop fires..." line: that is a future case
-        and its "now" figure is the one from before the fire. A leg stop therefore gets no line here. An index exit
-        closes every open leg at the fill prices and gets a line only when the exit confirmation's own check says yes
-        (the same ``routes.paper`` function as the exit confirmation, judged on the book BEFORE the exit was written).
-        Answer states: yes -> line; no / cannot_tell -> None (no figure); any failure -> logged, None. The exit and its
-        record never wait on it (the exit already happened): the read runs in a savepoint so a failed statement
-        cannot poison the fire."""
-        if t.kind == "leg_stop":
-            return None
+                             open_net: Mapping[int, int], prices: Mapping[int, Any], now: datetime.datetime,
+                             texts: Mapping[int, ExplanationText] | None = None) -> ExplanationText | None:
+        """UX-A03 (27 Nov), Lane FE3 item 6 (PC note 27 Nov 09:43): a stop that has ALREADY FIRED never carries the
+        preview's "If this stop fires, max loss becomes ... (now ...)": that is a future case and its "now" figure is
+        the one from before the fire. It says what happened, in the past tense, with the figure at the fill:
+
+        - a LEG stop: "Stop fired: <leg> reached <level>; max loss at that point Rs <figure>" (or "there was no fixed
+          maximum loss at that point"; "the maximum loss at that point was not worked out" when the engine answered yes
+          with no figure). The figure is the engine's answer for the book after this leg's exit at the FILL price (the
+          one ``routes.paper.leg_stop_answer`` the Stops panel uses, on the book BEFORE the exit was written); a book
+          left with no loss (a profit) or an answer of no / cannot_tell writes no line.
+        - an index exit (closes every open leg): a line only when the exit confirmation's own check says yes.
+
+        The exit and its record never wait on it (the exit already happened): the read runs in a savepoint so a failed
+        statement cannot poison the fire; any failure is logged and the message is written without the line."""
         from ofo_app.routes import paper as paper_routes  # noqa: PLC0415 - the routes import this module
         try:
             async with session.begin_nested():
                 names, terms = await paper_routes.names_and_terms(session, a.underlying, book)
-                answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
-                                                        names, now)
+                if t.kind == "leg_stop":
+                    answer = paper_routes.leg_stop_answer(book, open_net[t.contract_id], t.contract_id,
+                                                          prices[t.contract_id], names, terms, now, a.underlying)
+                else:
+                    answer = paper_routes.index_exit_answer(book, {c: prices[c] for c in sorted(open_net)}, terms,
+                                                            names, now)
         except Exception as exc:  # noqa: BLE001 - the message is written without the line, never not at all
             log.error("max-loss line of fired trigger %s left out: %s", t.id, type(exc).__name__)
             return None
-        if answer.state != "yes" or answer.warning_text is None:
+        if answer.state != "yes":
             return None
-        return answer.warning_text
+        if t.kind != "leg_stop":
+            return answer.warning_text
+        return _fired_leg_line(t, (texts or {}).get(t.contract_id), answer)
 
     @staticmethod
     async def _not_written(session: Any, t: stops.Trigger, done: Any) -> dict[str, set[int]] | None:
@@ -717,6 +776,24 @@ class PaperMonitor:
                 await sleep(poll)
         finally:
             self.close()
+
+
+def _fired_leg_line(t: stops.Trigger, leg: ExplanationText | None, answer: Any) -> ExplanationText | None:
+    """FE3 item 6: the past-tense line of a fired leg stop from the engine's answer (``ExitRiskOut``): a loss figure
+    -> the figure (a loss is negative in the answer, said as a size, as the Stops panel does); "unlimited" -> no fixed
+    maximum; no figure at all -> "not worked out"; a figure that is not a loss (the book is left in profit) -> no
+    line (never "Rs 0" for a loss that was not computed that way). No leg text -> no line."""
+    if leg is None:
+        return None
+    after = answer.max_loss_after
+    if after == "unlimited":
+        return render_explanation("paper_leg_stop_fired_unlimited", leg=leg, level=t.level)
+    if after is None:
+        return render_explanation("paper_leg_stop_fired_unknown", leg=leg, level=t.level)
+    figure = Decimal(str(after))
+    if figure >= 0:
+        return None
+    return render_explanation("paper_leg_stop_fired", leg=leg, level=t.level, figure=-figure)
 
 
 def _is_paise(value: Decimal) -> bool:
