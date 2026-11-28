@@ -1,0 +1,14 @@
+W-03 API up, box: Plan watch | Trigger	Fires at	Now	Distance	State | Target: not being checked: No adjustment opportunity checked: prices stale or missing.	—	—	—	Not checked | Wait for fresh prices. | Stop: not being checked: No adjustment opportunity checked: prices stale or missing.	—	—	—	Not checked | Wait for fresh prices. | Spot within this % of a short strike	
+API stopped at 12:58:25
+Exit click blocked/disabled
+W-25 D dialog (API down ~11 s): <no dialog>
+Confirm present/enabled: 0 n/a
+T3-10 my-strategies =>  Strategies | My Strategies | Could not load your strategies. Nothing was changed. | Retry
+T3-10 live =>  Strategies | Live Strategies | Your saved strategies followed on live market data. This is for monitoring, not a recommendation. | Could not load this list. Nothing was changed. | Retry
+T3-10 positions =>  Positions | Current positions | Real P&L | — | The page could not get an answer from the server. | Paper P&L | — | Paper P&L paused - prices not live | All | Real | Paper | Could not load this list. Nothing was changed. | Retry | Paper mode | Paper trades - not real money | The page could not get an answer from the server.
+T3-10 alerts =>  Alerts | Active | Could not load this list. Nothing was changed. | Retry
+T3-10 history =>  Alerts | History | Answered alerts | Could not load this list. Nothing was changed. | Retry | Stops and expiry settlements | Could not load this list. Nothing was changed. | Retry
+W-03 step 4 at ~70 s down, builder box: Plan watch | Trigger	Fires at	Now	Distance	State | Target: not being checked: No adjustment opportunity checked: prices stale or missing.	—	—	—	Not checked | Paper P&L paused - prices not live | Stop: not being checked: No adjustment opportunity checked: prices stale or missing.	—	—	—	Not checked | Paper P&L paused - prices not live | Spot within this % of a short strike	—	—	—	Not checked | Paper P&L paused - prices not live | Spot crosses a breakeven	—	—	—	Not checked | Paper P&L paused - price
+"Could not refresh the rule check" shown: true
+API restarted 13:00:28
+after restart box: Plan watch | Trigger	Fires at	Now	Distance	State | Target: not being checked: No adjustment opportunity checked: prices stale or missing.	—	—	—	Not checked | Wait for fresh prices. | Stop: not being checked: No adjustment opportunity checked: prices stale or missing.	—	—	—	Not checked | Wait for fre
