@@ -1,9 +1,65 @@
-# Lane T: screen-by-screen browser tests (26 Nov 2026)
+STATUS (28 Nov 2026, IST): Lane T, branch test/r3-tests-t-1128, built on origin/integration/weekend-r3-1129 e2da71f50. I-184 and I-126 closed; I-204 proven on the fix branch (build re-run waits for Lane Z3 wave 0); I-168 waits for Lane B3's I-48; I-170 and I-176 in progress. Not pushed yet. Coordinator messages are refused (session not trusted for cross-session send); see "Not done".
+
+# RESULTS: Lane T (test-only gaps and tooling)
+
+Spec basis: ADR-016 to ADR-019; ADR-330 (45) to (72); completion plan 2026-11-28 section 1, rows I-184, I-126, I-204, I-168, I-170, I-176.
+
+Set-up note (not a test change): the cloud container's database `ofo_test` had no schema, so every DB test failed with
+`relation "public.catalogue_contracts" does not exist` (9 of 10 in the I-184 file, 4 of 13 in the I-126 file). Fixed by
+`python scripts/orchestrator/db_run.py . python -m alembic -c backend/ofo_app/alembic.ini upgrade head` once. Every count
+below is after that step, with `OFO_TEST_DB_PER_FILE=1` and the proxy variables unset.
+
+## Items
+
+| Item | Real case (from the plan) | Before | After | Commit |
+|---|---|---|---|---|
+| I-184 | "Three stale xfail strict markers in tests_app/test_slow_price_source_live_day.py" | grep of `xfail|strict` on the build head: nothing | 10 passed (file alone) | none needed (already clean) |
+| I-126 | "Two plan-watch tests read the real clock and fail Friday after 15:00" | pins 8ed916db, cdce22ce are ancestors of the build | `tests_app/test_plan_watch.py` 13 passed; the two pinned tests are `test_a_hanging_market_read_is_cut_at_the_budget_and_answers_not_live` and `test_a_quote_answering_after_the_market_was_cut_is_not_asked` (they call `_pin_server_clock`) | none needed |
+| I-204 | "Three FE2 DB tests fail on the merged build (F-39)" | build e2da71f50: 3 failed, 2 passed (`real_position_exit_refused`) | fix branch origin/fix/r3-leftovers-1128 (951aa698c, worktree, removed after): 5 passed. Build re-run after wave 0: PENDING | none (fix is a5259db50 on that branch) |
+| I-168 | "Pool-not-held plan-watch tests fail on the unmodified build; test_d36 assumes a fresh database" | waits for Lane B3's I-48 on origin | PENDING | |
+| I-170 | "27 DB tests in 12 files fail on a clean run" | see below | | |
+| I-176 | "11 of 29 failing tests never named" | see below | | |
+
+## Closing evidence
+
+| Item | Claim | Evidence (command run this turn, result) |
+|---|---|---|
+| I-184 | no xfail/strict marker | `git grep -n -E "xfail|strict" origin/integration/weekend-r3-1129 -- tests_app/test_slow_price_source_live_day.py` prints nothing (exit 1); pytest on the file: `10 passed` |
+| I-126 | clock pins on the build, both tests green | `git merge-base --is-ancestor 8ed916db origin/integration/weekend-r3-1129` and the same for cdce22ce: both true; `tests_app/test_plan_watch.py`: `13 passed` (run on Saturday 28 Nov 18:5x IST; the pin makes the result day-independent, see `CLOCK_PIN` in the file). Not proven by a command: a run on a real Friday after 15:00 |
+| I-110 | issues 854 to 880 filed (27) | `gh issue list` is refused here (GraphQL blocked); REST instead: `gh api -X GET repos/abhayla/optionsforoptions2/issues -f state=all -f per_page=100 -f page=1..3`, non-PR numbers between 854 and 880: 27, first 854, last 880 |
+| I-109 | AX-01 to AX-14 are in the plan | `git show origin/docs/test-plan-weekend-1127:docs/process/test-plan-weekend-2026-11-28.md \| grep -o -E "AX-[0-9]+" \| sort -u` lists AX-01 to AX-14 (14 ids); AX-14 row at line 246 and section 14 intake table at lines 1681 to 1690 (AX-08 to AX-12 appear as one range row "not built") |
+| I-96 | Alerts Active and History rows are in the plan | same file: `grep -n -i alerts` finds rows W-13 (line 199, History "Closed by system"), W-17 (line 203, Active on a slow connection) and SW-8 (line 255, Alerts Active, History, Records block). The slow-link half is "not proven by a command" (the plan itself says the real link time is proven only by the PC) |
+
+## For Lane Z3
+
+(New `*_t_1128.py` files: none so far.)
+
+## Product causes found
+
+(Filled from the I-170 run.)
+
+## Decided for the owner
+
+- Ran `alembic upgrade head` on the container's own throwaway test database to get a schema; no file, no product code touched.
+
+## Not done
+
+- Coordinator messages (send_message to the parent) are refused: "elevated_session_untrusted_device"; the remedy is an owner card (confirm_repository_trust) that also limits this session to trusted devices for good, so it was not raised unasked. Status goes through this file and the push line.
+- I-168 (needs B3's I-48 on origin), I-204 build re-run (needs wave 0).
+
+SAFE TO CLOSE: no (items 4 to 6 open)
+
+
+---
+
+# Earlier file of the same name (26 Nov 2026, screen-suite lane; kept unchanged below, headings demoted one level)
+
+## Lane T: screen-by-screen browser tests (26 Nov 2026)
 
 Branch `test/screen-suite-1126` from `feat/nb-screens-w2-1126` a9bd41a. Tests, helpers and docs only; no product
 code, no spec rows, no migration. Owner evidence: comment 7184365037 on PR #722 (26 Nov screen test).
 
-## Status
+### Status
 
 | Screen | Spec file | Tests (x2 viewports) | Expected-fail (ids) | New findings | Pushed head |
 |---|---|---|---|---|---|
@@ -29,7 +85,7 @@ stubs, the way the existing `home.spec.ts` runs; `PW_CHROMIUM_PATH=/opt/pw-brows
 npx playwright test e2e/screen-home.spec.ts --trace off` from `frontend/`. The real-backend mode CI uses (Postgres 16,
 migrated, 2026-10-08 catalogue seeded, uvicorn 8000-8002, previews 4173-4176) also works in this container.
 
-## Totals
+### Totals
 
 | Measure | Value |
 |---|---|
@@ -53,7 +109,7 @@ builder's payoff chart, adjustment drawer, plan editor and target sliders (BUILD
 "Covered before" (279) was measured by a script plus a read of about 10 hits, so it is generous; each "after" row was
 checked against the test body.
 
-## Gate notes (for the next lane)
+### Gate notes (for the next lane)
 
 - Two repo guards run in the prepush preflight and are not in `ci_local.py`: `tests/test_e2e_live_socket_fakes.py`
   (every push on the strategy live socket stamped with `echoSeq`; its `EXPECTED` map lists every file that routes that
@@ -62,7 +118,7 @@ checked against the test body.
   route); fixed in acbadd2 and 4197832. Run `pytest tests -m repo_scan` once before prepush when adding e2e socket stubs.
 - The push hook checks the checked-out HEAD, so a gated older commit cannot be pushed once HEAD has moved on.
 
-## Findings (product defects; steps, spec, actual)
+### Findings (product defects; steps, spec, actual)
 
 | Id | Screen | Steps | Expected (spec) | Actual | Test | Screenshot |
 |---|---|---|---|---|---|---|
@@ -111,47 +167,47 @@ checked against the test body.
 
 Screenshots are written by the tests to `frontend/test-results/lane-t/` (gitignored; regenerated on each run).
 
-## Coverage guard
+### Coverage guard
 
 `screen-inventory-guard.test.js` rebuilds the inventory from the router and the `.vue` templates and fails, naming
 file:line and label, when a route or control has no row in `screen-inventory.json`, or a row's control is gone.
 Matching is on source file + kind + testid-or-label, not the positional id. Proof: a temporary `<button>Lane T probe</button>`
 in `HomeOverviewPage.vue` made it fail with `HomeOverviewPage.vue:81 button "Lane T probe"`; reverted.
 
-## Not covered yet (Alerts)
+### Not covered yet (Alerts)
 
 - Lane P's full Alerts screens are not on this branch: alert text naming the strategy (N-14 fix), leg-stop alert with the NIFTY value (row 2 / S-20), the "Includes N closed strategies" line (S-15 / Q2-14), Compare through an alert link (R-10), expiry settlement rows (trade 173), R-07.
 - A real stop firing (stubbed).
 
-## Not covered yet (Strategy Builder)
+### Not covered yet (Strategy Builder)
 
 - BUILD-18..38 payoff chart, summary and figure widgets, charges, margin; BUILD-39..62 execute, tracking, adjust drawer; BUILD-68..85 adjust compare; BUILD-130..136 ready-made panel contents; BUILD-187..196 scenario and target blocks (partly in existing column-mode, display-format, range-step specs).
 - BUILD-93..95 strategy-type confirm; BUILD-101..108 straddle, strangle, quick select, futures, synthetic; BUILD-116/185 reprice prompt; BUILD-156/157 paper toast after Add to Paper; BUILD-91/92 choosing width or lots mode.
 
-## Not covered yet (Option Chain)
+### Not covered yet (Option Chain)
 
 - Leave dialog x and overlay close (Escape, Stay, Leave are covered); builder-side leave paths (rows 11, 15) belong to the builder screen.
 - Real-backend eligibility path (stubbed; `chain-selection.spec.ts` covers the real outcome route in CI).
 
-## Not covered yet (Live Strategies and Adjustments; 2 rounds used)
+### Not covered yet (Live Strategies and Adjustments; 2 rounds used)
 
 - ADJ-36 "Stop at % of margin" switch; ADJ-37..45 plan-edit block (needs `GET/POST /strategies/{id}/adjustment-plan` stubbed); ADJ-53/54 "Earlier values (N)" and its Change; ADJ-31 rail links; ADJ-48 time-of-day input.
 - Playbook editor approach checkboxes, day-rule inputs, situations step, stage from/to: rendered, not edited.
 - 25 s card give-up timer (D-41).
 
-## Not covered yet (Current positions)
+### Not covered yet (Current positions)
 
 - Live index line in the Stops panel (needs the WebSocket feed); only "Index values unavailable." is tested.
 - Real exit dialog: none on this screen (ADR-281); its absence is tested.
 - Held-at-my-broker form, Add-to-Paper dialog, Greeks panel with data: not reachable from Positions or not exercised.
 - Real-backend round trip (all stubbed).
 
-## Not covered yet (My Strategies)
+### Not covered yet (My Strategies)
 
 - Real-API round trip stays in `my-strategies.spec.ts` (needs the live catalogue); this suite is stubbed.
 - After-charges tap on a Completed row's net figure (SHARED-09); Builder's Saved-list delete (Builder screen).
 
-## Not covered yet (Home)
+### Not covered yet (Home)
 
 - Welcome / trial slot: nothing to click until sign-in exists; only the absent text is asserted (NEW-T01).
 - Header toast for a new adjustment opportunity: needs a second header poll; the record count is covered (BELL-4).
