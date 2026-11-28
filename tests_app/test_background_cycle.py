@@ -259,7 +259,10 @@ async def test_market_closed_recomputes_nothing(scn):
     prov.closed = True
     w = _worker(prov, _watched(scn), now, calls)
     await w.cycle()
-    assert calls.states == [] and FIRST_ID not in w.status and w.cache.computations == 0
+    assert calls.states == [] and w.cache.computations == 0
+    # W-34 (Lane FE3): the trade is not left out of the snapshot (that read "the worker does not list this trade")
+    assert w.status[FIRST_ID] is background.MonitoringStatus.PAUSED
+    assert w.paused_reason[FIRST_ID] is background.PriceState.MARKET_CLOSED
 
 
 async def test_first_check_after_a_gap_reads_only_the_fresh_snapshot(scn):

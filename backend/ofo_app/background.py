@@ -1030,6 +1030,7 @@ class Worker:
         # no exit that can run (``EXPIRY_KIND_UNKNOWN``) is paused until a check has passed; the fact lives HERE, not in
         # ``paused_reason``, which any later pause (stale, disconnected) overwrites
         self._owed: dict[int, PriceState] = {}
+        self._no_token: set[int] = set()  # strategies whose leg has no feed token (``_write_wants``): a fact
         self.checks: list[tuple[int, datetime.datetime]] = []  # (strategy id, when) of every check run
         self.errors: list[tuple[int, str]] = []
         self._signature: dict[int, tuple] = {}
@@ -1417,9 +1418,11 @@ class Worker:
                 _keep_recent(self.errors, (w.strategy_id, type(exc).__name__))
                 tokens = None
             if tokens is None:
+                self._no_token.add(w.strategy_id)
                 self._pause(w.strategy_id, PriceState.LEG_MISSING, now)
                 wanted.setdefault(w.feed_owner, set())
                 continue
+            self._no_token.discard(w.strategy_id)
             wanted.setdefault(w.feed_owner, set()).update(tokens)
             windows.setdefault(w.feed_owner, set()).update(self._window_tokens(w))
         self._merge_windows(wanted, windows)
@@ -1521,6 +1524,23 @@ class Worker:
         self.paused_reason.pop(sid, None)
         self.paused_why.pop(sid, None)
 
+    def _market_closed(self, sid: int) -> None:
+        """W-34 (the PC's round 1: with the market closed all nine running trades read "the worker does not list this
+        trade"): the worker lists the trade and runs, so its status is recorded with the true reason ``market_closed``
+        ("The market is closed."), never left out of the snapshot (a trade missing from it reads ``not_listed``, the
+        reader's word for a trade the worker really does not list). A trade that owes a check, or whose leg has no
+        token, keeps that reason. Not
+        ``_pause``: nothing was lost, so no candle gap and no forgotten signature; the first check after the open reads
+        the fresh price as usual (``_fresh_read`` makes the trade watched again)."""
+        owed = self._owed.get(sid)
+        no_token = sid in self._no_token and self.paused_reason.get(sid) is PriceState.LEG_MISSING
+        keep = PriceState.LEG_MISSING if no_token else None
+        self.status[sid] = MonitoringStatus.PAUSED
+        # a debt, or a leg with no token (a fact about the trade, set by the want writer; a one-off missing quote is
+        # not: review F2), outranks the hour
+        self.paused_reason[sid] = owed or keep or PriceState.MARKET_CLOSED
+        self.paused_why.pop(sid, None)
+
     def _record_kind(self, w: Watched, market: MarketInputs) -> None:
         """FE2 item 7: the kind this check uses (``state_of``'s rule) is kept for the lister; a kind that is not known
         ("") is never recorded (the reader then reads the catalogue)."""
@@ -1551,6 +1571,7 @@ class Worker:
             read = PriceRead(early)
         self._read_states[read.state.name] = self._read_states.get(read.state.name, 0) + 1  # the minute line's reads
         if read.state is PriceState.MARKET_CLOSED:
+            self._market_closed(sid)
             return self._skipped(sid, "market_closed")  # nothing is recomputed while the market is closed
         if read.state is not PriceState.FRESH:
             self._pause(sid, read.state, now)
