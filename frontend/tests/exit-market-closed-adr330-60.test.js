@@ -24,6 +24,8 @@ const t = (w, id) => w.find(`[data-testid="${id}"]`)
 const CONTRACTS = REAL.positions.map((p) => ({ contract_id: p.contract_id, exchange_segment: 'NSE_FO', exchange_token: p.contract_id,
   instrument_type: p.instrument, expiry: p.expiry, strike: p.strike, lot_size: 65, symbol: `NIFTY${p.strike}${p.instrument}` }))
 const BOOK = { ...REAL, strategy_id: 86, name: '"IC"' }
+// r3 FJ: with the market closed no leg is live (price_state closed, no ltp); the closed fixtures use this book, the open-market test keeps BOOK
+const CLOSED_BOOK = { ...BOOK, state: 'PAUSED', positions: BOOK.positions.map((p) => (p.net_quantity !== 0 ? { ...p, price_state: 'closed', ltp: null, ltp_text: null } : p)) }
 const OPEN_IDS = BOOK.positions.filter((p) => p.net_quantity !== 0).map((p) => p.contract_id) // [5572, 5587, 5585, 5574]
 const orderPosts = () => calls.filter((c) => c.method === 'POST' && c.url === '/paper/strategies/86/orders')
 const mounted = []
@@ -69,7 +71,7 @@ const marketGets = () => calls.filter((c) => c.method === 'GET' && c.url === '/m
 
 describe('ADR-330 (60): the Exit dialog when the market is closed (builder)', () => {
   it('per-leg Exit: the dialog opens with the leg, the server sentence, Confirm off, nothing posted', async () => {
-    const w = await builder()
+    const w = await builder('?strategy=86', CLOSED_BOOK)
     answers['GET /market/exit-state'] = closedAnswer
     S(w).exitPaper(OPEN_IDS[0], 1)
     await flushPromises()
@@ -81,7 +83,7 @@ describe('ADR-330 (60): the Exit dialog when the market is closed (builder)', ()
     expect(orderPosts()).toHaveLength(0)
   })
   it('Exit all: the same line, one row per open leg, Confirm off', async () => {
-    const w = await builder()
+    const w = await builder('?strategy=86', CLOSED_BOOK)
     answers['GET /market/exit-state'] = closedAnswer
     S(w).exitAllPaper()
     await flushPromises()
@@ -90,7 +92,7 @@ describe('ADR-330 (60): the Exit dialog when the market is closed (builder)', ()
     expect(t(w, 'paper-confirm-button').attributes('disabled')).toBeDefined()
   })
   it('the market-closed line wins over the not-live line (both legs not live and market closed)', async () => {
-    const w = await builder()
+    const w = await builder('?strategy=86', CLOSED_BOOK)
     answers['GET /market/exit-state'] = closedAnswer
     S(w).exitPaper(OPEN_IDS[0], 1)
     await flushPromises()
@@ -107,7 +109,7 @@ describe('ADR-330 (60): the Exit dialog when the market is closed (builder)', ()
   })
   it('answer states: unreadable (failed), ambiguous (no sentence) and absent each keep Confirm off with the page line', async () => {
     for (const a of [() => Promise.reject(new Error('x')), { closed: true, sentence: null }, { closed: null }, {}]) {
-      const w = await builder()
+      const w = await builder('?strategy=86', CLOSED_BOOK)
       answers['GET /market/exit-state'] = a
       S(w).exitPaper(OPEN_IDS[0], 1)
       await flushPromises()
@@ -116,7 +118,7 @@ describe('ADR-330 (60): the Exit dialog when the market is closed (builder)', ()
     }
   })
   it('while the market answer is late, Confirm is off and nothing posts (checking)', async () => {
-    const w = await builder()
+    const w = await builder('?strategy=86', CLOSED_BOOK)
     answers['GET /market/exit-state'] = () => new Promise(() => {})
     S(w).exitPaper(OPEN_IDS[0], 1)
     await flushPromises()
@@ -125,7 +127,7 @@ describe('ADR-330 (60): the Exit dialog when the market is closed (builder)', ()
     expect(orderPosts()).toHaveLength(0)
   })
   it('an entry-only dialog asks too (FA2 item A: ADR-330 (60) applied to Add to Paper)', async () => {
-    const w = await builder()
+    const w = await builder('?strategy=86', CLOSED_BOOK)
     S(w).setLegs(S(w).paper.net.map((l, i) => (i === 1 ? { ...l, lots: 2 } : { ...l })))
     await flushPromises()
     S(w).reviewPending(false)

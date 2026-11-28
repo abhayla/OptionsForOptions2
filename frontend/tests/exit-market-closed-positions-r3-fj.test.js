@@ -1,4 +1,4 @@
-// Lane FJ r3 (28 Nov 2026): proof for ADR-330 (60) on the Positions door after O-A-12. With the market CLOSED and live prices the Exit control stays enabled,
+// Lane FJ r3 (28 Nov 2026): proof for ADR-330 (60) on the Positions door after O-A-12. With the market CLOSED and legs not live the Exit control stays enabled,
 // click / ask() / the exit= link OPEN the dialog, it shows the server sentence and Confirm is off. Only a not-live / no-price leg is greyed (other test file).
 import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest'
 import { flushPromises, mount } from '@vue/test-utils'
@@ -28,7 +28,7 @@ afterEach(() => { vi.useRealTimers(); while (mounted.length) mounted.pop().unmou
 const leg = (i) => withPriceTexts({
   leg_index: i, instrument_id: `NSE_FO:${i + 1}`, action: i % 2 ? 'SELL' : 'BUY', instrument: i < 2 ? 'PE' : 'CE',
   strike: `${22300 + i * 100}.00`, expiry: '2026-11-03', quantity: 65, entry_price: '114.25', entry_at: '2026-10-28T05:03:09Z',
-  current_price: '113.60', price_state: 'live', price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null,
+  current_price: '113.60', price_state: 'closed', price_at: '2026-10-28T11:30:00+05:30', exit_price: null, exited_at: null,
 })
 const LIST_LIVE = { strategies: [withPriceTexts({ strategy_id: 48, name: '"A-H"', underlying: 'NIFTY', started_at: '2026-10-28T05:03:10Z', state: 'LIVE',
   pause_reason: null, as_of: null, total: '71.50', booked: '0.00', unbooked: '71.50', legs: [leg(0), leg(1), leg(2), leg(3)] })], answered_at: '2026-10-28T06:00:00Z' }
@@ -48,7 +48,7 @@ async function positions(path) {
 const dlg = (w) => w.findComponent(PaperConfirmDialog)
 const posts = () => calls.filter((c) => c.method !== 'GET')
 
-describe('ADR-330 (60) on Positions with the market closed (live prices)', () => {
+describe('ADR-330 (60) on Positions with the market closed (legs not live, as the closed market reads)', () => {
   it('the Exit control is enabled; a click opens the dialog with the server sentence and Confirm off', async () => {
     const w = await positions('/positions/current-positions?tab=paper')
     await w.find('[data-testid^="select-leg-48-"]').setValue(true)
