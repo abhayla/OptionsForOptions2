@@ -178,7 +178,7 @@ describe('Paper tab from GET /paper/strategies (the real reply)', () => {
     await flushPromises()
     const post = calls.find((c) => c[0] === 'POST')
     expect(post[1]).toBe('/paper/strategies/1/orders')
-    expect(post[2]).toEqual({ orders: [{ contract_id: 784, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }] })
+    expect(post[2]).toEqual({ orders: [{ contract_id: 784, side: 'BUY', quantity: 65, price: '0', kind: 'exit' }], client_request_id: expect.stringMatching(/\S{8,}/) }) // R2 FC2: the order path's key
     expect(has(w, 'paper-confirm')).toBe(false)
   })
 

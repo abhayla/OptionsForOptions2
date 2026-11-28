@@ -1,4 +1,4 @@
-STATUS 06:40 | queue 1 (items 1-3): Passed in cloud, pushed at 89edbfe | queue 2 (coordinator 05:25 and 06:15): UX-A01, UX-A05, (61) line, D-TD-2 (7 of 8 lists), O-1, UX-A02 pass-through: Passed in cloud; UX-A19: test red, fix is in AppHeader.vue (not mine); #870 page half: not changed, see below; UX-B06: closed as designed | next push: this one | blocker: none (coordinator's send_message to the parent was refused: untrusted device; this file is the report)
+STATUS 08:20 | pushed before: 89edbfe, cd3a228 | this push (07:30 items, ONE gate for all): order path client_request_id (Opus review REVISE: F1 and F2 fixed, rest listed), UX-A19 AppHeader fix, Adjustments Retry: Passed in cloud | tool-call budget (300) exceeded by about 6 calls to commit, gate and push this work instead of losing it | blocker: none (send_message to the parent is refused: untrusted device; this file is the report)
 
 # Lane FC2: pages (Alerts, Positions, strategy lists, chart)
 
@@ -35,6 +35,16 @@ Branch `fix/r2-pages-1128` from `origin/fix/r2-small-screens-1128`. Paper only; 
 | #870 the page keeps re-reading after an exit of unknown outcome | Not changed. The Positions list already re-reads every 5 s with no gate (`usePaperRefresh`, no `enabled`), and the unknown outcome is decided only by a good re-read that started after the reply (Lane U); I did not add a test that drives the whole exit flow, so this is code-read, not proven here | none |
 | UX-B06 running trade ticked with a draft, "Delete selected (2)" | Closed by Lane FC's bulk-delete work on this base, as designed (ADR-330 (8)): a running trade can be ticked and the confirmation says how many are running ("Delete 3 strategies? 1 of them is running.") | `my-strategies-bulk.test.js` "confirmation names the count and how many are running; singular for 1; no running clause at 0" (1 passed, run again this push). If the PC meant a running trade must NOT be deletable in bulk, that is a spec change for the owner |
 
+## Status per item (push 3: the coordinator's 07:30 IST items; ONE gate and ONE push for the three, not one each: a gate takes about 30 minutes and my tool-call budget could not carry three)
+
+| Item | State | Test (cloud) |
+|---|---|---|
+| 1 Order path: `client_request_id` on every exit request, one key per user action, the same key on a resend | Passed in cloud (after the Opus review, below). `PaperStrategies.vue` sends the exit through `addToPaper(withRequestKey(api, key), ...)` (new `lib/requestKey.js`; `tracking.js` is FA2's, untouched). A key is lent to a resend only when the last attempt ended UNKNOWN, the orders text is the same and the page's record of that attempt is still open (unknown / not stored, or none because the screen was mounted again); the key store is per tab. It ends when the server stored the order (201) or refused it (400/409/422). `AlertsPage.vue` sends no order itself: its only POST is `/alerts/<id>/answer`; its Exit opens the same `PaperStrategies` exit door | `paper-order-key-r2-fc2.test.js` 8 passed (key present; refused then retry = new key; stored then same exit = new key; unknown then resend = SAME key; unknown settled as placed then identical exit = NEW key (review F1, red first); remount keeps the key (F2); key-rule unit; client wrapper). Wiring off: 3 cases fail. Older pins updated: `exit-gate-d05.test.js`, `paper-list-4b.test.js` expect `{ orders, client_request_id }` |
+| 2 UX-A19 (I-72) menu stays open after Create Strategy twice | Passed in cloud: `@click="closeMenu()"` on the menu items in `AppHeader.vue`; red before (the `it.fails` body failed with "expected true to be false"), plain `it` now | `nav-same-page-r2-fc2.test.js` 1 passed; `nav-label-click`, `nav-shell`, `nav-every-item-ux26`, `header-bell-open-records` still pass |
+| 3 I-156 remainder: Adjustments page has no Retry | Passed in cloud: a failed load (types, list or labels) with no server text shows the shared sentence and Retry (`pb-load-retry`); with the server's own text its line stays and Retry sits beside it; a refused save or delete keeps its line; the raw "Network Error" text is no longer shown | `adjustment-preferences-tab.test.js` "D-TD-2" 1 passed (red first) |
+
+Frontend suite before the review fixes: 323 files, 3831 tests passed; after them the touched files (order key, exit gate, paper list, dialog safe, exit unknown resend, paper strategies) pass: 135 tests; the full suite is re-run by the gate.
+
 Whole frontend suite on the final tree: 322 files, 3825 tests passed.
 
 Browser checks (Chromium against `vite preview` of a fresh build, `/api` answered by mocks), shots in `docs/design/next-batch-2026-11-26/screens-fc2/`: `alerts-history-loading.png`, `positions-paused-one-notice.png`, `create-strategy-step4-progress.png` (push 1). Push 2 screens (Live card Plan door, list Retry): not taken, see Not done.
@@ -45,7 +55,7 @@ Browser checks (Chromium against `vite preview` of a fresh build, `/api` answere
 - `askMarket()` (about line 147): change `if (!props.open || !rows.value.some((r) => r.kind === 'exit')) { ... return }` to `if (!props.open || !rows.value.length) { ... return }` so every dialog with rows asks once per opening. `canConfirm` already returns false for `closed`, `checking` and `unreadable`, and `marketLine` already prints the server's sentence. For an entry the sentence may say "Exits"; if the owner wants "Orders can be placed from 09:15 on ...", that is the server's one sentence (Lane FD2).
 - Test to add (FA2): one `kind: 'open'` row, `GET /market/exit-state` answering `{closed: true, sentence: ...}`; expect `paper-market-closed` shows the sentence and `paper-confirm-button` is disabled; with `{closed: false}` it is enabled once the price is valid.
 
-**UX-A19 (`AppHeader.vue`, whoever owns the shell).** The menu closes only when `route.fullPath` changes (watch, about line 228). A click on the item of the page already shown navigates nowhere, so the menu stays open. One-line fix: on the `router-link` of the menu items (about line 405, `data-testid="nav-menu-item"`) add `@click="closeMenu()"`. Then change `it.fails` to `it` in `frontend/tests/nav-same-page-r2-fc2.test.js`.
+**UX-A19 (`AppHeader.vue`): DONE in push 3; the text below is the diagnosis.** The menu closes only when `route.fullPath` changes (watch, about line 228). A click on the item of the page already shown navigates nowhere, so the menu stays open. One-line fix: on the `router-link` of the menu items (about line 405, `data-testid="nav-menu-item"`) add `@click="closeMenu()"`. Then change `it.fails` to `it` in `frontend/tests/nav-same-page-r2-fc2.test.js`.
 
 **O-3 (FA2, `PaperConfirmDialog.vue`):** the "Prices are not live" sentence is printed although one contract only has no price; name the contract (the dialog already has the leg names it builds `exitEndText` from).
 **O-4 (FB2, builder tiles/table):** the table total does not move with the booked switch (it always includes booked); the OFF state prints whole rupees, ON prints paise. The spec does not say; owner to decide.
@@ -80,7 +90,7 @@ Browser checks (Chromium against `vite preview` of a fresh build, `/api` answere
 ## Not done
 
 - D-4 build (FA2's file; change above). UX-A19 fix (AppHeader.vue; one line above). O-3, O-4, O-6, UX-A02's other half (FA2/FB2).
-- D-TD-2 on the Adjustments page (`AdjustmentsPage.vue`, the playbook editor): its list load has several readers (`loadTypes`, `loadList`, `loadLabels`) and an open editor; I did not want to put one Retry on all three without a design call. The page shows its message today with no Retry.
+- (Done in push 3) D-TD-2 on the Adjustments page.
 - #870: not proven by a new test (see table). UX-AF2, UX-B03: not retested.
 - D-13 "on socket loss": the Positions page opens no feed socket, so the re-read is hooked to the browser's `offline` / `online` events; the index socket's drop is not a trigger.
 - Browser shots for the push-2 screens (Live card Plan door, list Retry): not taken; they are covered by component tests only.
@@ -106,10 +116,20 @@ Market closed (after 15:30 IST):
 
 Live (market open): the same, with the feed running: no paused sentence; pause the feed and it appears once; on Positions > Real leave the page open for more than 90 s with Zerodha unreachable: the figure disappears with the sentence above, and returns after the next good read; leave the page and wait 2 minutes: no more `GET /api/positions` in the network log.
 
+## Review (Opus, order path, item 1 only; commit d7a9a14dc): REVISE, two of three important findings fixed in this push
+
+- **F1 (important, FIXED):** a new exit could reuse an old key after an unknown outcome that a re-read settled as "placed" (the server would then place nothing). A key is now lent only while the previous attempt's record is unknown / not stored (or absent after a remount); test red first.
+- **F2 (important, FIXED for the same tab):** keys died with the component (Cancel on the Alerts exit door unmounts it; the Orderbook link leaves the page). The store is now module-level. NOT fixed: a page reload or a second tab loses the key (reviewer: mirror to `sessionStorage`; also the per-instance unknown lock `exitRec`, which predates this lane, should live outside the instance: to file as a deferred issue).
+- **F3 (important, not checkable here, Lane FD2):** `tracking.js` classes every 4xx except 408/429 as REFUSED and then the key ends. If FD2 answers a repeat of a stored exit with 409 or 422, the page says "refused, nothing stored" for an order that exists and the next Confirm places a second one. FD2 must answer a repeat like the original success (201 with the stored orders) or with a distinct code the client maps to placed; add that client test when the route is on this branch.
+- **F4 (nit):** only the newest orders text is remembered per strategy (A, unknown, edit to B, back to A: new key). Safer later: one key per strategy while an unresolved record stands, FD2 refusing a key reused with another body.
+- **F5 (nit, partly fixed):** tests added for the signature branch, F1 and F2; not covered: cancel then reopen in one instance, and the fallback branch of `newRequestKey` (runs only without `crypto.randomUUID`).
+- **F6 (nit):** the fallback key uses `Math.random`; `crypto.getRandomValues` is stronger. The server should scope keys per user and strategy.
+- **F7 (outside my files, Lane FB2):** the builder's exit door (`StrategyBuilderPage.vue:690`, `confirmPending` to `postPaperOrders`) posts exit rows with no `client_request_id`; `PaperStops.vue` posts triggers (not orders) without a key. My commit message cited "ADR-330 (49)", which is not on this base; the rule rests on ADR-016..019.
+
 ## Time
 
 | task / model / minutes |
 |---|
 | All work: Sonnet, this session (no helpers used) |
 
-SAFE TO CLOSE (head: see the pushed branch; left: D-4, O-3, O-4, O-6, UX-A02 prop and UX-A19 fix to the owner lanes; Adjustments page Retry; #870 proof)
+SAFE TO CLOSE (head: see the pushed branch; left: D-4, O-3, O-4, O-6 and the UX-A02 prop to the owner lanes; order-path items F3, F4, F7 below; #870 proof)

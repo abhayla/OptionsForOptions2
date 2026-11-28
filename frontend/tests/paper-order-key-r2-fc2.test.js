@@ -6,7 +6,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest'
 import { mount, flushPromises } from '@vue/test-utils'
 import { createRouter, createMemoryHistory } from 'vue-router'
 import REAL from './fixtures/paper-strategies.json'
-import { newRequestKey, withRequestKey } from '@/lib/requestKey'
+import { newRequestKey, resetRequestKeys, useRequestKeys, withRequestKey } from '@/lib/requestKey'
 
 const calls = []
 let answers = {}
@@ -50,7 +50,7 @@ async function exitLeg(w) {
 const REFUSED = () => Promise.reject({ message: 'x', status: 422, parts: { what_happened: 'Enter a price in steps of 0.05.', impact: 'i', what_is_blocked: 'b', next_action: 'n' } })
 const UNKNOWN = () => Promise.reject({ message: 'x', status: 503, parts: null })
 
-beforeEach(() => { calls.length = 0; resetActiveAlerts(); vi.useFakeTimers(); answers = { 'GET /paper/strategies': () => Promise.resolve({ data: clone() }) } })
+beforeEach(() => { resetRequestKeys(); calls.length = 0; resetActiveAlerts(); vi.useFakeTimers(); answers = { 'GET /paper/strategies': () => Promise.resolve({ data: clone() }) } })
 afterEach(() => { mounted.splice(0).forEach((w) => { try { w.unmount() } catch { /* gone */ } }); vi.useRealTimers(); document.body.innerHTML = '' })
 
 describe('requestKey', () => {
@@ -102,5 +102,41 @@ describe('the exit request carries client_request_id', () => {
     expect(posts()).toHaveLength(2)
     expect(keys()[0]).toMatch(/\S{8,}/)
     expect(keys()[1]).toBe(keys()[0])
+  })
+})
+
+describe('key rules (Opus review F1, F2, F5)', () => {
+  it('the same orders get the same key only after an UNKNOWN outcome and only while the record allows it', () => {
+    const k = useRequestKeys()
+    const a = k.keyFor(1, 'A')
+    expect(k.keyFor(1, 'A')).not.toBe(a) // a key is lent only after markUnknown
+    const b = k.keyFor(1, 'B')
+    k.markUnknown(1)
+    expect(k.keyFor(1, 'B')).toBe(b) // unknown, same orders: reuse
+    expect(k.keyFor(1, 'B', false)).not.toBe(b) // the record says the exit was settled (placed / changed): new action
+    const c = k.keyFor(1, 'C')
+    k.markUnknown(1)
+    expect(k.keyFor(1, 'D')).not.toBe(c) // other orders: new key
+  })
+  it('F2: the key survives the screen being mounted again (module-level store)', () => {
+    const first = useRequestKeys(); const k1 = first.keyFor(7, 'A'); first.markUnknown(7)
+    expect(useRequestKeys().keyFor(7, 'A')).toBe(k1)
+  })
+  it('F1: an unknown outcome that a re-read settled as placed does not lend its key to the next, identical exit', async () => {
+    let n = 0
+    answers[`POST ${URL}`] = () => (++n === 1 ? UNKNOWN() : Promise.resolve({ data: { orders: [{ id: 9 }] } }))
+    const w = await show()
+    await exitLeg(w)
+    const d = clone()
+    d.strategies.find((x) => x.strategy_id === 1).positions.find((p) => p.contract_id === 776).net_quantity = 0 // the re-read shows the leg gone: stored
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: d })
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    answers['GET /paper/strategies'] = () => Promise.resolve({ data: clone() }) // the leg is back (a later position), the same exit again
+    await vi.advanceTimersByTimeAsync(6000)
+    await flushPromises()
+    await exitLeg(w)
+    expect(posts()).toHaveLength(2)
+    expect(keys()[1]).not.toBe(keys()[0])
   })
 })

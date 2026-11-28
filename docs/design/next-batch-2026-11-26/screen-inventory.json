@@ -148,6 +148,9 @@
      "ariaLabel": "",
      "testid": "nav-menu-item",
      "source": "frontend/src/components/layout/AppHeader.vue:405",
+     "handlers": [
+      "click"
+     ],
      "to": "it.to",
      "component": "components/layout/AppHeader.vue"
     },
@@ -4535,11 +4538,11 @@
      "id": "ADJ-03",
      "kind": "button",
      "tag": "button",
-     "label": "Save changes",
+     "label": "Retry",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "pb-trade-save",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:42",
+     "testid": "pb-load-retry",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:39",
      "handlers": [
       "click"
      ],
@@ -4550,11 +4553,11 @@
      "id": "ADJ-04",
      "kind": "button",
      "tag": "button",
-     "label": "Make active",
+     "label": "Save changes",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "pb-activate",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:46",
+     "testid": "pb-trade-save",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:43",
      "handlers": [
       "click"
      ],
@@ -4565,10 +4568,10 @@
      "id": "ADJ-05",
      "kind": "button",
      "tag": "button",
-     "label": "Save changes",
+     "label": "Make active",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "pb-save",
+     "testid": "pb-activate",
      "source": "frontend/src/pages/AdjustmentsPage.vue:47",
      "handlers": [
       "click"
@@ -4580,10 +4583,10 @@
      "id": "ADJ-06",
      "kind": "button",
      "tag": "button",
-     "label": "Delete",
+     "label": "Save changes",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "pb-delete",
+     "testid": "pb-save",
      "source": "frontend/src/pages/AdjustmentsPage.vue:48",
      "handlers": [
       "click"
@@ -4598,8 +4601,8 @@
      "label": "Delete",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "pb-delete-yes",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:51",
+     "testid": "pb-delete",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:49",
      "handlers": [
       "click"
      ],
@@ -4610,10 +4613,10 @@
      "id": "ADJ-08",
      "kind": "button",
      "tag": "button",
-     "label": "Cancel",
+     "label": "Delete",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "pb-delete-cancel",
+     "testid": "pb-delete-yes",
      "source": "frontend/src/pages/AdjustmentsPage.vue:52",
      "handlers": [
       "click"
@@ -4623,24 +4626,13 @@
     },
     {
      "id": "ADJ-09",
-     "kind": "field",
-     "tag": "input",
-     "label": "New playbook name",
-     "labelFrom": "attr",
-     "ariaLabel": "",
-     "testid": "pb-new-name",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:54",
-     "component": "pages/AdjustmentsPage.vue"
-    },
-    {
-     "id": "ADJ-10",
      "kind": "button",
      "tag": "button",
-     "label": "Save as new playbook",
+     "label": "Cancel",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "pb-save-as",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:55",
+     "testid": "pb-delete-cancel",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:53",
      "handlers": [
       "click"
      ],
@@ -4648,14 +4640,25 @@
      "component": "pages/AdjustmentsPage.vue"
     },
     {
+     "id": "ADJ-10",
+     "kind": "field",
+     "tag": "input",
+     "label": "New playbook name",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "pb-new-name",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:55",
+     "component": "pages/AdjustmentsPage.vue"
+    },
+    {
      "id": "ADJ-11",
      "kind": "button",
      "tag": "button",
-     "label": "{{i + 1}} {{name}}",
+     "label": "Save as new playbook",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "``pb-step-${key}``",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:63",
+     "testid": "pb-save-as",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:56",
      "handlers": [
       "click"
      ],
@@ -4666,11 +4669,11 @@
      "id": "ADJ-12",
      "kind": "button",
      "tag": "button",
-     "label": "{{label}}",
+     "label": "{{i + 1}} {{name}}",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "``pb-kind-${k}``",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:70",
+     "testid": "``pb-step-${key}``",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:64",
      "handlers": [
       "click"
      ],
@@ -4679,33 +4682,36 @@
     },
     {
      "id": "ADJ-13",
-     "kind": "field",
-     "tag": "input",
-     "label": "(unlabelled input: v-model=s.name)",
-     "labelFrom": "none",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{label}}",
+     "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "``pb-stage-name-${i}``",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:80",
+     "testid": "``pb-kind-${k}``",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:71",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
      "component": "pages/AdjustmentsPage.vue"
     },
     {
      "id": "ADJ-14",
      "kind": "field",
      "tag": "input",
-     "label": "(unlabelled number: v-model.number=s.from)",
+     "label": "(unlabelled input: v-model=s.name)",
      "labelFrom": "none",
      "ariaLabel": "",
-     "testid": "",
+     "testid": "``pb-stage-name-${i}``",
      "source": "frontend/src/pages/AdjustmentsPage.vue:81",
-     "type": "number",
      "component": "pages/AdjustmentsPage.vue"
     },
     {
      "id": "ADJ-15",
      "kind": "field",
      "tag": "input",
-     "label": "open",
-     "labelFrom": "attr",
+     "label": "(unlabelled number: v-model.number=s.from)",
+     "labelFrom": "none",
      "ariaLabel": "",
      "testid": "",
      "source": "frontend/src/pages/AdjustmentsPage.vue:82",
@@ -4714,28 +4720,25 @@
     },
     {
      "id": "ADJ-16",
-     "kind": "button",
-     "tag": "button",
-     "label": "Remove",
-     "labelFrom": "text",
+     "kind": "field",
+     "tag": "input",
+     "label": "open",
+     "labelFrom": "attr",
      "ariaLabel": "",
-     "testid": "``pb-stage-remove-${i}``",
+     "testid": "",
      "source": "frontend/src/pages/AdjustmentsPage.vue:83",
-     "handlers": [
-      "click"
-     ],
-     "type": "button",
+     "type": "number",
      "component": "pages/AdjustmentsPage.vue"
     },
     {
      "id": "ADJ-17",
      "kind": "button",
      "tag": "button",
-     "label": "Add a stage",
+     "label": "Remove",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "pb-stage-add",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:87",
+     "testid": "``pb-stage-remove-${i}``",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:84",
      "handlers": [
       "click"
      ],
@@ -4744,36 +4747,13 @@
     },
     {
      "id": "ADJ-18",
-     "kind": "field",
-     "tag": "input",
-     "label": "`${t.label} on`",
-     "labelFrom": "aria-label",
-     "ariaLabel": "`${t.label} on`",
-     "testid": "",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:96",
-     "type": "checkbox",
-     "component": "pages/AdjustmentsPage.vue"
-    },
-    {
-     "id": "ADJ-19",
-     "kind": "field",
-     "tag": "input",
-     "label": "(no label)",
-     "labelFrom": "none",
-     "ariaLabel": "",
-     "testid": "``pb-value-${id}-${i}``",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:99",
-     "component": "pages/AdjustmentsPage.vue"
-    },
-    {
-     "id": "ADJ-20",
      "kind": "button",
      "tag": "button",
-     "label": "{{ruleMembers(r).all ? 'Fire when any holds (OR)' : 'Fire only when all hold (AND)'}}",
+     "label": "Add a stage",
      "labelFrom": "text",
      "ariaLabel": "",
-     "testid": "",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:109",
+     "testid": "pb-stage-add",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:88",
      "handlers": [
       "click"
      ],
@@ -4781,26 +4761,52 @@
      "component": "pages/AdjustmentsPage.vue"
     },
     {
-     "id": "ADJ-21",
+     "id": "ADJ-19",
      "kind": "field",
      "tag": "input",
-     "label": "{{labels.approaches[id] ?? id}}",
-     "labelFrom": "attr",
+     "label": "`${t.label} on`",
+     "labelFrom": "aria-label",
+     "ariaLabel": "`${t.label} on`",
+     "testid": "",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:97",
+     "type": "checkbox",
+     "component": "pages/AdjustmentsPage.vue"
+    },
+    {
+     "id": "ADJ-20",
+     "kind": "field",
+     "tag": "input",
+     "label": "(no label)",
+     "labelFrom": "none",
+     "ariaLabel": "",
+     "testid": "``pb-value-${id}-${i}``",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:100",
+     "component": "pages/AdjustmentsPage.vue"
+    },
+    {
+     "id": "ADJ-21",
+     "kind": "button",
+     "tag": "button",
+     "label": "{{ruleMembers(r).all ? 'Fire when any holds (OR)' : 'Fire only when all hold (AND)'}}",
+     "labelFrom": "text",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:117",
-     "type": "checkbox",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:110",
+     "handlers": [
+      "click"
+     ],
+     "type": "button",
      "component": "pages/AdjustmentsPage.vue"
     },
     {
      "id": "ADJ-22",
      "kind": "field",
      "tag": "input",
-     "label": "(unlabelled checkbox: v-model=r.on)",
-     "labelFrom": "none",
+     "label": "{{labels.approaches[id] ?? id}}",
+     "labelFrom": "attr",
      "ariaLabel": "",
      "testid": "",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:128",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:118",
      "type": "checkbox",
      "component": "pages/AdjustmentsPage.vue"
     },
@@ -4808,18 +4814,19 @@
      "id": "ADJ-23",
      "kind": "field",
      "tag": "input",
-     "label": "(unlabelled input: v-model=r.at)",
+     "label": "(unlabelled checkbox: v-model=r.on)",
      "labelFrom": "none",
      "ariaLabel": "",
      "testid": "",
      "source": "frontend/src/pages/AdjustmentsPage.vue:129",
+     "type": "checkbox",
      "component": "pages/AdjustmentsPage.vue"
     },
     {
      "id": "ADJ-24",
      "kind": "field",
      "tag": "input",
-     "label": "(unlabelled input: v-model=r.percent)",
+     "label": "(unlabelled input: v-model=r.at)",
      "labelFrom": "none",
      "ariaLabel": "",
      "testid": "",
@@ -4830,12 +4837,11 @@
      "id": "ADJ-25",
      "kind": "field",
      "tag": "input",
-     "label": "{{labels.guards[k] ?? ''}}",
-     "labelFrom": "attr",
+     "label": "(unlabelled input: v-model=r.percent)",
+     "labelFrom": "none",
      "ariaLabel": "",
-     "testid": "``pb-guard-${k}``",
-     "source": "frontend/src/pages/AdjustmentsPage.vue:147",
-     "type": "number",
+     "testid": "",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:131",
      "component": "pages/AdjustmentsPage.vue"
     },
     {
@@ -4847,10 +4853,22 @@
      "ariaLabel": "",
      "testid": "``pb-guard-${k}``",
      "source": "frontend/src/pages/AdjustmentsPage.vue:148",
+     "type": "number",
      "component": "pages/AdjustmentsPage.vue"
     },
     {
      "id": "ADJ-27",
+     "kind": "field",
+     "tag": "input",
+     "label": "{{labels.guards[k] ?? ''}}",
+     "labelFrom": "attr",
+     "ariaLabel": "",
+     "testid": "``pb-guard-${k}``",
+     "source": "frontend/src/pages/AdjustmentsPage.vue:149",
+     "component": "pages/AdjustmentsPage.vue"
+    },
+    {
+     "id": "ADJ-28",
      "kind": "field",
      "tag": "select",
      "label": "All my strategies (your values) {{stratLabel(s)}}",
@@ -4861,7 +4879,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-28",
+     "id": "ADJ-29",
      "kind": "field",
      "tag": "input",
      "label": "Search settings",
@@ -4873,7 +4891,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-29",
+     "id": "ADJ-30",
      "kind": "button",
      "tag": "button",
      "label": "{{c.label}}",
@@ -4888,7 +4906,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-30",
+     "id": "ADJ-31",
      "kind": "button",
      "tag": "button",
      "label": "Try again",
@@ -4903,7 +4921,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-31",
+     "id": "ADJ-32",
      "kind": "link",
      "tag": "a",
      "label": "{{g.title}} {{changedIn(g.id).length}}",
@@ -4918,7 +4936,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-32",
+     "id": "ADJ-33",
      "kind": "button",
      "tag": "button",
      "label": "Clear filters",
@@ -4933,7 +4951,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-33",
+     "id": "ADJ-34",
      "kind": "button",
      "tag": "button",
      "label": "{{allOpen ? 'Collapse all' : 'Expand all'}}",
@@ -4948,7 +4966,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-34",
+     "id": "ADJ-35",
      "kind": "button",
      "tag": "button",
      "label": "Clear filters",
@@ -4963,7 +4981,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-35",
+     "id": "ADJ-36",
      "kind": "button",
      "tag": "button",
      "label": "{{g.title}} {{changedIn(g.id).length}} changed {{isOpen(g.id) ? '▴' : '▾'}}",
@@ -4978,7 +4996,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-36",
+     "id": "ADJ-37",
      "kind": "field",
      "tag": "input",
      "label": "Stop at % of margin: off",
@@ -4990,7 +5008,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-37",
+     "id": "ADJ-38",
      "kind": "button",
      "tag": "button",
      "label": "Try again",
@@ -5005,7 +5023,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-38",
+     "id": "ADJ-39",
      "kind": "button",
      "tag": "button",
      "label": "Change plan values",
@@ -5020,7 +5038,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-39",
+     "id": "ADJ-40",
      "kind": "form",
      "tag": "form",
      "label": "Profit target (%) Plan stop (%) Most adjustments Time exit (IST) Save Cancel",
@@ -5031,7 +5049,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-40",
+     "id": "ADJ-41",
      "kind": "field",
      "tag": "input",
      "label": "Profit target (%)",
@@ -5042,7 +5060,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-41",
+     "id": "ADJ-42",
      "kind": "field",
      "tag": "input",
      "label": "Plan stop (%)",
@@ -5053,7 +5071,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-42",
+     "id": "ADJ-43",
      "kind": "field",
      "tag": "input",
      "label": "Most adjustments",
@@ -5064,7 +5082,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-43",
+     "id": "ADJ-44",
      "kind": "field",
      "tag": "input",
      "label": "Time exit (IST)",
@@ -5076,7 +5094,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-44",
+     "id": "ADJ-45",
      "kind": "button",
      "tag": "button",
      "label": "Save",
@@ -5088,7 +5106,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-45",
+     "id": "ADJ-46",
      "kind": "button",
      "tag": "button",
      "label": "Cancel",
@@ -5103,7 +5121,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-46",
+     "id": "ADJ-47",
      "kind": "button",
      "tag": "button",
      "label": "{{shown(p, p.value)}}",
@@ -5118,7 +5136,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-47",
+     "id": "ADJ-48",
      "kind": "form",
      "tag": "form",
      "label": "New time (IST, HH:MM, from {{shown(p, p.min)}} to {{shown(p, p.max)}}) New value (from {{p.min}} to {{p.max}}) Note (optional) Save Reset to default",
@@ -5129,7 +5147,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-48",
+     "id": "ADJ-49",
      "kind": "field",
      "tag": "input",
      "label": "New time (IST, HH:MM, from {{shown(p, p.min)}} to {{shown(p, p.max)}})",
@@ -5141,7 +5159,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-49",
+     "id": "ADJ-50",
      "kind": "field",
      "tag": "input",
      "label": "New value (from {{p.min}} to {{p.max}})",
@@ -5152,7 +5170,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-50",
+     "id": "ADJ-51",
      "kind": "field",
      "tag": "input",
      "label": "Note (optional)",
@@ -5163,7 +5181,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-51",
+     "id": "ADJ-52",
      "kind": "button",
      "tag": "button",
      "label": "Save",
@@ -5175,7 +5193,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-52",
+     "id": "ADJ-53",
      "kind": "button",
      "tag": "button",
      "label": "Reset to default",
@@ -5190,7 +5208,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-53",
+     "id": "ADJ-54",
      "kind": "disclosure",
      "tag": "summary",
      "label": "Earlier values ({{p.earlier.length}})",
@@ -5201,7 +5219,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-54",
+     "id": "ADJ-55",
      "kind": "button",
      "tag": "button",
      "label": "Change",
@@ -5216,7 +5234,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-55",
+     "id": "ADJ-56",
      "kind": "form",
      "tag": "form",
      "label": "New value (from {{shown(p, p.min)}} to {{shown(p, p.max)}}) Save Reset to default",
@@ -5227,7 +5245,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-56",
+     "id": "ADJ-57",
      "kind": "field",
      "tag": "input",
      "label": "New value (from {{shown(p, p.min)}} to {{shown(p, p.max)}})",
@@ -5239,7 +5257,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-57",
+     "id": "ADJ-58",
      "kind": "field",
      "tag": "input",
      "label": "New value (from {{shown(p, p.min)}} to {{shown(p, p.max)}})",
@@ -5250,7 +5268,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-58",
+     "id": "ADJ-59",
      "kind": "button",
      "tag": "button",
      "label": "Save",
@@ -5262,7 +5280,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-59",
+     "id": "ADJ-60",
      "kind": "button",
      "tag": "button",
      "label": "Reset to default",
@@ -5277,7 +5295,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-60",
+     "id": "ADJ-61",
      "kind": "button",
      "tag": "button",
      "label": "Reset this group to the defaults",
@@ -5292,7 +5310,7 @@
      "component": "components/adjustments/PreferencesTab.vue"
     },
     {
-     "id": "ADJ-61",
+     "id": "ADJ-62",
      "kind": "button",
      "tag": "button",
      "label": "Edit system playbook",
@@ -5307,7 +5325,7 @@
      "component": "components/adjustments/SystemPlaybookAdmin.vue"
     },
     {
-     "id": "ADJ-62",
+     "id": "ADJ-63",
      "kind": "field",
      "tag": "input",
      "label": "Reason for this change (required)",
@@ -5318,7 +5336,7 @@
      "component": "components/adjustments/SystemPlaybookAdmin.vue"
     },
     {
-     "id": "ADJ-63",
+     "id": "ADJ-64",
      "kind": "button",
      "tag": "button",
      "label": "Save as a new version",
@@ -5333,7 +5351,7 @@
      "component": "components/adjustments/SystemPlaybookAdmin.vue"
     },
     {
-     "id": "ADJ-64",
+     "id": "ADJ-65",
      "kind": "button",
      "tag": "button",
      "label": "Done editing",
@@ -5348,7 +5366,7 @@
      "component": "components/adjustments/SystemPlaybookAdmin.vue"
     },
     {
-     "id": "ADJ-65",
+     "id": "ADJ-66",
      "kind": "button",
      "tag": "button",
      "label": "Approve",
@@ -5363,7 +5381,7 @@
      "component": "components/adjustments/SystemPlaybookAdmin.vue"
     },
     {
-     "id": "ADJ-66",
+     "id": "ADJ-67",
      "kind": "button",
      "tag": "button",
      "label": "Restore this version",
@@ -6801,6 +6819,7 @@
   ],
   "AdjustmentsPage.vue": [
    "pages/AdjustmentsPage.vue",
+   "components/common/LoadFailed.vue",
    "components/common/PageHeader.vue",
    "components/common/Tabs.vue",
    "components/adjustments/PreferencesTab.vue",

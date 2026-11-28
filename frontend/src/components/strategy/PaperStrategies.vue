@@ -511,6 +511,7 @@ function cancelExit() {
 }
 
 function ask(g, rows) {
+  const prevState = exitRec.cur(g.id)?.state // the previous attempt's record, read before ask clears it (the order key rule in doExit)
   const orders = exitRowsFor(rows)
   const names = rows.map((p) => p.name)
   if (busy.value) return endExit('busy', names, null, g.id)
@@ -518,7 +519,7 @@ function ask(g, rows) {
   if (orders === null || !orders.length) return endExit('changed', names, null, g.id)
   exitRec.clear(g.id)
   dialogState.value = isUnknown(g.id) ? PAPER_STATE.UNKNOWN : PAPER_STATE.READY // an unresolved unknown outcome shows its sentence again, Confirm off
-  confirm.value = { id: g.id, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
+  confirm.value = { id: g.id, prevState, orders, names, units: rows.map((p) => ({ id: p.contractId, units: p.units })) }
 }
 
 // the dialog posts the rows as edited (lots x lot size, the typed price); a refusal stays in the dialog with the server's text
@@ -528,15 +529,17 @@ async function doExit(orders) {
   if (!c) return endExit('changed', [])
   if (busy.value) return endExit('busy', c.names)
   if (exitGate.notLive.value) return endExit('not_live', c.names) // prices paused (a failed read, or a leg of this dialog not live on the last good read): no POST; the dialog says which leg and why
+  const prevState = c.prevState
   const attempt = exitRec.begin(c.id, c.names, c.units) // ONE record per attempt: every answer below goes through it
   busy.value = true
   dialogState.value = PAPER_STATE.READY
   let reply = null
   try {
-    reply = await addToPaper(withRequestKey(api, requestKeys.keyFor(c.id, JSON.stringify(orders))), c.id, orders) // no suggestion ids: the body is { orders, client_request_id }
+    reply = await addToPaper(withRequestKey(api, requestKeys.keyFor(c.id, JSON.stringify(orders), prevState === undefined || prevState === 'unknown' || prevState === 'not_stored')), c.id, orders) // no suggestion ids: the body is { orders, client_request_id }
   } catch (e) {
     const outcome = paperPostOutcome(e)
     dialogState.value = outcome
+    if (outcome === PAPER_STATE.UNKNOWN) requestKeys.markUnknown(c.id) // the resend of these orders keeps the key
     if (outcome === PAPER_STATE.UNKNOWN) exitRec.settle(c.id, attempt, 'unknown', '', { readSeq })
     if (outcome === PAPER_STATE.REFUSED) requestKeys.done(c.id) // a definite answer: nothing stored, the next attempt is a new action
     if (outcome === PAPER_STATE.REFUSED) exitRec.settle(c.id, attempt, 'refused', exitEndText('refused', c.names, e?.parts, NEUTRAL_ERROR)) // 400/409/422: nothing stored; all four parts + the legs
