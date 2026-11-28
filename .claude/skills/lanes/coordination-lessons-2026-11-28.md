@@ -60,7 +60,8 @@ A fact passed between lanes is copied from the source file with its path, never 
 passed as "14 triggers on"; the PC said 13 with two guards. Three lanes built the wrong shape.
 
 ## 11. CI and the age of main
-CI runs only on pull requests and on main, so lane branches cost no CI. Count the merge into main in the plan from the
+CI runs only on pull requests and on main, so a lane branch with no pull request costs no CI. That is right for lane
+branches and wrong for the build (lesson 13). Count the merge into main in the plan from the
 start. Case: main was 11 days old, about 1,700 commits behind, so every selector diffed against that old main and every
 check was judged on hundreds of files: about 15 minutes of waste per push (E; 1467 s for a 3-commit push against 470 s for
 a small commit on a current main). A pull request of that size also will not fit one Tier A review.
@@ -68,3 +69,25 @@ a small commit on a current main). A pull request of that size also will not fit
 ## 12. One line per new lane
 Tell the owner in one line what each new lane finishes that a running lane cannot. Lanes multiplied today while the
 proven count stood still; the line forces the question "why not the lane that exists".
+
+## 13. One draft pull request for the build, CI after every wave
+Owner, 28 Nov about 20:00 IST, after the plan had dropped pull requests and CI altogether: "you almost removed CI and
+PRs, which is not correct ... one lane can have one CI or PR after it completes all the work". The release manager's
+counter-proposal was accepted with "Proceed with these three changes".
+1. One draft pull request for the build branch into main (this weekend pull 881 for integration/weekend-r3-1129). It
+   exists for CI only; never merged, never marked ready before the release decision.
+2. CI runs on it after every merge wave. Lanes do not wait; it runs on the host's machines while they work. A red result
+   goes to the lane that owns the failing file, as a money-path item if it touches one. Push once per wave, because a
+   newer push cancels the older run.
+3. A freeze needs a green CI run on the frozen commit, as well as the local check and the review, before a build is
+   handed to a test round.
+Unchanged: no pull request per lane; quick tests per item, two full local checks and two pushes per lane; the build lane
+joins in waves with one combined local check each.
+Why: the local check is run by the lane that wrote the code, on its own machine ("a student marking their own paper").
+CI also runs what the local check does not: the Execute-screen click-through job and coverage. Twelve per-lane pull
+requests would each be compared with an 11-day-old main and each cost a run of one to two hours, while saying nothing
+about the joined build (5 of 8 joins had conflicts on 28 Nov). One run per wave checks the thing that will be traded on
+and rehearses the merge into main.
+Comparison of CI runs for the weekend: 0 (the plan before the owner's order), about 12 (one per lane), 4 (one per wave:
+22:45, 01:45, 08:00 and the 10:00 freeze).
+On a draft pull request the workflows behave so: `ci.yml` job `lint-and-test` is skipped (`if: github.event_name != 'pull_request' || github.event.pull_request.draft == false`; the local check covers it). `domain-tests.yml` (domain-tests) and `coverage.yml` (coverage) have no draft condition and run. `app-tests.yml` runs when the changed paths match its list, and then its `changes` job picks the jobs: api, frontend and execute-screen-e2e (the Execute-screen click-through) have no draft condition.

@@ -61,6 +61,13 @@ Numbers: a full check is a median 23.6 minutes at `--jobs 2`; about 30 percent f
 check-minutes per item against 16.9 at 2 items. So: targeted tests and a local commit per item, two pushes per lane
 (money-path items first), and the build lane merges in waves with one combined check per wave, not one per branch.
 Every report leads with burn-down (open, proven since last report, net).
+CI on the build (owner, 28 Nov about 20:00 IST; lesson 13 in the lanes skill): (1) one draft pull request for the build
+branch into main (this weekend pull 881), for CI only, never merged, never marked ready before the release decision;
+no pull request per lane. (2) CI runs on it after every merge wave; lanes do not wait; a red result goes to the lane that
+owns the failing file (a money-path item if it touches one); push once per wave, because a newer push cancels the older
+run. (3) A freeze needs a green CI run on the frozen commit, as well as the local check and the review, before a build
+goes to a test round. On a draft, `ci.yml` lint-and-test is skipped; domain-tests, coverage and the app-tests jobs (api,
+frontend, Execute-screen click-through, chosen by changed paths) run.
 
 ## Briefs and dispatch
 - Briefs use `docs/process/builder-brief.md` for the constant parts. Every builder/checker brief goes through

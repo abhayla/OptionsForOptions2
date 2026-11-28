@@ -112,7 +112,8 @@ standing rules (more than 15 such lines). A passing example: `examples/brief-lan
 - Create sessions with full history (`clone_depth` high in create_session, for example 100000). A problem seen twice gets its root cause read from the lane's own check output before any second nudge.
 
 ## Coordinator: finish line, batches and waves
-Owner's order of 28 Nov 2026 (about 18:40 IST). Each point has its measured case in
+Owner's order of 28 Nov 2026 (about 18:40 IST); lessons 11 and 13 were corrected by his later order (about 20:00 IST).
+Each point has its measured case in
 `coordination-lessons-2026-11-28.md` (same folder); read it before you plan a round.
 1. **Finish line before fan-out.** Class every open item MUST / SHOULD / LATER / OWNER, each with what closes it. Every
    report leads with burn-down: open, proven since the last report, net, new items shown as "added". Case: "passed in
@@ -123,7 +124,8 @@ Owner's order of 28 Nov 2026 (about 18:40 IST). Each point has its measured case
    at 2 items per push, 6.7 at 5. One check covers all commits of the pushed head. There is no unchecked code push.
 4. **Not one push at the very end.** Money-path proof lands 03:20 instead of 01:45, late conflicts were 5 in 8 merges,
    and a dead container loses everything not pushed.
-5. **The build lane merges in waves,** one combined check per wave. One branch per check cost 5.8 hours for 14 merges.
+5. **The build lane merges in waves,** one combined check per wave, then one push per wave (lesson 13: the draft pull
+   request for the build runs CI on that push). One branch per check cost 5.8 hours for 14 merges.
 6. **Check in the background** while the next item is built in a second worktree. The review runs alongside the check.
    Reviews on money paths only, two rounds. When several reviews each find one more hole (five on the browser lock),
    move the guarantee to the one code path every case passes (the server key), not a sixth patch.
@@ -135,10 +137,24 @@ Owner's order of 28 Nov 2026 (about 18:40 IST). Each point has its measured case
    coordinator cannot read lane events. Messages and origin are the only signals. Say so at session start.
 10. **Quote facts from the source file,** never from memory when passing them between lanes (issue 876: 14 triggers on
     was passed, the PC said 13 with two guards; three lanes built the wrong shape).
-11. **CI runs only on pull requests and main,** so lane branches cost no CI. Count the merge into main in the plan from
-    the start: main was 11 days old and about 1,700 commits behind, so every check was judged against it (about 15
-    minutes of waste per push).
+11. **Lane branches have no pull request and no CI,** because CI runs only on pull requests and main and a pull request
+    per lane would be compared with an old main. The build branch is the exception (lesson 13). Count the merge into
+    main in the plan from the start: main was 11 days old and about 1,700 commits behind, so every check was judged
+    against it (about 15 minutes of waste per push).
 12. **Every new lane gets one line to the owner:** what it finishes that a running lane cannot.
+13. **One draft pull request for the build, CI after every wave (owner, 28 Nov about 20:00 IST: "one lane can have one
+    CI or PR after it completes all the work").** (a) One draft pull request for the BUILD branch into main (this
+    weekend pull 881 for integration/weekend-r3-1129). It exists for CI only; it is never merged and never marked ready
+    before the release decision. (b) CI runs on it after every merge wave. Lanes do not wait for it; it runs on the
+    host's machines while they work. A red result goes to the lane that owns the failing file, as a money-path item if
+    it touches one. Push once per wave, because a newer push cancels the older run. (c) A freeze needs a green CI run
+    on the frozen commit, as well as the local check and the review, before a build is handed to a test round.
+    Unchanged: no pull request per lane; each lane keeps quick tests per item, two full local checks and two pushes;
+    the build lane joins in waves with one combined local check each. Why: the local check is run by the lane that
+    wrote the code, on its own machine, so it marks its own paper; CI also runs what the local check does not (the
+    Execute-screen click-through job and coverage); twelve per-lane pull requests would each be compared with an 11-day-old
+    main, cost a run of one to two hours each and say nothing about the joined build (5 of 8 joins had conflicts on
+    28 Nov); one run per wave checks the build that will be traded on and rehearses the merge into main. On a draft pull request the workflows behave so: `ci.yml` job `lint-and-test` is skipped (`if: github.event_name != 'pull_request' || github.event.pull_request.draft == false`; the local check covers it). `domain-tests.yml` (domain-tests) and `coverage.yml` (coverage) have no draft condition and run. `app-tests.yml` runs when the changed paths match its list, and then its `changes` job picks the jobs: api, frontend and execute-screen-e2e (the Execute-screen click-through) have no draft condition.
 
 ## Before every pre-push check
 1. Once per container: `git fetch --unshallow origin; git fetch origin main` (a cloud clone is shallow; two stages fail late without it).

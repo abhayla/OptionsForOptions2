@@ -27,7 +27,18 @@ measured that day unless marked E (estimate). Proposed home: the kit's lanes or 
    coordinator could not read lane events. Messages and the remote branch are the only signals. Say so at session start.
 10. **Quote facts from the source file,** never from memory, when passing them between lanes (a count passed as 14 was
     13 with two guards in the source; three lanes built the wrong shape).
-11. **CI runs only on pull requests and the main branch,** so lane branches cost no CI. Count the merge into main in the
+11. **Lane branches have no pull request and no CI** (CI runs only on pull requests and the main branch); the build
+    branch is the exception, see 13. Count the merge into main in the
     plan from the start. A main that is 11 days and about 1,700 commits behind made every check judge hundreds of files:
     about 15 minutes of waste per push (E).
 12. **One line per new lane to the owner:** what it finishes that a running lane cannot.
+13. **One draft pull request for the build, CI after every wave.** (a) One draft pull request for the build branch into
+    the main branch, for CI only, never merged and never marked ready before the release decision; none per lane.
+    (b) CI runs on it after every merge wave; lanes do not wait; a red result goes to the lane that owns the failing
+    file; push once per wave, because a newer push cancels the older run. (c) A freeze needs a green CI run on the
+    frozen commit, as well as the local check and the review, before a build goes to a test round. Why: the local check
+    is run by the lane that wrote the code; CI also runs what it does not (a browser click-through and coverage); twelve
+    per-lane pull requests would each be compared with an old main and say nothing about the joined build (5 of 8 joins
+    had conflicts); one run per wave checks what will be traded on and rehearses the merge. Runs for the weekend: 0
+    (no CI), about 12 (per lane), 4 (per wave). Note for your own workflows: a job guarded by "not a draft" is skipped on
+    a draft pull request; check which jobs carry that guard.

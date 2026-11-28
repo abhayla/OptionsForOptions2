@@ -24,6 +24,7 @@ Queue:
 
 Reviews required: <none | one Opus review of <what>. Why Opus: <the money, stop, exit or price path>>
 Pushes: two (batch 1 = money-path items, batch 2 = the rest; targeted tests and a local commit per item, one check per push); gate result on each; first push within <N> minutes of start, even if partial.
+Build lane only: the build branch has one draft pull request for CI (never merged, never ready); push once per wave, because a newer push cancels the older run; the freeze needs a green CI run on the frozen commit.
 Reports: by message to the coordinator at every push, when blocked, and at 55 percent of your context with the hand-over list.
 Shared files: <each file two lanes touch> has one owner, <lane>; everyone else sends the change to that lane.
 Before each check: the steps in SKILL.md, section Before every pre-push check.
