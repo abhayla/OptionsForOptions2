@@ -33,6 +33,7 @@ import asyncio
 import dataclasses
 import datetime
 import logging
+import time
 import uuid
 from collections.abc import Callable, Mapping, Sequence
 from dataclasses import dataclass
@@ -96,6 +97,11 @@ from ofo_app.return_book import read_book
 from ofo_app.routes.broker import current_user_ref
 from ofo_app.routes.outcome import RequestSeq, get_settings_reader, load_charge_rates
 from ofo_app.routes.strategies import StrategyRefused
+
+#: R9 (as the paper door's ``COMMIT_DEADLINE_S``): the page gives up at 10 s and may press again, so a request that only
+#: reaches its commit after 8 s refuses ``store_busy`` with nothing stored and its key freed
+COMMIT_DEADLINE_S = 8.0
+_monotonic = time.monotonic  # the clock the deadline reads (a test replaces it)
 
 router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
 _LOG = logging.getLogger(__name__)
@@ -299,7 +305,7 @@ class _Request:
 
 
 @router.post("/strategies/{strategy_id}/execute", response_model=ExecuteOut, response_model_exclude_unset=True)
-async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
+async def execute_strategy(  # noqa: PLR0913, PLR0912, C901 - FastAPI dependencies
     strategy_id: int, body: ExecuteIn,
     session: Annotated[Optional[KiteSession], Depends(get_kite_session)],  # noqa: UP045
     quotes: Annotated[QuoteReader, Depends(get_quote_reader)],
@@ -311,6 +317,7 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
     key = body.client_request_id
     sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id", "seq"})
     claimed = committing = False
+    deadline = _monotonic() + COMMIT_DEADLINE_S
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if stored.revision != body.revision:  # W-151: FIRST after the load, before any Zerodha read or plan write
@@ -327,6 +334,8 @@ async def execute_strategy(  # noqa: PLR0913, C901 - FastAPI dependencies
         out = await _execute(_Request(db, user_ref, strategy_id, body.action, session, quotes, clock(), clock, rates,
                                       key, sent), stored)
         out = echo_seq(out, body.seq)  # REQ-119 AC-1: before the commit, so a failed echo rolls the plan back
+        if _monotonic() > deadline:  # R9: the page has given up by now; refused before the commit, the key freed below
+            raise StrategyRefused("store_busy", Failure.CONFLICT)
         committing = True  # from here an exception leaves the outcome unknown: the key stays claimed until it expires
         await db.commit()
     except request_key.Repeated:  # FD3: another press with this key committed first (the durable claim)
