@@ -245,7 +245,11 @@ async def adjustment_history(  # noqa: PLR0913 - FastAPI dependencies, one per i
     keys = [k for k in (found[c].feed_key for c in open_ids) if k is not None]
     if paper.connected(ctx) and keys:
         snapshot = await paper.market_snapshot(ctx, feed, underlying, keys)  # type: ignore[arg-type]
+    elif keys:  # Lane B1b item 5: no session: the book's rule (the stored close of a market KNOWN to be closed)
+        snapshot = await paper.stored_close_snapshot(ctx, underlying, keys)
     prices = paper.open_prices(open_ids, found, snapshot)
+    if not paper.served(paper.connected(ctx), snapshot, prices):
+        prices = paper.open_prices(open_ids, found, None)  # nothing priced with a time: paused, as the book reads
     live = strategy_money.live_prices(prices)  # B6: the one pick of the open contracts that have a live price
     per_order, charges_reason = _per_order_charges(orders, found, underlying, rates)
     by_batch: dict[datetime.datetime, dict[int, playbook_store.Suggestion]] = {}
