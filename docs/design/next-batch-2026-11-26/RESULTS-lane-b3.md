@@ -1,4 +1,4 @@
-STATUS 00:20 | CLOSING PUSH pending its check: W-02 fix = ONE batch answer of nine rows 219 -> 136 -> 12 -> 10 QUERIES, the same 10 for 3 rows (the count does not grow with rows); at the owner's 134 ms a query that is 10 x 0.134 = 1.3 s of database time, was 88 queries / 11.8 s | fires_at carried by not-checked rows (W-30) | duplicate template dropped, RA2's execution_return_changed used; entries wording pinned to the build, owner question written | wave 1 merged | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request | blocker: send_message to @parent refused; this line is the report
+STATUS 00:55 | CLOSED: head 79d523174 pushed, TOTAL PASS (wave 1 merged, 8425feead): plan watch for nine rows = 10 QUERIES (was 219; the same 10 for 3 rows), 10 x 134 ms = 1.3 s on the owner's connection (was 88 queries / 11.8 s); fires_at kept on not-checked rows (W-30); rupee profit target now a target at plus its level; duplicate Return template dropped (RA2's used); entries wording question written for the owner | NEW FINDING for the board: the rupee-profit line figures changed (wrong -> right) | O-P-03 FRONTEND FIELD: `paper_strategy_id` on the outcome request | blocker: send_message to @parent refused (elevated_session_untrusted_device); this line is the report
 
 # Lane B3 results (28 Nov 2026)
 
@@ -250,12 +250,4 @@ Both are decision-support wording, pending owner read (pins marked so).
 ## Not done
 The stored close's time on `outcome_running_not_live`; the W1 screenshot of I-202; the orders and traded-contracts batching (needs adjustment_readers.py).
 
-SAFE TO CLOSE (head: the commit this file is pushed in; left: the three items above, M1/M3, the PC re-time of the Plan sheet)
-
-## Friction (for the coordinator to copy into docs/process/friction-log.md, which is not in this lane's files)
-| what cost time | cost | proposed fix |
-|---|---|---|
-| A fresh cloud session had no Python or frontend dependencies: DB tests failed on `import httpx`, the first `prepush.py` stopped at "frontend/node_modules is missing", and the test database had no migrations | about 15 min, the 1 h check's first start wasted | the environment setup script runs `pip install -r requirements-app.txt -r requirements-dev.txt`, `npm ci` in frontend/ and the alembic upgrade through `db_run.py` |
-| `send_message` to the coordinator refused 3 times (elevated_session_untrusted_device); the coordinator reached the lane but the lane could not answer | no report channel except the STATUS line | the owner decides on the trust card, or the brief says "STATUS line is the report" up front |
-| `git checkout <file>` blocked by the discard guard for a file holding only my own probe | 2 retries | none needed; the guard is right, remove a probe with an edit |
-| The shared test database `ofo_test` (the template per-file clones copy) held rows left by a run that wrote to it directly: a check I stopped mid-run, or a helper's run without `OFO_TEST_DB_PER_FILE=1`; the next file then met "8 leg stops, expected 2" | 20 min of reading | clear with `SET LOCAL session_replication_role = replica; TRUNCATE public.strategies CASCADE; TRUNCATE public.catalogue_contracts CASCADE` in one transaction (the alert-style guard refuses a plain truncate); better: `db_run.py` refuses a write run on `ofo_test` itself without the per-file flag |
+SAFE TO CLOSE (head 79d523174 plus this STATUS commit; left: the stored close's time on `outcome_running_not_live`, the W1 screenshot of I-202, the 3 settings reads and the first row's expiry-kind read (10 -> 3 queries, files outside this lane), the in-row duplicates of the single route, the PC re-time of the Plan sheet and of the batch on the owner's connection, the owner's answer on the entries wording, the page-side cancel race in PaperStrategies.vue)
