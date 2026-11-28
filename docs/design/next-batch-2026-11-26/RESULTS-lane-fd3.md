@@ -1,4 +1,4 @@
-STATUS 09:00 | items 1-6, 8: fixed, not tested live (database tests green locally, review pending) | 7: not done (typed sentence door) | 9: not started | next push after the Opus review | blocker: none
+STATUS 09:50 | items 1, 2 (kept) and 3, 4, 5, 6, 8 (dropped by the 09:25 cut but ALREADY DONE here: Lane FD4 skips them) fixed, not tested live; gate on the pushed head; item 7 and the 09:12 additions (cancelled_stops from returned ids; real position's old armed stops shown as not applicable) NOT done | blocker: none
 
 # Lane FD3 RESULTS (backend, third batch)
 
@@ -123,5 +123,15 @@ Live: repeat with the feed on; flush the Redis key (`redis-cli flushdb`) between
   runs before the lock). Fix: re-read `adopted_for` and the revision under the lock and refuse if changed. Listed, not built.
 - F4 MINOR: a failed kind read answers a plain 500 (still fails closed, nothing stored); a catalogue sentence is not built.
 - F5 MINOR (unverified): a strategy with only execution plans may answer 404 before the 409 on the tracking exit.
+
+## After the 09:25 cut
+
+Done before the cut and pushed here, so Lane FD4 does not redo them: item 3 (`kinds_of`), item 4 (real first fill connection
+release, except `record_basket_facts`), item 5 (pool scan), item 6 (Lane TE database tests, table above), item 8 (F5 decided, F7 fixed).
+Not done: item 7 (see above) and the two 09:12 additions: (1) `cancelled_stops` from the ids the cancel UPDATEs return (now it is
+read back under the strategy lock; the stale-stop cancel inside `paper_store.place` returns no ids and that file is not mine);
+(2) a real position's old armed stops must read "not applicable: real position" in `GET /paper|real/strategies/{id}/triggers`
+and `routes/plan_watch.py`. Question for the owner: should such rows be cancelled or kept and shown as not applicable?
+Recommendation: kept and shown as not applicable (nothing is removed without the owner).
 
 SAFE TO CLOSE: not yet.
