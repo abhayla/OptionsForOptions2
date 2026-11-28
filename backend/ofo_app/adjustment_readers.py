@@ -897,16 +897,23 @@ class CatalogueUnreadable(Exception):
 async def stored_kind(db: Any, underlying: str, expiry: datetime.date, *, scn: Any = None,
                       load: Callable[..., Any] | None = None) -> str:
     """The expiry kind of ``expiry`` from the STORED catalogue (the day's instrument list the app keeps), by the one
-    rule ``expiry_kind_of``; "" = not known. A database error rolls the session back (it aborts the transaction, the
-    next read needs it clean) and raises ``CatalogueUnreadable``."""
+    rule ``expiry_kind_of``; "" = not known. The read runs in a SAVEPOINT: a database error rolls back only that
+    savepoint (the transaction stays usable for the next read) and raises ``CatalogueUnreadable``. It never calls
+    ``db.rollback()``: that would drop the CALLER's order-key claim and strategy row lock, and the orders would then
+    commit with no key row."""
     scn = _scenario() if scn is None else scn
+
+    async def listed() -> list[Any]:
+        return [e for e in (await (load or load_catalogue)(db)).all_entries()
+                if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
     try:
-        entries = [e for e in (await (load or load_catalogue)(db)).all_entries()
-                   if e.currently_listed and e.contract.name == underlying and e.contract.expiry is not None]
+        if db is None:
+            entries = await listed()
+        else:
+            async with db.begin_nested():
+                entries = await listed()
     except Exception as exc:  # any failed read means "kind not known", with its own reason
         log.warning("expiry kind: catalogue not read", exc_info=True)
-        if db is not None:
-            await db.rollback()
         raise CatalogueUnreadable from exc
     futures = frozenset(e.contract.expiry for e in entries if e.contract.is_future())
     return expiry_kind_of(expiry, [e for e in entries if e.contract.is_option()], futures, scn)

@@ -253,3 +253,33 @@ async def test_r9_a_request_past_the_server_deadline_refuses_and_stores_nothing(
     monkeypatch.setattr(route, "_monotonic", lambda: 0.0)  # the same key on time: placed (the late one freed it)
     again = await _post(app, stored, _body(orders, key))
     assert again.status_code == HTTPStatus.CREATED, again.text[:300]
+
+
+async def test_f_a_failing_catalogue_read_keeps_the_claim_and_stores_orders_with_their_key(
+        db, notified, keys, monkeypatch):
+    """Class fix (``stored_kind``): on the production tracked-reader shape (the request's OWN session,
+    ``get_tracked_reader`` with no test override) a catalogue read that fails must roll back only its savepoint. It used
+    to call ``db.rollback()``, which dropped the caller's order-key claim and strategy lock, and the orders then
+    committed with no key row. Now: 201, the orders stored, and the key row done."""
+    from ofo_app import adjustment_readers as readers  # noqa: PLC0415
+    from ofo_app.routes.adjustment import get_tracked_reader  # noqa: PLC0415
+    from sqlalchemy.exc import OperationalError  # noqa: PLC0415
+    from test_paper_triggers_routes import _open  # noqa: PLC0415
+
+    app, stored, _ids = await _open(db)  # an open paper position: the reader reaches ``stored_kind``
+    _use(app, keys)
+    app.dependency_overrides.pop(get_tracked_reader)  # production: ``partial(read_tracked, db=<the request>)``
+    monkeypatch.setattr(readers, "current_user_ref", lambda: stored.user_ref)
+
+    async def broken(_db):
+        raise OperationalError("SELECT", {}, Exception("catalogue read failed"))
+    monkeypatch.setattr(readers, "load_catalogue", broken)
+    before = await _count(db, stored)
+    _, orders = _prices(stored)
+    key = uuid.uuid4()
+    reply = await _post(app, stored, _body(orders, key))
+    assert reply.status_code == HTTPStatus.CREATED, reply.text[:300]
+    assert await _count(db, stored) == before + len(orders)
+    state = (await db.execute(text("SELECT state FROM public.order_request_keys WHERE request_key = :k"),
+                              {"k": key})).scalar_one()
+    assert state == "done"
