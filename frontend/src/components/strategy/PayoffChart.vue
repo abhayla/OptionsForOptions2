@@ -215,7 +215,11 @@ const marks = {
   },
 }
 
+// R2 FC2 (chart teardown): no chart work once the component is unmounted or the page environment is gone. A mounted / watcher callback that is
+// still pending at that moment (seen in a pre-push run: "document is not defined" after the test environment was torn down) draws nothing.
+let gone = false
 const createChart = () => {
+  if (gone || typeof document === 'undefined') return
   // G-065 round 2 (REQ-148 AC-6): the previous reply's chart goes FIRST, so a reply with no curve never leaves the
   // old line on screen
   if (chartInstance) chartInstance.destroy()
@@ -422,6 +426,7 @@ watch(points0, (now, before) => {
 watch(() => [points0.value, props.spot, props.breakevens, props.sd, props.oi, props.targetCurve], createChart, { deep: true })
 onMounted(createChart)
 onUnmounted(() => {
+  gone = true
   if (chartInstance) chartInstance.destroy()
 })
 </script>
