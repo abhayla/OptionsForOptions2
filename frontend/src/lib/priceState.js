@@ -6,7 +6,7 @@
 // | read_failed (the last read failed while a list or book is on screen: the old figures stay, marked old).
 // Wording here is the wording each screen already showed; no sentence is new.
 import { computed, toValue } from 'vue'
-import { TIME_UNAVAILABLE, isoMillis, istClock, istTime } from '@/lib/displayFormat'
+import { TIME_UNAVAILABLE, isoMillis, istClock, istStamp, istTime } from '@/lib/displayFormat'
 import { marketClosedText } from '@/lib/sharedStateText'
 
 export const PAUSED_TEXT = 'Paper P&L paused - prices not live'
@@ -128,4 +128,32 @@ export function usePriceFreshness({ readFailed, held, serverState, closedText, r
     readOk,
     exitReason: computed(() => (readOk.value ? null : NOT_LIVE_EXIT)),
   }
+}
+
+/** Lane FA r2 (I-17; ADR-330 (60), REQ-109 AC-5): the ONE as-of formatter of an Exit dialog. `rows`: the dialog's orders
+ *  ({kind, price, price_at}); only exit rows count. {state, text}: one plain line, the first of these that holds:
+ *  no_price (an exit row has no price) | no_time (a price with no quote time) | unreadable (a quote time that does not parse) |
+ *  not_live (`notLive`: "Prices are not live. Last price as of ...") | fresh (under a minute) | stale (minutes, hours, days).
+ *  The age is told for the OLDEST quote; a quote dated after `nowMs` is never "ago". No exit row: {state:'', text:''}.
+ *  Wording is new, pending owner read. Times only; no money here (ADR-008). */
+export function priceAgeLine(rows, { nowMs = Date.now(), notLive = false } = {}) {
+  const exits = (Array.isArray(rows) ? rows : []).filter((r) => r?.kind === 'exit')
+  if (!exits.length) return { state: '', text: '' }
+  const noPrice = exits.filter((r) => !String(r.price ?? '').trim()).length
+  if (noPrice) return { state: 'no_price', text: `No price for ${noPrice} of ${exits.length} legs; the server prices the exit when you confirm.` }
+  const times = exits.map((r) => r.price_at)
+  if (times.some((t) => t === null || t === undefined || t === '')) return { state: 'no_time', text: 'The time of the price is not available.' }
+  const ms = times.map((t) => (typeof t === 'string' ? isoMillis(t) : null))
+  if (ms.some((m) => m === null)) return { state: 'unreadable', text: 'The time of the price could not be read.' }
+  let at = 0 // index of the oldest quote
+  for (let i = 1; i < ms.length; i += 1) if (ms[i] < ms[at]) at = i
+  const oldest = times[at]
+  const stamp = istStamp(oldest, new Date(nowMs).toISOString())
+  const whole = (n) => n - (n % 1) // whole units of TIME (never money, ADR-008); no Math/Number: the screen guards ban those
+  const secs = whole((nowMs - ms[at]) / 1000)
+  const unit = (n, w) => `${n} ${w}${n === 1 ? '' : 's'} ago`
+  const ago = secs < 0 ? '' : secs < 60 ? unit(secs, 'second') : secs < 3600 ? unit(whole(secs / 60), 'minute') : secs < 86400 ? unit(whole(secs / 3600), 'hour') : unit(whole(secs / 86400), 'day')
+  const asOf = `${stamp}${ago ? `, ${ago}` : ''}`
+  if (notLive) return { state: 'not_live', text: `Prices are not live. Last price as of ${asOf}.` }
+  return { state: secs < 0 ? 'ahead' : secs < 60 ? 'fresh' : 'stale', text: `Price as of ${asOf}.` }
 }

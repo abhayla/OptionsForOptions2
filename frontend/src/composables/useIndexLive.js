@@ -56,6 +56,9 @@ export const INDEX_NAMES = { NIFTY: 'NIFTY 50', SENSEX: 'SENSEX' }
 export const INDEX_KEYS = Object.keys(INDEX_NAMES)
 export const NOT_LIVE_LABEL = 'Index values unavailable.'
 export const VALUE_UNAVAILABLE = 'Not available'
+// Lane FA r2, I-29 (ADR-330 (56), (58); pending owner read): after the close the server saves a level unchecked and arms it at the next live tick (ADR-327 (3); Opus review F4), said once.
+export const CLOSED_REFERENCE_TEXT = 'The market is closed. A level you save is checked from the next market open; the last close is shown for reference.'
+export const lastCloseUnavailableText = (underlying) => `${underlying}: the last close is not available.`
 
 export async function readAnswer(fallback) {
   try {

@@ -6,16 +6,16 @@
 <script setup>
 import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue'
 import api, { NEUTRAL_ERROR } from '@/services/api'
-import { paperPriceOk, paperPriceReason } from '@/lib/tracking'
-import { istClock } from '@/lib/displayFormat'
+import { levelShown, paperPriceOk, paperPriceReason } from '@/lib/tracking'
+import { expiryText, istClock } from '@/lib/displayFormat'
 import { PAPER_STOP_RISK_LOADING_TEXT } from '@/lib/sharedStateText'
-import { NOT_LIVE_LABEL, useIndexAnswer } from '@/composables/useIndexLive'
+import { CLOSED_REFERENCE_TEXT, NOT_LIVE_LABEL, lastCloseUnavailableText, useIndexAnswer } from '@/composables/useIndexLive'
 import { triggerListOf, triggersPath } from '@/lib/paperTriggers'
 
 const props = defineProps({
   strategyId: { type: Number, required: true },
   underlying: { type: String, default: '' },
-  // the strategy's open legs: { index, label, contractId }
+  // the strategy's open legs: { index, label, contractId, ltpText? } (ltpText: the leg's price as the server sent it, null when not live)
   legs: { type: Array, default: () => [] },
   // D-44: contract id -> the leg label the form rows use (every position of the strategy, open or closed), so the list names a
   // stop's leg the same way; a contract not in it keeps the server's contract text
@@ -55,6 +55,8 @@ const ceReason = computed(() => {
   const bad = set.find((x) => !paperPriceOk(x))
   return bad === undefined ? '' : paperPriceReason(bad)
 })
+// D2: a stop whose contract is not among the open legs shows the server's contract text; its ISO date reads through the app's one date rule (expiryText)
+const serverLegText = (text) => (typeof text === 'string' ? text.replace(/\d{4}-\d{2}-\d{2}/g, (d) => expiryText(d) ?? d) : null)
 const stopReason = (i) => paperPriceReason(stopOf(i).level)
 
 // W2-B (ADR-330 (6), ADR-008): while a leg and a valid level are typed, ask the server what the trade becomes if this stop fires and
@@ -149,8 +151,12 @@ const indexLine = computed(() => {
   if (index.rowLive(row) && typeof row?.value === 'string' && clock) return `${props.underlying} now ${index.shownValue(row)} as of ${clock}`
   // ADR-330 (56): a closed market is not "unavailable": the same last value the strip shows, with its time (read of the one index answer)
   if (index.marketClosed() && typeof row?.value === 'string' && clock) return `${props.underlying} last ${index.shownValue(row)} as of ${clock}`
+  // I-29: a closed market with no value for this index is not "Index values unavailable." (that is the feed-down word); it says the close is missing
+  if (index.marketClosed() && props.underlying) return lastCloseUnavailableText(props.underlying)
   return index.rowNotLive(row) ? NOT_LIVE_LABEL : ''
 })
+// I-29: after the close a level is judged against the last close: one line, only while the server's answer says the market is closed
+const referenceLine = computed(() => (index.marketClosed() ? CLOSED_REFERENCE_TEXT : ''))
 
 // S-23: a trigger can fire on the server (state armed -> fired) while this panel is open. Root cause: the list was read once on
 // mount only. Follow the parent list's good-read token (its one timer; none here). Quiet: not through run(), so a Saved / Not saved
@@ -187,7 +193,7 @@ async function saveExit() {
     // D-05 r3: the line is built only from the server's answer: already_armed names the submitted levels it did NOT store
     const dupDirs = data.already_set ? ['above', 'below'] : (data.already_armed ?? [])
     const lv = [['above', body.above], ['below', body.below]].filter(([, v]) => v).map(([d, v]) => ({ d, v, dup: dupDirs.includes(d) }))
-    const line = (list) => `exit ${list.map((x) => `${x.d} ${x.v}`).join(' and ')}`
+    const line = (list) => `exit ${list.map((x) => `${x.d} ${levelShown(x.v)}`).join(' and ')}`
     const fresh = lv.filter((x) => !x.dup)
     const dups = lv.filter((x) => x.dup)
     saved.value = !dups.length ? `Saved: ${line(fresh)}` : !fresh.length ? `Already set: ${line(dups)}` : `Saved: ${line(fresh)}. Already set: ${line(dups)}`
@@ -201,7 +207,7 @@ async function saveStop(leg) {
   const s = stopOf(leg.index)
   const data = await run(() => api.post(path, { kind: 'leg_stop', contract_id: leg.contractId, direction: s.direction, level: typed(s.level) }), true, true)
   if (data) {
-    saved.value = `${data.already_set || data.already_armed?.length ? 'Already set' : 'Saved'}: stop ${s.direction} ${typed(s.level)}`
+    saved.value = `${data.already_set || data.already_armed?.length ? 'Already set' : 'Saved'}: stop ${s.direction} ${levelShown(typed(s.level))}`
     setStop(leg.index, { level: '' })
     showSaved((x) => x.kind === 'leg_stop' && String(x.contract_id) === String(leg.contractId) && x.direction === s.direction)
   }
@@ -231,6 +237,7 @@ async function keep(t) {
   <div ref="rootEl" class="mt-2 rounded border border-line p-2" data-testid="paper-stops">
     <p class="text-xs font-semibold" data-testid="stops-label">{{ LABEL }}</p>
     <p class="min-h-5 text-xs text-ink-muted" data-testid="stops-index">{{ indexLine }}</p>
+    <p v-if="referenceLine" class="text-xs text-ink-muted" data-testid="stops-reference">{{ referenceLine }}</p>
 
     <!-- D-44 round 1: from lg up the form (first) and the list of stops (second) sit side by side; narrower they stack -->
     <div class="grid gap-x-6 lg:grid-cols-2" data-testid="stops-columns">
@@ -255,6 +262,8 @@ async function keep(t) {
           <option value="below">Below</option>
         </select></label>
         <label class="flex items-center gap-1 text-xs" :data-testid="`stop-box-${l.index}`"><span>Stop price</span><input :value="stopOf(l.index).level" type="text" inputmode="decimal" placeholder="Stop price" class="w-24 rounded border border-line px-1 py-0.5" :data-testid="`stop-level-${l.index}`" :aria-label="`Stop price for ${l.label}`" @input="setStop(l.index, { level: $event.target.value })" /></label>
+        <!-- FA2 item 4 (UX-A02, pending owner read): what the leg costs now, from the leg's own price; never a guess -->
+        <span v-if="'ltpText' in l" class="text-xs text-ink-muted" :data-testid="`stop-cost-${l.index}`">{{ typeof l.ltpText === 'string' && l.ltpText ? `Costs now ${l.ltpText}` : 'Costs now: not priced' }}</span>
         <button type="button" class="rounded border border-line px-3 py-1" :disabled="busy || !!stopReason(l.index)" :data-testid="`stop-save-${l.index}`" @click="saveStop(l)">{{ busy ? 'Saving...' : 'Save' }}</button>
         <span class="block min-h-4 basis-full whitespace-pre-line text-xs text-ink-muted" :data-testid="`stop-risk-slot-${l.index}`"><span v-if="riskLoading(l)" :data-testid="`stop-risk-loading-${l.index}`">{{ PAPER_STOP_RISK_LOADING_TEXT }}</span><span v-else-if="riskText(l)" :data-testid="`stop-risk-${l.index}`"><template v-if="riskLines(l)"><span v-for="(t, n) in riskLines(l)" :key="n" class="block" :data-testid="`stop-risk-line-${l.index}-${n}`">{{ t }}</span></template><template v-else>{{ riskText(l) }}</template></span></span>
         <span class="block min-h-4 basis-full text-xs text-ink-muted" :data-testid="`stop-reason-slot-${l.index}`"><span v-if="stopReason(l.index) && typed(stopOf(l.index).level)" :data-testid="`stop-reason-${l.index}`">{{ stopReason(l.index) }}</span></span>
@@ -276,7 +285,7 @@ async function keep(t) {
       <p v-if="triggers && !triggers.length" class="text-xs text-ink-muted" data-testid="stops-empty">No stops set.</p>
       <ul v-else-if="triggers">
         <li v-for="t in triggers" :key="t.id" class="flex flex-wrap items-center gap-2 border-b border-line py-1" data-testid="trigger-row" :data-trigger-id="t.id">
-          <span>{{ t.kind === 'leg_stop' ? (legNames[t.contract_id] ?? t.contract_text ?? 'Leg stop') : 'Conditional exit' }}</span>
+          <span>{{ t.kind === 'leg_stop' ? (legNames[t.contract_id] ?? serverLegText(t.contract_text) ?? 'Leg stop') : 'Conditional exit' }}</span>
           <span class="font-medium" data-testid="trigger-direction">{{ t.direction === 'above' ? 'Above' : t.direction === 'below' ? 'Below' : '' }}</span>
           <span data-testid="trigger-level">{{ t.level_text }}</span>
           <span class="rounded bg-surface-muted px-1" data-testid="trigger-state">{{ t.state }}</span>

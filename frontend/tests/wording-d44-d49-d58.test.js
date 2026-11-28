@@ -70,7 +70,7 @@ describe('D-44: the Stops list names a leg the way the form does', () => {
   it('a stop on a leg the form no longer lists keeps the server text; a conditional exit keeps its words', async () => {
     const w = await open({ triggers: [trig(1, { kind: 'leg_stop', contract_id: 9999, contract_text: 'NIFTY 22300 PE 2026-11-03' }), trig(2)] })
     const rows = w.findAll('[data-testid="trigger-row"]')
-    expect(rows[0].find('span').text()).toBe('NIFTY 22300 PE 2026-11-03')
+    expect(rows[0].find('span').text()).toBe('NIFTY 22300 PE 3 Nov') // Lane FA r2 (D2): the server text keeps its words; its ISO date reads through the one date rule
     expect(rows[1].find('span').text()).toBe('Conditional exit')
   })
 })

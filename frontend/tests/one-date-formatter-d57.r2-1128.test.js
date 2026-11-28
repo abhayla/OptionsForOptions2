@@ -66,8 +66,8 @@ describe('I-98 the stop line date reads "1 Dec"', () => {
     expect(w.text()).not.toMatch(/\d{4}-\d{2}-\d{2}/)
   })
   // DEFECT (PaperStops.vue:279): when the stop's contract is not among the open legs the row falls back to the server's contract_text, which carries
-  // the ISO date. it.fails = the body states the right behaviour and fails in the app today; change to `it` when the row formats the date.
-  it.fails('I-98: a leg stop whose contract is not among the open legs (closed leg) still never prints the ISO date', async () => {
+  // closed-leg case: the server's contract text is read through expiryText (FA r2 D2); no ISO date is ever printed.
+  it('I-98: a leg stop whose contract is not among the open legs (closed leg) still never prints the ISO date', async () => {
     const w = await open({ triggers: [trig(8, { kind: 'leg_stop', contract_id: 9999, contract_text: 'NIFTY 22300 PE 2026-12-01', level_text: 'Above 110.00' })] })
     expect(w.get('[data-testid="trigger-row"]').text()).not.toMatch(/2026-12-01/)
   })

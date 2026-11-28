@@ -228,6 +228,7 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
   })
   it('the dialog takes a list of orders, not legs: a single entry order emits a single entry order', async () => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: '10.05', kind: 'open' }] } })
+    await flushPromises() // ADR-330 (60) on Add to Paper (FA2 item A): Confirm waits for the market answer
     await t(w, 'paper-confirm-button').trigger('click')
     expect(w.emitted('confirm')[0][0]).toEqual([{ contract_id: 5, side: 'BUY', quantity: 130, price: '10.05', kind: 'open' }])
     w.unmount()
@@ -243,6 +244,7 @@ describe('Add to Paper: unsaved strategy, toast, old path', () => {
   })
   it('GC-TPD R-30: a NUMERIC price (not text) does not throw on Confirm and is sent as text', async () => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: [{ key: 'x', contract_id: 5, side: 'BUY', text: 'NIFTY 3 Nov 22800 CE', lots: 2, lot_size: 65, price: 101.05, kind: 'open' }] } })
+    await flushPromises() // ADR-330 (60) on Add to Paper (FA2 item A): Confirm waits for the market answer
     await t(w, 'paper-confirm-button').trigger('click')
     expect(w.emitted('confirm')[0][0]).toEqual([{ contract_id: 5, side: 'BUY', quantity: 130, price: '101.05', kind: 'open' }])
     w.unmount()

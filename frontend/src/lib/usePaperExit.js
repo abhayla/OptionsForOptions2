@@ -14,7 +14,8 @@ import { CHANGED_ELSEWHERE_EXIT, NOT_LIVE_EXIT, usePriceFreshness } from '@/lib/
 export const EXIT_BUSY_TEXT = 'An exit is already being sent for this strategy.'
 export const EXIT_DONE_TEXT = 'Exit placed on paper' // pending owner read (hotfix 27 Nov): the one "done" line of an Exit
 export const EXIT_NOT_STORED_TEXT = 'The exit was not stored. You can try again.' // pending owner read (Lane U r1, REQ-109 AC-5): a good re-read after an unknown outcome shows the legs unchanged
-export const EXIT_CHECKING_TEXT = 'The first exit\'s outcome is being checked; no second exit is sent until the book has been read.' // pending owner read (Lane U2, ADR-017)
+export const EXIT_CHECKING_TEXT = 'The first exit\'s outcome is not known yet; no second exit is sent until the server\'s answer is known.' // pending owner read (Lane U2, ADR-017)
+export const EXIT_PLACING_TEXT = 'Placing exit...' // pending owner read (Lane FA r2, I-18; ADR-017): shown only while the post runs; never reads as done
 export const EXIT_TICK_TEXT = 'Tick a leg to exit.'
 const PART_KEYS = ['what_happened', 'impact', 'what_is_blocked', 'next_action']
 export function exitEndText(reason, legNames = [], parts = null, neutral = 'Something went wrong. Please try again.') {

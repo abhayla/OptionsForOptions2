@@ -16,6 +16,7 @@ vi.mock('@/services/api', async (importActual) => {
   const respond = (method, url, body) => {
     calls.push({ method, url, body })
     const a = answers[`${method} ${url}`]
+    if (a === undefined && method === 'GET' && url === '/market/exit-state') return Promise.resolve({ data: { closed: false, sentence: null, next_open_at: null } }) // ADR-330 (60) on Add to Paper (FA2 item A)
     if (a === undefined) return Promise.reject(new Error(`unmocked ${method} ${url}`))
     return typeof a === 'function' ? a(body) : Promise.resolve({ data: a })
   }
@@ -154,6 +155,7 @@ describe('the not-live flag is the dialog\'s own tick state', () => {
   })
   it('line not shown: Confirm emits ticked = false', async () => {
     const w = mount(PaperConfirmDialog, { props: { open: true, orders: ORDER } })
+    await flushPromises() // ADR-330 (60) on Add to Paper (FA2 item A): Confirm waits for the market answer
     await w.get('[data-testid="paper-confirm-button"]').trigger('click')
     expect(w.emitted('confirm')[0][2]).toBe(false)
     w.unmount()
