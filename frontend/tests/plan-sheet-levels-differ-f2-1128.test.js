@@ -112,3 +112,28 @@ describe('a box the server filled in is never sent beside the typed one (unchang
     expect('stop' in put.body).toBe(false)
   })
 })
+
+// Case taken from Lane FJ2's handoff test (plan-pair-stale-fj2-1128): the first box got a server figure for the other box, the second box then gets none:
+// the box the server filled earlier must not stay on screen as if it matched the new figure.
+describe('a server-filled box is not left stale beside a new typed figure the server could not match', () => {
+  for (const [level, pct, rs] of [['stop', 'plan-stop', 'plan-stop-rupees'], ['target', 'plan-target', 'plan-target-rupees']]) {
+    it(`${level}: % typed 9 (Rs filled by the server), then Rs typed 500 with no figure: the % box is cleared, Save sends only the Rs box`, async () => {
+      answers[`GET ${PATH}/levels?${level}=9&playbook_id=9`] = { target: null, stop: null, [level]: { percent: '9.00', rupees: '1309.00', per_lot: '654.50', words: '9.00 %', rupee_words: 'Rs 1309.00' } }
+      answers[`GET ${PATH}/levels?${level}_rupees=500&playbook_id=9`] = NONE
+      answers[`PUT ${PATH}`] = ANSWER
+      const w = await sheet()
+      await t(w, pct).setValue('9')
+      await flushPromises()
+      expect(t(w, rs).element.value).toBe('1309.00')
+      await t(w, rs).setValue('500')
+      await flushPromises()
+      expect(t(w, pct).element.value).toBe('')
+      await t(w, 'plan-save').trigger('click')
+      await flushPromises()
+      const put = calls.find((c) => c.method === 'PUT')
+      expect(put.body[`${level}_rupees`]).toBe('500')
+      expect(level in put.body).toBe(false)
+    })
+  }
+})
+

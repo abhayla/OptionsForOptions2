@@ -223,8 +223,11 @@ async function typed(field) {
   try {
     const got = (await fetchLevels(api, props.strategyId, { [field]: own }, f.playbookId, picked.value))[level]
     if (run !== levelsRun[level] || form.value !== f || savedSince(props.strategyId, stamp)) return
-    if (!got) return // the server could not work out the other box: it stays as typed (both are sent; the server names a clash)
-    mine[otherSide] = false // the other box is now the server's figure, not the user's
+    if (!got) { // the server could not work out the other box
+      if (!mine[otherSide]) { f[other] = ''; f[words[rupees ? 0 : 1]] = '' } // a figure the SERVER filled earlier is stale beside the new one (D-TG-4): gone
+      return // a box the USER typed stays as typed (both are sent; the server names a clash)
+    }
+    mine.percent = false; mine.rupees = false // the pair now agrees by the server's figures: neither box is an unreconciled typed value
     f[other] = rupees ? got.percent : got.rupees
     f[words[0]] = got.words
     f[words[1]] = got.rupeeWords
