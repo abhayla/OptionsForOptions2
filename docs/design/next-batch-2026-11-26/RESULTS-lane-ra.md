@@ -1,4 +1,4 @@
-STATUS 16:25 | queue 1-9 built and committed on fix/r3-leftovers-1128, gate on the head running, Opus review pending | next push when the gate ends TOTAL PASS | blocker: none (the message to the coordinator is refused: needs the owner's device trust; this line is the report)
+STATUS 17:05 | built and committed on fix/r3-leftovers-1128 (head 4fb5c3855 + this file); gate on a5259db50 running (push it first), gate on the final head next; Opus review done: REVISE, F-1 F-2 F-4 fixed, F-3 listed | next push: a5259db50 when its gate ends TOTAL PASS, then the final head | blocker: none (messages to the coordinator are refused: needs the owner's device trust; this line is the report)
 
 # Lane RA: round 3 leftovers (base integration/weekend-r2-1128 17385d88, merged fix/r4-worker-4-1128: clean, no conflict)
 
@@ -15,9 +15,9 @@ other rules).
 | 2 N2 route half | fixed | tests_app/test_monitoring_status_route.py: 10 passed (red before: 2 failed); test_reasons_fe4_1128.py 27 passed |
 | 3 W-28 | fixed | tests_app/test_alert_routes.py: the new pin passed; `_KIND_WORDS["plan_rupee_loss"] = "Plan loss stop"` |
 | 4 N4 | already fixed on this head (Lane FJ 00345b57d), test exists | frontend/tests/stops-not-applicable-real-r3-fj.test.js: 5 passed. No change. |
-| 4 N5 | fixed | tests_app/test_order_request_key_durable_fd3.py: the deadline starts at the request's arrival (`_stamp_request`, the first dependency, before the pool wait); its own code `order_request_too_slow` and sentence; red before (new test failed on the old start point), then 19 passed |
-| 4 N6 | fixed | same file: a failed catalogue read keeps the request-key claim and the strategy row lock; the savepoint is taken only when one is held (`ofo_app/txn_holds.py`), so the latency ceilings (tests_app/test_route_latency_budget.py: 7 passed, 1 xfailed as before) are not raised; red before (`request_key_store_unavailable`) |
-| 4 N7 | fixed | tests_app/test_paper_triggers_routes.py: 3 new tests; the kind is read before the commit and handed to `_triggers_out`; red before (500 after a stored stop), then 70 passed |
+| 4 N5 | fixed (merge: FD5's version of the start, then Opus F-1) | tests_app/test_order_request_key_durable_fd3.py: the deadline starts at arrival (`_stamp_request`, first dependency) and is checked after the last round trip; its own code `order_request_too_slow` and sentence; 20 passed |
+| 4 N6 | fixed by Lane FD5 (savepoint in `stored_kind`, always; my narrower variant was dropped in the merge); my claim-and-lock test kept | same file: a failed catalogue read keeps the request-key claim and the strategy row lock |
+| 4 N7 | fixed (FD5's after-commit guard plus my before-commit read, Opus F-2) | tests_app/test_paper_triggers_routes.py: 70 passed; F-3 (other post-commit reads) listed |
 | 4 N8 | fixed | migration 0062 (one head, up, down, up checked; migration guard OK); tests in test_order_request_key_durable_fd3.py: the app role inserts the 6 columns only, cannot DELETE; expiry removes only rows older than 7 days |
 | 5 F1 | green, no fix needed | tests_app/test_held_stop_ra_1128.py: a stop armed BEFORE the held row exists: 0 fires, no stop order, left armed, reported once; market open and closed. Mutation: without `_paper_only` both cases fail. |
 | 6 slow-price marks | nothing to remove on this base | the three strict marks are not in tests_app/test_slow_price_source_live_day.py on this head (they exist only on other branches); 10 passed as plain tests |
@@ -39,13 +39,43 @@ passes 5 of 5 under the same load and 3 of 3 idle. So: machine speed, not a hold
 0.01 s and the pool reads 0 checked out. The `reads == 0` case of FE4 (Saturday clock) could not be reproduced; with the
 wait it can no longer fail by timing, and "not reached" is now a stated failure.
 
-## Item 9: re-runs on this head
-(counts are filled in below when the runs end)
+## Item 9: re-runs on this head (before the FD5 merge; the merge touched none of the worker files)
+- tests_app/test_d36_adjustment_counts.py: 6 passed. tests_app/test_worker_attaches_confirming_check.py: 1 passed.
+- Lane Q3 chain (tests_app/test_plan_stop_worker_chain.py, cases (b) to (g), (i), (j), each about 5 minutes with the real worker process): NOT completed. Cases (a), (b), (c) passed (three dots) in 17 minutes; I stopped the run to merge FD5. Not re-run: (d) to (g), (i), (j), (k), (l). Run them in a worktree on the final head: `python -m pytest -c pytest-app.ini tests_app/test_plan_stop_worker_chain.py` (about 60 minutes).
+- Issue 876 case (a), the corrected shape (13 of 27 on, both loss guards `loss_stop_rupees` 80 and T-06 5 percent, loss twice the level held 15 minutes, the worker a SEPARATE process, rules read clear before the loss): tests_app/test_t106_fe4_1128.py::test_t106_d_ra_...: NOT REPRODUCED. The rupee-loss alert comes at once (`plan.rupee_loss`, kind `plan_rupee_loss`) and is still open 15 minutes later, one row, no order placed. Note: with a rupee loss stop typed, `plan.rupee_loss` IS the plan's one loss stop (`rupee_loss_is_the_stop`); T-06 gives no second row, by design. Of the summed outcomes, `already_true` is the one that can swallow an armed loss rule with no alert (a rule true when tracking started and not yet seen clear), then `not_checked gap_after_open` and `no_stage_value`; the PC's rule state says seen_clear true, so none of them explains 207 from the stored facts alone. Part (b) is built: the worker now writes one INFO line per strategy and loss rule (T-06, `plan.rupee_loss`, `stop.credit_x`) that is evaluated and does not alert: `background: loss rule evaluated, no alert: strategy=<id> rule=<rule> outcome=<already_true | not_checked <code>>` (no prices), when the outcome is new or changed; a Flag writes none (tests_app/test_loss_rule_silence_ra_1128.py). On the PC, the next occurrence names itself in the worker log.
+
+## Opus review (read-only, Opus, on a5259db50): REVISE; what was done
+- F-1 MAJOR (N5): the 8 s clock started at the handler's first line, after the dependencies (settings, charge rates, the pool wait); a basket could commit 10.5 s after arrival. FIXED: `_stamp_request` is the route's first dependency (arrival), the check is the last step before the commit (after `finish_in_transaction`); test_ra_n5_f1 red on the old start, green now.
+- F-2 (merge, N7): two of my N7 tests failed against FD5's `_triggers_out` (a stored stop answered `not_applicable` when the kind read fails after the commit). FIXED: the kind is read BEFORE the commit (`_refuse_real_position` returns it; cancel reads it) and passed to `_triggers_out`; FD5's after-commit guard stays as the fallback. Both tests green (70 passed in the file).
+- F-3 (class, MINOR, NOT fixed): any other read after the commit (`list_for`, `tracked_contracts.resolve`, `paper_store.load`) can still answer a stored stop with a 500 (nothing is doubled: a repeat press is de-duplicated; "keep" would answer "already fired"). Design: build the post-commit answer from rows read before the commit (the trigger rows, contracts and book are read in the same transaction, passed to `_triggers_out`), or answer a plain committed-result sentence; needs a decision on the sentence (wording for the owner).
+- F-4 (N8, MINOR): the expiry DELETE could wait on rows another order transaction holds. FIXED: the function deletes with `FOR UPDATE SKIP LOCKED` (it never waits). Migration 0062 up, down, up checked again.
+- Items 3 (F1, G1) and 4 (F4) PASS; N6 PASS (mutation: a `db.rollback()` back in `stored_kind` fails 2 tests); N8 grants PASS (the application role cannot replace the function, change its path, delete or age a key).
+- Not covered by the review: the real Execute door's deadline (`routes/execute.py` still raises `store_busy` past 8 s from its own start), the Redis key store, the rest of the merge.
+
+## Queue of 16:17 and 16:25 (coordinator), state
+| Item | State |
+|---|---|
+| FD5 merge, then FE4 merge | done (FD5 version kept for W-28, N5 start of the deadline replaced by arrival per F-1, N6, N7 with F-2; FE4 had merged clean earlier); the 20 changed test files pass one at a time |
+| 1 plan-watch nine rows | not started; design below |
+| 2 `spot_at` migration | not started; design below |
+| 3 O-P-03 label | not started; design below |
+| 4 templates sentences | N5 reason done (`order_request_too_slow`); the Return-door "something changed" text not started |
+| 5 FE3 stop-line templates, past tense | not started |
+| 6 heartbeat expiry | done (EX 120; tests_app/test_worker_heartbeat.py) |
+| 7 Z2 T1 | done (`_skipped_not_paper`); T2 not started (wording only) |
+| 8 FEED_MODE | done (reason `no_bus`, sentence pending owner read) |
+| 9 durable key decides | not started; design below |
+| 10 `record_plan` F2, F4, F5 | not started |
+| issue 876 | (a) not reproduced, (b) built: see Item 9 |
+| FE4 F7, F8 | designs below (not built) |
+| `StrategyOut.position_kind` | not started: a frontend-facing field of `routes/strategies.py` plus the list SQL (`strategy_store._KINDS`); one `kinds_of` call per list read, test: the list names `position_kind` for paper, real, held, none |
+| stale xfail marks | none on this base (item 6 of the first list) |
 
 ## For the owner lane
 - Nothing needs a file outside my May-edit list for items 1 to 8. Frontend: no change (N4 exists).
 - New wording for the owner to read (pending owner read; pins carry `reviewed: pending owner read`):
   - `order_request_too_slow` (N5): "This took too long, so no order was stored." / "Nothing was stored and the strategy was not changed; pressing again places the orders once." / "Placing these paper orders." / "Press Place again."
+  - `monitoring_why_no_bus` (item 8): "Not being watched here: this server is not set up to share prices with its background worker, so it cannot tell."
   - `real_position_open_refused` and `real_position_add_refused` (F4): the exit sentence word for word ("Real position: exit and protect it in Kite." ...), only the code differs.
 - Deploy note (N8): run migration 0062 before or after the code; the application role keeps no DELETE; a SECURITY DEFINER function `public.expire_order_request_keys()` (7 days, no argument) is the only way rows go.
 
@@ -54,7 +84,7 @@ wait it can no longer fail by timing, and "not reached" is now a stated failure.
 - Item 1 pool test: made event-driven; the bound stays 0.5 s.
 - Item 3 (W-28): `plan_rupee_loss` reads "Plan loss stop", the same word as `plan_loss_stop`: a loss stop typed in rupees and one typed in percent read the same word (ADR-330 (5)(a)); the figures differ. (He may want them apart: see the question below.)
 - N5: the deadline counts from the request's arrival; its own refusal code and sentence (new wording above), nothing stored, the key freed.
-- N6: a savepoint around the catalogue read only when the session holds a claim or the strategy row lock (a read-only request pays no extra statement; the explicit statement-count ceilings are untouched).
+- N6: Lane FD5's savepoint in `stored_kind` stays (always; two statements per kind read, ceilings raised by FD5 with the reason in the test); my narrower variant (only when a claim or lock is held) was dropped in the merge as the coordinator ordered.
 - N8: the expiry is a SECURITY DEFINER function with a fixed 7-day window instead of a DELETE grant to the application role (a DELETE grant would let the role remove a fresh key, the guard against a double order). The claim path runs it at most once an hour per process, in its own savepoint; a failure is logged and never touches the claim.
 - G1: `settle` is allowed on a held or real position because ADR-292 line 22 says a held condor settles at expiry through the paper settlement (the contract expired at the exchange: a fact, not an action on the real position); `stop` is refused unless the position reads paper. Pinned both ways.
 - F2, F3: left as they are (fail closed; see the question).
@@ -72,9 +102,18 @@ wait it can no longer fail by timing, and "not reached" is now a stated failure.
 - Lane Q3 cases (b) to (g), (i), (j), test_worker_attaches_confirming_check.py and test_d36_adjustment_counts.py re-run: see "Item 9" counts.
 - Frontend: nothing. N4 was already fixed.
 
+## Designs for the items not built (each can be taken by a fresh lane)
+- Item 9 (durable key decides): in `request_key.begin`, a Redis record in state `pending` for the same strategy and fingerprint stops refusing `request_key_in_progress`; it returns None (the Redis record is a hint) and the durable claim in the order's transaction (`claim_in_transaction`: INSERT ... ON CONFLICT DO NOTHING, then `Repeated` when another transaction committed first; it waits for an uncommitted claimant) decides. A Redis outage no longer refuses; a durable store failure still refuses with 583. Tests to change: the "unknown outcome keeps the key and a repeat is told still being placed" test in test_order_request_key_durable_fd3.py and the Redis-down refusal test; new test: a pending Redis hint with no durable row lets the repeat place once, and with a durable row replays the first result. Fail-closed check: two concurrent presses with one key store the orders once (the existing two-presses test).
+- Item 2 (`spot_at`): one migration 0063 after 0062 adding a nullable `spot_at TIMESTAMPTZ` to the table that holds the basket facts (`BasketFacts`; the column list is in `entry_facts_store`/`record_basket_facts`), INSERT grant extended by that column only, `_index_spot_held` already returns `(spot, at)`; old code keeps working (nullable, additive); up, down, up check.
+- Item 1 (plan-watch nine rows): batch the per-row reads in `plan_watch_batch.py` (one orders read, one contracts read, one settings read for all rows, the way W-13 did for the alert labels); FD5 measured about 25 statements per row; target: the batch of 9 rows inside the 10 s page budget, ceiling test with the statement count per row.
+- Item 3 (O-P-03): in `routes/outcome.py` (ctx is None branch, `booked` is not None for a strategy with orders) answer a new catalogue sentence `outcome_running_not_live` ("prices are not live", with the stored close and its time) instead of `outcome_not_connected` ("Draft - Live data not connected"); the legs' unpriced label follows. Wording for the owner.
+- FE4 F7 (slot clean-up, atomic): a Lua script (read the hash, delete only fields older than the cut-off) used when the client supports `eval`; needs fakeredis with Lua (`lupa`) in requirements-dev.
+- FE4 F8 (restored pause starts of a deleted trade): drop `kept` starts of ids not named in the worker's first full cycle after a restart (a failed read must not drop them all).
+- One market-open clock (FE4 F7, worker vs monitor near 09:15 and 15:30): both read `may_act.market_state(ctx, ctx.clock())` once per cycle and the worker publishes its instant in the snapshot; the route judges "watched" by that instant.
+
 ## To file as deferred issues
 - F2 and F3 above (owner decision first).
-- The latency ceilings in tests_app/test_route_latency_budget.py count statements; a SAVEPOINT is two statements: any future per-request savepoint must go through `txn_holds` or raise the ceilings on purpose.
+- The latency ceilings in tests_app/test_route_latency_budget.py count statements; FD5 raised them by two for its savepoint; any further per-request statement must raise them on purpose.
 
 ## Models and minutes
 | task | model | minutes |
