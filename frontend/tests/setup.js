@@ -25,6 +25,7 @@ beforeEach(() => {
   setShownDate('2026-11-15') // u510: as the app has after an expiries reply; the fixtures' 2026 expiries stay short. A test of the unset rule calls setShownDate(null)
   setActivePinia(createPinia()) // a page that reads the served settings store needs one, like the app's main.js
   localStorageMock.store = {}
+  globalThis.sessionStorage?.clear() // Lane FB2: the unknown-outcome locks are kept per tab (lib/unknownLocks.js, SaveDraftBar): each test starts without one
   localStorageMock.getItem.mockClear()
   localStorageMock.setItem.mockClear()
   localStorageMock.removeItem.mockClear()
