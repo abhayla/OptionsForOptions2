@@ -40,7 +40,7 @@ from dataclasses import dataclass
 from decimal import ROUND_HALF_UP, Decimal
 from typing import Annotated, Any, Literal, Optional, Protocol
 
-from fastapi import APIRouter, Depends
+from fastapi import APIRouter, Depends, Request
 from ofo.charges.calculator import ChargeOrder
 from ofo.charges.rates import ChargeRates
 from ofo.engine import Action, Instrument, Leg
@@ -99,11 +99,19 @@ from ofo_app.routes.outcome import RequestSeq, get_settings_reader, load_charge_
 from ofo_app.routes.strategies import StrategyRefused
 
 #: R9 (as the paper door's ``COMMIT_DEADLINE_S``): the page gives up at 10 s and may press again, so a request that only
-#: reaches its commit after 8 s refuses ``store_busy`` with nothing stored and its key freed
+#: reaches its commit after 8 s refuses ``order_request_too_slow`` with nothing stored and its key freed. B2 item 3: the
+#: 8 s count from the request's ARRIVAL (``_stamp_request``, the first dependency), as the paper door does.
 COMMIT_DEADLINE_S = 8.0
 _monotonic = time.monotonic  # the clock the deadline reads (a test replaces it)
 
-router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(require_order_path)])  # W-121: runs first
+
+async def _stamp_request(request: Request) -> None:
+    """RA N5 / Opus review F-1, on the real door: records the request's arrival on the deadline's clock before every other
+    dependency (settings, charge rates, the pool wait), so the 8 s counts them and not only the handler body."""
+    request.state.arrived_at = _monotonic()
+
+
+router = APIRouter(route_class=ClosedRoute, dependencies=[Depends(_stamp_request), Depends(require_order_path)])  # W-121
 _LOG = logging.getLogger(__name__)
 
 ENTRY, EXIT = "ENTRY", "EXIT"
@@ -313,11 +321,12 @@ async def execute_strategy(  # noqa: PLR0913, PLR0912, C901 - FastAPI dependenci
     db: Annotated[Any, Depends(get_db)], user_ref: Annotated[str, Depends(current_user_ref)],
     rates: Annotated[Optional[ChargeRates], Depends(load_charge_rates)],  # noqa: UP045
     keys: Annotated[request_key.KeyStore, Depends(request_key.get_key_store)],
+    request: Request,
 ) -> ExecuteOut:
     key = body.client_request_id
     sent = {} if key is None else body.model_dump(mode="json", exclude={"client_request_id", "seq"})
     claimed = committing = False
-    deadline = _monotonic() + COMMIT_DEADLINE_S
+    deadline = getattr(request.state, "arrived_at", _monotonic()) + COMMIT_DEADLINE_S  # B2 item 3: from arrival
     try:
         stored = await store.load(db, user_ref, strategy_id)  # 404 before anything else
         if stored.revision != body.revision:  # W-151: FIRST after the load, before any Zerodha read or plan write
@@ -335,7 +344,7 @@ async def execute_strategy(  # noqa: PLR0913, PLR0912, C901 - FastAPI dependenci
                                       key, sent), stored)
         out = echo_seq(out, body.seq)  # REQ-119 AC-1: before the commit, so a failed echo rolls the plan back
         if _monotonic() > deadline:  # R9: the page has given up by now; refused before the commit, the key freed below
-            raise StrategyRefused("store_busy", Failure.CONFLICT)
+            raise StrategyRefused("order_request_too_slow", Failure.CONFLICT)  # its own cause (RA N5), not a busy store
         committing = True  # from here an exception leaves the outcome unknown: the key stays claimed until it expires
         await db.commit()
     except request_key.Repeated:  # FD3: another press with this key committed first (the durable claim)

@@ -63,10 +63,12 @@ async def _bump_revision(conn, user: str, sid: int, reviewed: int) -> int:
     return await _stored_revision(conn, sid)
 
 
-async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = False, during=None, keys=None):  # noqa: PLR0913
+async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = False, during=None, keys=None,  # noqa: PLR0913
+               tweak=None):
     """Store strategy 1, optionally move its revision on, POST Execute with ``body_of(revision_read)``; returns the
     reply, the recorded Kite transport and the plan rows after. ``during(conn, user, sid)`` (R3) runs once, after the
-    margin wait (the LAST wait of the door), as another tab would between the reads and the plan write."""
+    margin wait (the LAST wait of the door), as another tab would between the reads and the plan write.
+    ``tweak(app)`` (B2 item 3) may replace a dependency override before the request."""
     from ofo_app.routes import execute as route  # noqa: PLC0415
     from test_strategy_followups import _ConnMaker  # noqa: PLC0415
     from test_strategy_store import _app, _client, _user  # noqa: PLC0415
@@ -105,6 +107,8 @@ async def _run(app_engine, admin_engine, monkeypatch, body_of, *, bump: bool = F
             app.dependency_overrides[route.load_charge_rates] = lambda: RATES
             kite = _Replay(funds="1003", basket_total="354.25", orders=None, positions="positions-151006")
             app.dependency_overrides[route.get_kite_session] = lambda: _session_for(kite)
+            if tweak is not None:
+                tweak(app)
             async with _client(app) as ac:
                 resp = await ac.post(f"/strategies/{sid}/execute", json=body_of(reviewed))
             rows = await _plan_rows(conn, sid)
@@ -306,10 +310,10 @@ async def test_r3_a_strategy_saved_during_the_waits_refuses_the_plan_and_stores_
 
 
 @pytest.mark.usefixtures("app_engine")
-async def test_g_a_request_past_the_server_deadline_refuses_store_busy_stores_nothing_and_frees_its_key(
+async def test_g_a_request_past_the_server_deadline_refuses_too_slow_stores_nothing_and_frees_its_key(
         app_engine, admin_engine, monkeypatch, keys):
     """R9 on the real door (as the paper door): the page gives up at 10 s; a request that reaches its commit after the
-    8 s server deadline refuses ``store_busy`` (409), stores no plan, and frees its key, so the same key on time then
+    8 s server deadline refuses ``order_request_too_slow`` (409), stores no plan, and frees its key, so the same key on time then
     prepares the plan (a fake slow clock; the second run proves the late one released the key)."""
     import uuid  # noqa: PLC0415
 
@@ -320,9 +324,44 @@ async def test_g_a_request_past_the_server_deadline_refuses_store_busy_stores_no
     monkeypatch.setattr(route, "_monotonic", lambda: next(clock))
     late, _kite, rows = await _run(app_engine, admin_engine, monkeypatch, keys=keys,
                                    body_of=lambda rev: {"action": "ENTRY", "revision": rev, "client_request_id": key})
-    assert late.status_code == 409 and "busy with another action" in late.text, late.text[:300]  # noqa: PLR2004
+    assert late.status_code == 409 and "took too long" in late.text, late.text[:300]  # noqa: PLR2004
     assert rows == 0
     monkeypatch.setattr(route, "_monotonic", lambda: 0.0)
+    again, _kite, rows = await _run(app_engine, admin_engine, monkeypatch, keys=keys,
+                                    body_of=lambda rev: {"action": "ENTRY", "revision": rev, "client_request_id": key})
+    assert again.status_code == 200 and rows == 1, again.text[:300]  # noqa: PLR2004
+
+
+@pytest.mark.usefixtures("app_engine")
+async def test_b2_item3_the_deadline_counts_from_arrival_not_from_the_handlers_first_line(
+        app_engine, admin_engine, monkeypatch, keys):
+    """B2 item 3 (RA review F-1 on the real door). Real case: a basket committed 10.5 s after arrival on the paper
+    door. Here the dependency stage takes 3 s (settings, charge rates, the pool wait) and the last wait ends at 10.5 s:
+    7.5 s after the handler's first line (the old start: committed, 200), 10.5 s after ARRIVAL (past the page's 10 s:
+    refused, nothing stored, key freed)."""
+    import uuid  # noqa: PLC0415
+
+    from ofo_app.routes import execute as route  # noqa: PLC0415
+
+    now = {"t": 0.0}
+    monkeypatch.setattr(route, "_monotonic", lambda: now["t"])
+    key = str(uuid.uuid4())
+
+    def slow_dependency(app):
+        async def charge_rates():
+            now["t"] = 3.0
+            return RATES
+        app.dependency_overrides[route.load_charge_rates] = charge_rates
+
+    async def late_wait(_conn, _user, _sid):
+        now["t"] = 10.5
+
+    late, _kite, rows = await _run(app_engine, admin_engine, monkeypatch, keys=keys, during=late_wait,
+                                   tweak=slow_dependency,
+                                   body_of=lambda rev: {"action": "ENTRY", "revision": rev, "client_request_id": key})
+    assert late.status_code == 409 and "took too long" in late.text, late.text[:300]  # noqa: PLR2004
+    assert rows == 0
+    now["t"] = 0.0
     again, _kite, rows = await _run(app_engine, admin_engine, monkeypatch, keys=keys,
                                     body_of=lambda rev: {"action": "ENTRY", "revision": rev, "client_request_id": key})
     assert again.status_code == 200 and rows == 1, again.text[:300]  # noqa: PLR2004
