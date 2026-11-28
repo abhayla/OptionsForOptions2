@@ -144,7 +144,8 @@ async def test_a_percent_stop_is_saved_with_the_kind_unknown_when_both_rows_are_
     body["triggers"]["T-06"]["monthly"] = ["50", "50", "40"]
     async with app_db_url.begin() as conn:
         same = await playbook_store.create(conn, "owner", "ic", f"Alike {uuid.uuid4().hex[:8]}", body)
-    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": same.id, "stop": "45"})
+    # ADR-330 (45): naming ANOTHER playbook on a PUT is the user choosing it, and says so (accept); the sheet sends it
+    status, out = await _call("PUT", _plan_path(sid), json={"playbook_id": same.id, "stop": "45", "accept": True})
     assert status == OK, out
     assert D(out["plan"]["stop"]) == D("45") and out["stop_kind_reason"] is None
 

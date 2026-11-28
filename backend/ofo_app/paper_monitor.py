@@ -45,7 +45,7 @@ from ofo.tracking.orderbook import net_positions
 from ofo.tracking.paper_alert import ALERT_BODY_TEMPLATES, STOP_LINE_TEMPLATES, alert_body, stop_reason_at
 
 # may_act.market_open is the ONE market-open rule (#740); the settings-reader guard names this file by line number
-from ofo_app import actionable_alerts, may_act, paper_exit, paper_store, tracked_contracts
+from ofo_app import actionable_alerts, may_act, monitoring_state, paper_exit, paper_store, tracked_contracts
 from ofo_app import paper_trigger_store as triggers
 from ofo_app.live_push import LiveFeed
 from ofo_app.routes.outcome import SettingsReader, feed_scope, with_rate_in_force
@@ -70,6 +70,15 @@ def provider_prices(feed: LiveFeed, underlying: str, keys: Sequence[str]) -> Map
     return {k: paper.leg_price(snapshot, k) for k in keys}
 
 
+# Lane FE (28 Nov, review F2) - one judge for every armed exit. ``_exits_with_reading`` compares each exit with ONE
+# reading: a feed tick (``on_quote``) or, every pass of ``step``, the newer of this feed's own live quote and the
+# reading the worker used to call the trade watched (``monitoring_state.read_index`` / ``read_leg``: feed tick or REST
+# stand-in, with its time). No reading within the age -> the exit is NOT evaluated and its trade is reported not run
+# (``monitoring_state.ExitsPublisher``: the trade reads "Monitoring paused", never watched). No order is retried.
+#: a crossed exit that could not run (no live leg price) is tried again from the polled reading no sooner than this
+POLLED_RETRY_SECONDS: Final = 5.0
+#: a ``_Reading`` of this monitor's own feed quote (its ticks judge it); the worker's are "feed" / "rest"
+OWN_FEED: Final = "own"
 #: The kind an "exit could not run" message is stored under: the closest informational kind the alert table's kind
 #: check allows (a kind of its own needs a migration).
 EXIT_NOT_RUN_KIND: Final = "stop_fired"
@@ -89,6 +98,31 @@ class _NoPrice:
     """An exit that cannot run: the first contract without a live price (its price is stale, missing or unreadable)."""
 
     contract_id: int
+
+
+_bus: Any = None  # the one Redis client of this process (created at first use)
+
+
+def _bus_client() -> Any:
+    """The bus client (Redis), or None when this process has no bus (in-process feed: no worker, no reading). One
+    client per process; a test replaces this function."""
+    global _bus  # noqa: PLW0603
+    from ofo_app import feed_bus, feed_mode  # noqa: PLC0415 - late: only a bus process needs them
+    if feed_mode.feed_mode() != feed_mode.BUS:
+        return None
+    if _bus is None:
+        _bus = feed_bus.new_client(feed_mode.redis_url())
+    return _bus
+
+
+@dataclass(frozen=True)
+class _Reading:
+    """The one index value an exit is judged on: its quote time and where it came from (``OWN_FEED``, or the worker's
+    "feed" tick / "rest" stand-in)."""
+
+    value: Decimal
+    at: datetime.datetime
+    source: str
 
 
 def _no_listener(_quote: Any) -> None:
@@ -131,6 +165,14 @@ class PaperMonitor:
         self._standing_feed: LiveFeed | None = None
         self._standing: list[int] = []  # the standing hold's fan-out handles (open paper legs + their indexes)
         self._watch: dict[str, list[_Watch]] = {}
+        self._exits: list[_Watch] = []  # every armed index exit, whether or not a feed holds its index
+        self._index_age: datetime.timedelta | None = None  # the index age rule in force
+        self._index_age_at: float | None = None  # monotonic time it was last read
+        self._retry_at: dict[int, float] = {}  # trigger id -> monotonic time of its next polled attempt
+        self._judged: dict[int, tuple[Decimal, datetime.datetime]] = {}  # trigger id -> the reading it last crossed on
+        self._blocked: set[int] = set()  # trigger ids crossed on a reading that did not run (reported not run)
+        self._carried: list[NormalizedQuote] = []  # ticks queued on a handle a reload replaced: judged, never lost
+        self._exits_publisher: tuple[Any, monitoring_state.ExitsPublisher] | None = None
         self._dirty = True
         self._loaded_at: float | None = None
         self.fires = 0
@@ -173,9 +215,40 @@ class PaperMonitor:
                 if key is not None:
                     watch.setdefault(key, []).append(_Watch(a, key))
             self._watch = watch
+            self._exits = [_Watch(a, self._key_of(feed, a, found)) for a in armed]  # index exits AND leg stops
+            live_ids = {w.armed.trigger.id for w in self._exits}
+            self._judged = {k: v for k, v in self._judged.items() if k in live_ids}
+            self._retry_at = {k: v for k, v in self._retry_at.items() if k in live_ids}
+            self._blocked &= live_ids
             self._resubscribe(feed, sorted(set(watch) | extra))
             # hotfix 27 Nov (DB pool 2 on the PC): the hold's two reads use THIS session, not a second checkout
             await self._reload_hold(feed, found, session)  # AFTER the stop watch: a failed hold never unwatches a stop
+
+    async def _read_index_age(self) -> None:
+        """The index age rule in force (the one the worker's read applies), read at most once per reload period and
+        only when a worker reading exists to be judged (a bus). A store that cannot answer leaves the last value; none
+        yet means no worker reading is trusted (the exits then rest on this feed's own index)."""
+        from ofo.settings import calc as settings_calc  # noqa: PLC0415 - late: read only when a bus holds a reading
+        if self._index_age_at is not None and self._monotonic() - self._index_age_at < self._reload_seconds:
+            return
+        self._index_age_at = self._monotonic()
+        try:
+            windows = settings_calc.feed_windows(await self._read_settings())
+        except Exception as exc:  # noqa: BLE001 - the age stays as it was; the exits are never judged on a guessed age
+            log.error("paper monitor: the index age rule could not be read: %s", type(exc).__name__)
+            return
+        self._index_age = windows.index_quote_max_age
+
+    @staticmethod
+    def _key_of(feed: LiveFeed | None, a: triggers.ArmedTrigger,
+                found: Mapping[int, tracked_contracts.TrackedContract]) -> str:
+        """The feed key an armed trigger is judged on ("" = none: no feed, or the contract has no live feed key)."""
+        if feed is None:
+            return ""
+        if a.trigger.kind == "conditional_exit":
+            return feed.ctx.provider.index_id(a.underlying) or ""  # type: ignore[attr-defined]
+        contract = found.get(a.trigger.contract_id) if a.trigger.contract_id is not None else None
+        return (contract.feed_key if contract is not None else None) or ""
 
     async def _reload_hold(self, feed: LiveFeed | None, found: Mapping[int, tracked_contracts.TrackedContract],
                            session: Any) -> None:
@@ -195,6 +268,7 @@ class PaperMonitor:
         if feed is not None and keys:
             self._handle = feed.fanout.subscribe(_no_listener, keys)  # new first: no vendor unsubscribe/resubscribe
         if old_feed is not None and old is not None:
+            self._carried.extend(old_feed.fanout.drain(old))  # ticks the old handle still holds are judged, not dropped
             old_feed.fanout.unsubscribe(old)
 
     @staticmethod
@@ -251,12 +325,14 @@ class PaperMonitor:
         if self._dirty or self._feed_source() is not self._feed or self._loaded_at is None or \
                 self._monotonic() - self._loaded_at >= self._reload_seconds:
             await self.reload()
-        if self._feed is None or self._handle is None:
-            return 0
         fired = 0
-        for quote in self._feed.fanout.drain(self._handle):
+        carried, self._carried = self._carried, []
+        for quote in carried:
             fired += await self.on_quote(quote)
-        return fired
+        if self._feed is not None and self._handle is not None:
+            for quote in self._feed.fanout.drain(self._handle):
+                fired += await self.on_quote(quote)
+        return fired + await self._index_pass()
 
     async def on_quote(self, quote: NormalizedQuote) -> int:
         watching = self._watch.get(quote.instrument_id)
@@ -269,9 +345,130 @@ class PaperMonitor:
             price = paper.price_of(quote, quote.instrument_id)
         except ValueError:  # a price finer than a paisa is never stored
             return 0
-        fired = [w for w in tuple(watching) if stops.crossed(w.armed.trigger, price)
-                 and await self._fire_guarded(w, price, now)]
-        return len(fired)
+        if price.price is None:  # a stale or missing price is not a reading
+            return 0
+        # a tick is one reading: the same judge as the polled reading (index exits and leg stops alike)
+        return await self._exits_with_reading(watching, _Reading(price.price, quote.timestamp, "feed"), now,
+                                              polled=False)
+
+    async def _exits_with_reading(self, watches: Sequence[_Watch], reading: _Reading | None, now: datetime.datetime,
+                                  *, polled: bool) -> int:
+        """THE one judge of index exits (review F2): each exit is compared with ``reading`` and fires when crossed. No
+        reading (None) -> nothing is evaluated; the caller reports the trade as not run. ``polled``: a reading
+        that crossed an exit which then did not run (no live leg price: the exit stays armed, the message is told once a
+        day) is not judged again by a pass for ``POLLED_RETRY_SECONDS``, so a quiet feed never makes a database
+        transaction every pass; a tick is always judged."""
+        if reading is None:
+            return 0
+        fired = 0
+        stamp = (reading.value, reading.at)
+        for w in tuple(watches):
+            tid = w.armed.trigger.id
+            if polled and self._judged.get(tid) == stamp and self._retry_at.get(tid, 0.0) > self._monotonic():
+                continue  # this very reading was judged (a tick, or an earlier pass) and could not run: not yet again
+            price = paper.Price(w.key or w.armed.underlying, paper.LIVE, reading.value, reading.at)
+            if not stops.crossed(w.armed.trigger, price):
+                self._blocked.discard(tid)  # not crossed on this reading: nothing is waiting to run
+                continue
+            self._judged[tid] = stamp
+            self._retry_at[tid] = self._monotonic() + POLLED_RETRY_SECONDS
+            if await self._fire_guarded(w, price, now):
+                fired += 1
+                self._blocked.discard(tid)
+            else:
+                self._blocked.add(tid)  # crossed and not run (no live leg price here, a failed write): reported
+        return fired
+
+    async def _index_reading(self, feed: LiveFeed, underlying: str, now: datetime.datetime,
+                             readings: monitoring_state.Readings | None) -> _Reading | None:
+        """The index reading an exit of ``underlying`` is judged on: the newer of this feed's own live index and the
+        reading the worker used (never an older one over a newer one; none within the age -> None). Both are live by the
+        one age rule: this feed's quote by its health, the worker's by ``index_quote_max_age`` from its own time."""
+        own = None
+        held = self._index_now(feed, underlying)
+        if held is not None and held.price is not None and held.at is not None \
+                and held.at - now <= monitoring_state.FUTURE_SKEW:  # a quote stamped in the future is no reading
+            own = _Reading(held.price, held.at, OWN_FEED)
+        worker = None
+        if readings is not None and self._index_age is not None:
+            found = readings.index(underlying, now, self._index_age)
+            if found is not None and _is_paise(found.value):
+                worker = _Reading(found.value, found.at, found.source)
+        if own is not None and (worker is None or worker.at <= own.at):
+            return own
+        return worker
+
+    async def _leg_reading(self, feed: LiveFeed, key: str, now: datetime.datetime,
+                           readings: monitoring_state.Readings | None) -> _Reading | None:
+        """The reading a leg-price exit on ``key`` is judged on: the newer of this feed's own live quote of that
+        contract and the price the worker used (``monitoring_state.read_leg``); none -> None (not evaluated and
+        reported)."""
+        own = None
+        held = getattr(feed.ctx.provider, "held_quote", None)
+        if held is not None and key:
+            try:
+                quote = held(key, now)
+                answer = paper.price_of(quote, key)
+            except ValueError:
+                answer, quote = None, None
+            if answer is not None and paper.is_live(answer) and answer.price is not None \
+                    and quote.timestamp is not None and quote.timestamp - now <= monitoring_state.FUTURE_SKEW:
+                own = _Reading(answer.price, quote.timestamp, OWN_FEED)
+        worker = None
+        if readings is not None and key:
+            found = readings.leg(key, now)
+            if found is not None and _is_paise(found.value):
+                worker = _Reading(found.value, found.at, found.source)
+        if own is not None and (worker is None or worker.at <= own.at):
+            return own
+        return worker
+
+    async def _index_pass(self) -> int:
+        """Every pass: judge every armed exit (index exits and leg stops) on its reading through the one judge
+        (``_exits_with_reading``), and report to ``monitoring_state`` which trades' exits were NOT evaluated.
+        Market closed: nothing is expected to be evaluated (a trigger set after hours arms at 09:15); the report is
+        empty."""
+        feed = self._feed
+        now = feed.ctx.clock() if feed is not None else datetime.datetime.now(datetime.UTC)
+        not_run: dict[int, str] = {}
+        judged: list[_Watch] = []
+        fired = 0
+        if feed is None:
+            not_run = {w.armed.trigger.strategy_id: _why_of(w) for w in self._exits}
+        elif may_act.market_open(feed.ctx, now):
+            judged = list(self._exits)
+            client = _bus_client()
+            readings = None
+            if client is not None and judged:  # the worker's prices: one read of its snapshot per pass
+                await self._read_index_age()
+                readings = await monitoring_state.read_readings(client, now)
+            groups: dict[tuple[str, str], list[_Watch]] = {}
+            for w in judged:
+                kind = w.armed.trigger.kind
+                groups.setdefault((kind, w.armed.underlying if kind == "conditional_exit" else w.key), []).append(w)
+            for (kind, subject), group in sorted(groups.items()):
+                reading = await (self._index_reading(feed, subject, now, readings) if kind == "conditional_exit"
+                                 else self._leg_reading(feed, subject, now, readings))
+                if reading is None:
+                    not_run.update({w.armed.trigger.strategy_id: _why_of(w) for w in group})
+                elif reading.source != OWN_FEED:  # this feed's own quote is judged tick by tick (``on_quote``), once
+                    fired += await self._exits_with_reading(group, reading, now, polled=True)
+            for w in judged:  # crossed on a reading but not run: the trade is not being checked through to the exit
+                if w.armed.trigger.id in self._blocked:
+                    not_run.setdefault(w.armed.trigger.strategy_id, monitoring_state.EXIT_NOT_PRICED)
+        await self._report_exits(judged, not_run, now)
+        return fired
+
+    async def _report_exits(self, judged: Sequence[_Watch], not_run: Mapping[int, str],
+                            now: datetime.datetime) -> None:
+        """The monitor's one write of which trades' exits it is (or is not) judging; never raises."""
+        client = _bus_client()
+        if client is None:
+            return
+        if self._exits_publisher is None or self._exits_publisher[0] is not client:
+            self._exits_publisher = (client, monitoring_state.ExitsPublisher(client))
+        watching = {w.armed.trigger.strategy_id for w in judged}
+        await self._exits_publisher[1].publish(watching, not_run, now)
 
     async def _fire_guarded(self, w: _Watch, price: paper.Price, now: datetime.datetime) -> bool:
         try:
@@ -288,6 +485,7 @@ class PaperMonitor:
         finished = fired | cancelled  # fired, already fired, or cancelled: never watched again
         for key, items in tuple(self._watch.items()):
             self._watch[key] = [i for i in items if i.armed.trigger.id not in finished]
+        self._exits = [i for i in self._exits if i.armed.trigger.id not in finished]
         self._dirty = True
         return w.armed.trigger.id in fired
 
@@ -377,7 +575,7 @@ class PaperMonitor:
             return price.price
         held = self._index_now(feed, a.underlying)
         if held is not None:
-            return held
+            return held.price
         from ofo_app import market_read  # noqa: PLC0415 - late: market_read imports the live feed
         try:
             wait = self._index_wait or market_read.Wait(INDEX_WAIT_SECONDS)
@@ -444,15 +642,16 @@ class PaperMonitor:
         return out
 
     @staticmethod
-    def _index_now(feed: LiveFeed, underlying: str) -> Decimal | None:
-        """D-22: the index's live value at this fire (the provider's spot quote); None when it has no live price."""
+    def _index_now(feed: LiveFeed, underlying: str) -> paper.Price | None:
+        """D-22: the index's live price answer at this moment (the provider's spot quote, with its time); None when
+        it has no live price."""
         try:
             key = feed.ctx.provider.index_id(underlying)  # type: ignore[attr-defined]
             quote = feed.ctx.provider.underlying_quote(underlying)  # type: ignore[attr-defined]
             answer = paper.price_of(quote, key or underlying)
         except Exception:  # noqa: BLE001 - the value is a record detail: never block a stop on it
             return None
-        return answer.price if paper.is_live(answer) else None
+        return answer if paper.is_live(answer) else None
 
     @staticmethod
     def _reason(t: stops.Trigger, texts: Mapping[int, ExplanationText]) -> ExplanationText:
@@ -475,6 +674,21 @@ class PaperMonitor:
                 await sleep(poll)
         finally:
             self.close()
+
+
+def _is_paise(value: Decimal) -> bool:
+    """True when ``value`` is a price that can be stored exactly (a paisa or coarser); an absurd value is not."""
+    try:
+        return value == value.quantize(paper.PAISE)
+    except ArithmeticError:
+        return False
+
+
+def _why_of(w: _Watch) -> str:
+    """The why a trade's exit is not judged: its index (or its leg's price) has no live reading."""
+    if w.armed.trigger.kind == "conditional_exit":
+        return monitoring_state.INDEX_NOT_LIVE
+    return monitoring_state.LEG_NOT_LIVE
 
 
 def _open(orders: Sequence[paper_store.StoredOrder]) -> list[int]:

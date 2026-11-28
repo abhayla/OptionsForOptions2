@@ -71,14 +71,28 @@ export function entryPriceFor(leg, livePriceById = {}) {
   return { price: planned, price_note: planned ? PAPER_PLANNED_PRICE_NOTE : '' }
 }
 
+/** One request key per Confirm (Lane FB2, ADR-017; the server answers a repeat of the same key with the first result and places nothing).
+ *  The page never re-sends on its own: a new Confirm makes a new key, so the same key is re-sent only for the same Confirm. */
+export function newRequestId() {
+  const c = globalThis.crypto
+  if (c && typeof c.randomUUID === 'function') return c.randomUUID()
+  if (!c || typeof c.getRandomValues !== 'function') return null // no key can be made: none is sent (the page's lock still holds)
+  const b = c.getRandomValues(new Uint8Array(16))
+  b[6] = (b[6] & 0x0f) | 0x40
+  b[8] = (b[8] & 0x3f) | 0x80
+  const h = [...b].map((x) => x.toString(16).padStart(2, '0')).join('')
+  return `${h.slice(0, 8)}-${h.slice(8, 12)}-${h.slice(12, 16)}-${h.slice(16, 20)}-${h.slice(20)}`
+}
+
 /** POST the confirmed orders in ONE request (the server stores them in one transaction or none). Throws the client error. */
-export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null, approachId = null, pricesNotLiveConfirmed = false) {
+export async function addToPaper(client, strategyId, orders, suggestionIds = [], basketLegs = null, held = null, approachId = null, pricesNotLiveConfirmed = false, clientRequestId = null) {
   // REQ-163 AC-1: the acted-on records this basket answers (Compare -> Open in builder); omitted when none
   const body = suggestionIds.length ? { orders, suggestion_ids: suggestionIds } : { orders }
   if (suggestionIds.length && basketLegs) body.basket_legs = basketLegs // REQ-112: the prepared basket's size
   if (approachId) body.approach_id = approachId // D-25 (ADR-326 (1)): a Take profit basket (A-24 / A-25), checked by the server
   if (held) body.held = held // GC-TRACK1 k10: only on the first basket, only when the user ticked "Held at my broker"
   if (pricesNotLiveConfirmed === true) body.prices_not_live_confirmed = true // ADR-330 (28): only when the not-live line was ticked
+  if (clientRequestId) body.client_request_id = clientRequestId // Lane FB2: one key per Confirm, sent only by the callers that pass one
   const { data } = await client.post(`/paper/strategies/${strategyId}/orders`, body)
   return data
 }

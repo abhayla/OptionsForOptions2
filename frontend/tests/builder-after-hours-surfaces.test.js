@@ -177,7 +177,7 @@ describe('ADR-197: an entry captured after hours is captioned as the close with 
       entries: body.instrument_ids.map((id) => ({ exchange_segment: 'NSE_FO', exchange_token: Number(id.split(':')[1]),
         planned_entry: '151.30', captured_at: '2026-10-08T18:55:36+05:30', close_at: QUOTE_AT, source: 'ltp', reason_code: null })) } })
     const emitted = []
-    const w = mount(LegPicker, { props: { legs: [], active: true, 'onUpdate:legs': (v) => emitted.push(v) } })
+    const w = mount(LegPicker, { props: { legs: [], active: true, 'onUpdate:legs': (v) => { emitted.push(v); w.setProps({ legs: v }) } } }) // the page applies each list: the entry fills the leg it was shown for (Lane FB2)
     await flushPromises()
     await w.find('[data-testid="pick-expiry"]').setValue('2026-10-13')
     await flushPromises()
