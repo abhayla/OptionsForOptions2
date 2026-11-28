@@ -116,3 +116,34 @@ async def test_ra_f4_each_user_order_kind_has_its_own_refusal_code_and_all_read_
     parts = ("what_happened", "impact", "what_is_blocked", "next_action")
     same = tuple(getattr(CATALOGUE["real_position_exit_refused"], p) for p in parts)
     assert tuple(getattr(CATALOGUE[code], p) for p in parts) == same, "the sentence stays the same for all three"
+
+
+# ---- Coordinator item 7 (Z2 review T1): a crossed stop skipped by the fire's own kind check says why -----------------
+
+async def test_ra_t1_a_stop_the_fire_skips_because_the_kind_is_not_paper_now_is_reported_never_silent(
+        db, caplog, monkeypatch):  # noqa: F811
+    """The reload read the kind as paper, then the fire's own read (``_still_paper``) says no (a failed or changed
+    read). The crossed stop is left armed (never cancelled), and the monitor tells it: logged once, named in
+    ``not_applicable`` and in the report for its trade, so the trade never reads watched because of silence."""
+    market = Market()
+    stored, _ids, keys = await _strategy(db)
+    tid = await _exit_below(db, stored.id)
+    market.tick(keys[0], "41.00")
+    market.tick(keys[1], "12.50")
+    market.tick(INDEX, "22900.00")  # above the level first: the monitor fires on a crossing, not on a state
+
+    async def not_paper(_session, _sid):
+        return False
+    monkeypatch.setattr(paper_monitor.PaperMonitor, "_still_paper", staticmethod(not_paper))
+    monitor = _monitor(db, market)
+    with caplog.at_level(logging.WARNING, logger=paper_monitor.log.name):
+        fired = await monitor.step()
+        market.tick(INDEX, CROSSED)
+        fired += await monitor.step() + await monitor.step()
+    assert fired == 0
+    assert await _trigger_state(db, tid) == (False, False), "left armed, not cancelled"
+    assert await _stops(db, stored.id) == []
+    assert monitor.not_applicable == {tid: "unknown"}
+    assert monitor._na_strategies.get(stored.id), "the trade is named in the next report"
+    told = [r for r in caplog.records if "not fired" in r.getMessage()]
+    assert len(told) == 1, "logged once, not on every tick"

@@ -611,6 +611,7 @@ class PaperMonitor:
         feed = LiveFeed(await with_rate_in_force(feed.ctx, self._read_settings), feed.fanout)
         async with self._sessions() as session, session.begin():
             if not await self._still_paper(session, t.strategy_id):
+                self._skipped_not_paper(a)  # RA (Z2 T1): left armed, and said: never a silent skip
                 return None  # review F5: the kind is read again in the fire; not paper (or unreadable) = left armed
             book = await paper_store.load(session, t.strategy_id)
             open_net = {int(p.instrument_id): p.net_quantity
@@ -650,6 +651,17 @@ class PaperMonitor:
                 restore={"body": ALERT_BODY_TEMPLATES, "line": STOP_LINE_TEMPLATES + FIRED_LINE_TEMPLATES})
         self.fires += 1
         return {"fired": {t.id}, "cancelled": set()}
+
+    def _skipped_not_paper(self, a: triggers.ArmedTrigger) -> None:
+        """RA (Z2 review T1): the fire's own kind read said "not paper" (or could not answer) for a crossed stop. It
+        stays armed; it is logged ONCE, listed as not applicable and its trade is named in the next report (the badge
+        says why), instead of the trade reading watched while its stop is skipped."""
+        sid, tid = a.trigger.strategy_id, a.trigger.id
+        self._na_strategies[sid] = _NOT_APPLICABLE_WHY.get("unknown", monitoring_state.INDEX_EXITS_NOT_RUN)
+        if tid not in self.not_applicable:
+            self.not_applicable[tid] = "unknown"
+            log.warning("paper trigger %s of strategy %s not fired: its position kind did not read paper at the "
+                        "crossing (left armed, ADR-330 (64))", tid, sid)
 
     @staticmethod
     async def _still_paper(session: Any, strategy_id: int) -> bool:
