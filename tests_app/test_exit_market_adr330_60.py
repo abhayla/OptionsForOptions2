@@ -5,11 +5,13 @@ answer, fail closed)."""
 from __future__ import annotations
 
 import datetime
+import time
 from decimal import Decimal
 from http import HTTPStatus
 
 import pytest
 from httpx import ASGITransport, AsyncClient
+from ofo.errors.explanations import EXPLANATIONS, ClockHmsOrDated, DayMonth, EarlierDay, TargetValue
 from ofo.market_calendar import is_market_open
 from ofo.marketdata.kite_provider import IST
 from ofo_app.exit_market import exit_market_answer
@@ -71,3 +73,33 @@ async def test_route_answers_the_sentence() -> None:
     assert body["closed"] is True
     assert body["sentence"] == "The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."
     assert body["next_open_at"].startswith("2026-11-30T09:15:00")
+
+
+def test_day_label_does_not_follow_the_host_locale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#875: strftime follows the host locale; with every strftime answering in German the sentence stays English."""
+    def _german(fmt: str, *args: object) -> str:
+        return fmt.replace("%A", "Montag").replace("%b", "Nov.").replace("%d", "30")
+
+    monkeypatch.setattr(time, "strftime", _german)
+    _, sentence, _ = exit_market_answer(_ctx(FRIDAY_1602), FRIDAY_1602)
+    assert str(sentence) == "The market is closed. Exits can be placed from 09:15 on Monday 30 Nov."
+
+
+def test_dated_slots_do_not_follow_the_host_locale(monkeypatch: pytest.MonkeyPatch) -> None:
+    """#875 class: the other three dated slots also keep English month names when every strftime answers in German."""
+    real = time.strftime
+
+    def _german(fmt: str, *args: object) -> str:
+        return real(fmt.replace("%b", "Dez."), *args)  # type: ignore[arg-type]
+
+    monkeypatch.setattr(time, "strftime", _german)
+    at = datetime.datetime(2026, 11, 8, 15, 29, 59, tzinfo=IST)
+    assert DayMonth.format(datetime.date(2026, 11, 24)) == "24 Nov"
+    assert TargetValue.format(at) == "8 Nov, 15:29 IST"
+    assert ClockHmsOrDated.format(EarlierDay(at)) == "8 Nov, 15:29:59"
+
+
+def test_expiry_kind_unknown_pause_has_its_catalogue_sentence() -> None:
+    """FD2 hand-over: the Monitoring paused reason for an unknown expiry kind is one catalogue sentence."""
+    assert EXPLANATIONS["monitoring_why_expiry_kind_unknown"].text == (
+        "Every exit rule is not checked because whether this trade expires weekly or monthly is not known.")

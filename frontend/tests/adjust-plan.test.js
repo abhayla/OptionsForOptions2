@@ -96,7 +96,7 @@ describe('REQ-161 AC-2: one click accepts; another playbook refills every field'
     const w = await sheet()
     await t(w, 'plan-use-as-is').trigger('click')
     await flushPromises()
-    expect(calls.filter((c) => c.method !== 'GET')).toEqual([{ method: 'POST', url: PATH, body: { playbook_id: 9 } }])
+    expect(calls.filter((c) => c.method !== 'GET')).toEqual([{ method: 'POST', url: PATH, body: { playbook_id: 9, accept: true } }])
     expect(w.emitted('close')).toHaveLength(1)
     expect(w.emitted('saved')[0][0].plan.target).toBe('60')
   })
@@ -241,7 +241,7 @@ describe('REQ-161 AC-3: the Plan entry on the tracking panel', () => {
     await flushPromises()
     await t(w, 'plan-use-as-is').trigger('click')
     await flushPromises()
-    expect(calls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', url: PATH, body: { playbook_id: 9 } }])
+    expect(calls.filter((c) => c.method === 'POST')).toEqual([{ method: 'POST', url: PATH, body: { playbook_id: 9, accept: true } }])
     expect(t(w, 'plan-entry-playbook').text()).toBe('Playbook: "Mine"')
   })
 

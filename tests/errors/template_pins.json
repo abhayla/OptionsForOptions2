@@ -4404,7 +4404,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:stop_fired_at": {
-    "sha256": "3fb962be2b775e770e04eeaa3c23345534fed06523654926932fe550ce7d7673",
+    "sha256": "6d98a68d33a99ea5dbe81ee147764f3b01bb78baf323b454c16b4975fa3ba1fa",
     "reviewed": "pending owner read"
   },
   "explanation:adjust_target_reached": {
@@ -4428,7 +4428,7 @@
     "reviewed": "pending owner read"
   },
   "explanation:stop_fired_on": {
-    "sha256": "51a72f82532dab91f0bd18c21516cbbf2538a704ece713ce1c1f1d9db8a41875",
+    "sha256": "79b2338aee14e68d0fe15c03fa38c7cfacbbebc8d642c25548ddceb4bdff4d65",
     "reviewed": "pending owner read"
   },
   "adjust_trigger_waits_expiry_day": {
@@ -5261,6 +5261,26 @@
   },
   "explanation:position_kind_unknown": {
     "sha256": "09feacbdee304cedfe081b65a797e103f817f887efc5a1bf899121f695ef1109",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitoring_why_index_not_live": {
+    "sha256": "e39ba9127720bc76743f60edee0c5c5c766597a38117bdc188ab4c4d80d66478",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitoring_why_leg_not_live": {
+    "sha256": "35c7fa5c0852ecfe188aead09bd86f1d6e02196959f1de53094b25a8d7869c81",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitoring_why_exit_not_priced": {
+    "sha256": "69823e2b4fdd6f198feadce4cb098733b394d6f4f025bc14bb6ebb1a528a9129",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitoring_why_index_exits_not_run": {
+    "sha256": "896bcb05c2cd1cd47d05dd74b634c44da3037e854a130889b94db2353e835902",
+    "reviewed": "pending owner read"
+  },
+  "explanation:monitoring_why_expiry_kind_unknown": {
+    "sha256": "cda9274fc44cf2fd39bcc908f860d91fde1f00d39e0a8531517e12971f90b9db",
     "reviewed": "pending owner read"
   }
 }
