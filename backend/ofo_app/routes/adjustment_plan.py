@@ -50,9 +50,8 @@ from pydantic import BaseModel, ConfigDict, Field
 
 from ofo_app import adjustment_check as check
 from ofo_app import playbook_store as store
-from ofo_app import scenario_mode
+from ofo_app import scenario_mode, strategy_store
 from ofo_app import settings_in_force as in_force_mod
-from ofo_app import strategy_store
 from ofo_app.adjustment_readers import CatalogueUnreadable
 from ofo_app.api_models import ApiModel, CatalogueText, Identifier, Money
 from ofo_app.catalogue_store import load_catalogue

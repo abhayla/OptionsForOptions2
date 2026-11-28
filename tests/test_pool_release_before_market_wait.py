@@ -28,7 +28,8 @@ WAIT_NAMES = frozenset({
 #: (file, function, awaited name) -> why the connection is held on purpose: NAME THE LOCK AND ITS PROOF
 ALLOW: dict[tuple[str, str, str], str] = {
     ('paper.py', '_place_orders', 'record_basket_facts'):
-        'FD3 item 4, left on purpose: ADR-283 (1) stores the basket facts IN THE FILL\'s transaction, under the strategy '
+        'FD3 item 4, left on purpose: ADR-283 (1) stores the basket facts IN THE FILL\'s transaction, under the '
+        'strategy '
         'row lock (paper_store.place -> store.lock_strategy, held to the commit; proof: '
         'tests_app/test_paper_routes.py basket-facts cases). The market read sits inside adjustment_readers.'
         'record_basket_facts (Lane FR\'s file); it must be split into a read before the lock and a store under it '
@@ -57,7 +58,8 @@ def _uses_db(call: ast.Call) -> bool:
 
 
 def _loops_of(fn: ast.AST) -> list[tuple[int, int]]:
-    return [(n.lineno, n.end_lineno or n.lineno) for n in ast.walk(fn) if isinstance(n, ast.For | ast.AsyncFor | ast.While)]
+    kinds = (ast.For, ast.AsyncFor, ast.While)
+    return [(n.lineno, n.end_lineno or n.lineno) for n in ast.walk(fn) if isinstance(n, kinds)]
 
 
 def _held_at(wait: ast.Await, events: list[tuple[int, str]], loops: list[tuple[int, int]]) -> bool:

@@ -1,6 +1,7 @@
-"""Lane FD3 item 4 (ADR-016 to ADR-019; D-36 (c)): the real door gives its pooled connection back before EVERY Zerodha or
-market wait, and the return takes the strategy lock only AFTER them. The double-order guard is unchanged: ``record_plan``
-takes the lock again and re-checks (open plan, number above the highest, tag taken). Real PostgreSQL, rolled back."""
+"""Lane FD3 item 4 (ADR-016 to ADR-019; D-36 (c)): the real door gives its pooled connection back before EVERY Zerodha
+or market wait, and the return takes the strategy lock only AFTER them. The double-order guard is unchanged:
+``record_plan`` takes the lock again and re-checks (open plan, number above the highest, tag taken). Real PostgreSQL,
+rolled back."""
 from __future__ import annotations
 
 from http import HTTPStatus
@@ -9,6 +10,8 @@ import pytest
 from ofo_app.routes import execute as ex_route
 from ofo_app.routes import execution_return as ret_route
 from test_execution_return import _app_for, _data, _market, _post, _Reads, _sold, _store_plan
+
+SEVEN = 7  # what the waited function returns
 
 
 async def test_off_loop_gives_the_connection_back_before_the_thread_runs():
@@ -23,7 +26,7 @@ async def test_off_loop_gives_the_connection_back_before_the_thread_runs():
         return 7
 
     req = ex_route._Request(Db(), "u", 1, "ENTRY", None, None, None, None, None)
-    assert await ex_route._off_loop(req, wait) == 7
+    assert await ex_route._off_loop(req, wait) == SEVEN
     assert seen == ["release", "wait"]
 
 
@@ -35,7 +38,8 @@ async def test_the_return_reads_zerodha_and_the_market_before_it_takes_the_lock(
     from test_strategy_store import _user  # noqa: PLC0415
 
     order: list[str] = []
-    real_read, real_lock, real_release = ret_route._read_zerodha, ret_route.store.lock_strategy, ret_route.release_connection
+    real_read, real_lock = ret_route._read_zerodha, ret_route.store.lock_strategy
+    real_release = ret_route.release_connection
 
     def read(req, catalogue):
         order.append("zerodha")
@@ -51,7 +55,6 @@ async def test_the_return_reads_zerodha_and_the_market_before_it_takes_the_lock(
 
     async def iv(*_a):
         order.append("market")
-        return None
 
     monkeypatch.setattr(ret_route, "_read_zerodha", read)
     monkeypatch.setattr(ret_route.store, "lock_strategy", lock)

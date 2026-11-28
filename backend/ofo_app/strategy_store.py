@@ -22,7 +22,6 @@ Transaction control (commit) stays with the caller.
 
 from __future__ import annotations
 
-import logging
 
 import dataclasses
 from dataclasses import dataclass
@@ -159,9 +158,9 @@ _KINDS = text(
 
 
 async def kinds_of(conn: Any, strategy_ids: list[int]) -> dict[int, str]:
-    """ADR-330 (64): strategy id -> position kind (position_kind.kind_of) for the asked ids, one read. An id not found is
-    "unknown" (never guessed as paper). A read that fails PROPAGATES (``SQLAlchemyError``): the old catch-all answered
-    "unknown" for every id, and the aborted transaction then failed the next statement and hid the cause (the class of
+    """ADR-330 (64): strategy id -> position kind (position_kind.kind_of) for the asked ids, one read. An id not found
+    is "unknown" (never guessed as paper). A read that fails PROPAGATES (``SQLAlchemyError``): the old catch-all
+    answered "unknown" for every id, and the aborted transaction then failed the next statement and hid the cause (the class of
     #858). The caller refuses or answers 5xx with the catalogue sentence; it never reads "no kinds" as an answer."""
     from ofo_app import position_kind  # noqa: PLC0415 - one rule, defined beside the sentence
     ids = sorted(set(strategy_ids))

@@ -27,8 +27,8 @@ from ofo.errors import render
 from ofo.tracking.orderbook import net_positions
 
 from ofo_app import paper_store, playbook_store, tracked_contracts
-from ofo_app.order_lots import LegLots, check_lots
 from ofo_app.errors import Failure
+from ofo_app.order_lots import LegLots, check_lots
 from ofo_app.strategy_refused import StrategyRefused
 
 log = logging.getLogger(__name__)

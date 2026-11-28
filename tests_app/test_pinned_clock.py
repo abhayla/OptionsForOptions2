@@ -137,7 +137,8 @@ async def test_seed_then_routes_offer_the_fixture_only_under_the_pin(app_engine:
             async with AsyncSession(bind=conn, expire_on_commit=False) as session:
                 async with await _client(session) as ac:
                     got = (await ac.get("/api/catalogue/NIFTY/expiries")).json()
-                    # FD3 item 6: the reply also states the instrument list's own day (``list_day``: the India date of the
+                    # FD3 item 6: the reply also states the instrument list's own day (``list_day``: the India date
+                    # of the
                     # latest load, stamped by the DATABASE clock, which this pin does not move), so it is read back from
                     # the database, never typed as a date: the test is the same on every day
                     db_day = (await conn.execute(text("SELECT (now() AT TIME ZONE 'Asia/Kolkata')::date"))).scalar_one()

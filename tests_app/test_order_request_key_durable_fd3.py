@@ -56,7 +56,8 @@ async def test_a_crash_between_the_claim_and_the_commit_stores_neither(app_engin
         assert await request_key.lookup(conn, USER, key, strategy, BODY) is None  # the key is free again
 
 
-async def test_two_presses_with_one_key_one_wins_and_the_other_gets_the_first_result(app_engine, admin_engine, strategy):
+async def test_two_presses_with_one_key_one_wins_and_the_other_gets_the_first_result(
+        app_engine, admin_engine, strategy):
     key = uuid.uuid4()
     async with app_engine.connect() as one, app_engine.connect() as two:
         t1, t2 = await one.begin(), await two.begin()
@@ -183,7 +184,8 @@ async def test_a_repeat_names_the_stops_the_first_request_cancelled(db, notified
     assert third.json()["cancelled_stops"] == named
 
 
-async def test_an_unknown_outcome_keeps_the_key_and_a_repeat_is_told_still_being_placed(db, notified, keys, monkeypatch):
+async def test_an_unknown_outcome_keeps_the_key_and_a_repeat_is_told_still_being_placed(
+        db, notified, keys, monkeypatch):
     """FD2 review F7 route test: a request whose commit outcome is unknown (the exception comes AFTER the commit began)
     never frees the key; the repeat is told 582 and places nothing."""
     from ofo_app.routes import paper as route  # noqa: PLC0415
@@ -193,7 +195,7 @@ async def test_an_unknown_outcome_keeps_the_key_and_a_repeat_is_told_still_being
     key = uuid.uuid4()
     real = route._place_orders
 
-    async def crash_after_commit_began(db_, strategy_id, stored_, body, deps, stage):
+    async def crash_after_commit_began(db_, strategy_id, stored_, body, deps, stage):  # noqa: PLR0913
         stage["commit_started"] = True
         raise RuntimeError("the connection dropped during the commit")
 

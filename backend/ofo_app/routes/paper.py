@@ -23,12 +23,12 @@ The user comes from the session (``current_user_ref``), never from the request.
 from __future__ import annotations
 
 import datetime
-from types import SimpleNamespace
 import logging
 import uuid
 from collections.abc import Mapping, Sequence
 from dataclasses import dataclass
 from decimal import ROUND_HALF_EVEN, Decimal
+from types import SimpleNamespace
 from typing import Annotated, Any, Literal, get_args
 
 from fastapi import APIRouter, Depends, Query
@@ -1443,7 +1443,7 @@ async def _refuse_take_profit_at_loss(db: Any, user_ref: str, strategy_id: int, 
     from ofo_app.routes.adjustment import refuse_take_profit_at_loss  # noqa: PLC0415 - as above
     from ofo_app.user_preferences_store import values_for  # noqa: PLC0415 - as above
     prefs = from_values(await values_for(db, user_ref))
-    await release_connection(db)  # FD3 item 4: the offer's own build path waits on the feed and the market; no connection
+    await release_connection(db)  # FD3 item 4: the offer's build path waits on the feed and the market
     await refuse_take_profit_at_loss(approach_id, strategy_id, tracked_reader, ctx,
                                      rates if isinstance(rates, ChargeRates) else None, prefs,
                                      check.basis_in_force(None, None, None))
@@ -1492,15 +1492,16 @@ async def place_paper_orders(strategy_id: int, body: PaperOrdersIn,  # noqa: PLR
         first = await request_key.begin(keys, user_ref, key, strategy_id, sent)
         if first is not None:  # a repeat: the first result, nothing stored
             return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
-                               cancelled=await _replayed_stops(db, stored, first.get("result", {}).get("cancelled_stops", [])))
+                               cancelled=await _replayed_stops(
+                                   db, stored, first.get("result", {}).get("cancelled_stops", [])))
     stage: dict[str, Any] = {"commit_started": False, "key": key, "sent": sent}
     try:
         placed_at, cancelled = await _place_orders(db, strategy_id, stored, body, (
             user_ref, ctx, feed, now, rates, tracked_reader, settings), stage)
     except request_key.Repeated as repeat:  # another request with this key committed first: its result, nothing stored
         await db.rollback()
-        await request_key.finish(keys, user_ref, key,
-                                 request_key.done(strategy_id, sent, {"cancelled_stops": repeat.result.get("cancelled_stops", [])}))
+        stops = repeat.result.get("cancelled_stops", [])
+        await request_key.finish(keys, user_ref, key, request_key.done(strategy_id, sent, {"cancelled_stops": stops}))
         return await _book(db, stored, await paper_store.load(db, strategy_id), ctx, feed, now(), rates,
                            cancelled=await _replayed_stops(db, stored, repeat.result.get("cancelled_stops", [])))
     except BaseException:
@@ -1531,9 +1532,9 @@ async def _stops_out(db: Any, stored: Any, state: Mapping[int, Any], cancelled: 
             for t in cancelled]
 
 
-async def _place_orders(db: Any, strategy_id: int, stored: Any, body: PaperOrdersIn,  # noqa: C901, PLR0913
-                        deps: tuple, stage: dict
-                        ) -> tuple[datetime.datetime, list[dict]]:
+async def _place_orders(  # noqa: C901, PLR0912, PLR0913, PLR0915
+        db: Any, strategy_id: int, stored: Any, body: PaperOrdersIn, deps: tuple, stage: dict
+        ) -> tuple[datetime.datetime, list[dict]]:
     """The order door's body: every refusal, the store and the commit. Returns the time it placed at and the stops it
     cancelled (read in the transaction that cancelled them); ``stage['commit_started']`` is set just before the commit
     (from there the outcome is unknown to the caller until it returns)."""

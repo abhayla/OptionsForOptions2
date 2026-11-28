@@ -132,8 +132,9 @@ async def test_an_adjustment_from_a_suggestion_names_its_rule_and_every_bad_link
     assert status == CREATED, out
     assert (await _record(app_db_url, sid, "T-03")).placed_order_ids == (new_id,)
     # a basket with no link: "Your own change"; the linked row keeps its rule
-    # FD3 item 6: this is already the THIRD basket after the entry, over the fixture plan's maximum of 2 (ADR-318 (5)): only
-    # a reducing basket is accepted (an "add" is refused STRATEGY_VALIDATION_505), so it reduces (test out of step)
+    # FD3 item 6: this is already the THIRD basket after the entry, over the fixture plan's maximum of 2 (ADR-318
+    # (5)): only a reducing basket is accepted (an "add" is refused STRATEGY_VALIDATION_505), so it reduces (the test
+    # was out of step)
     status, out = await _place(app_db_url, sid, None, reduce=True)
     assert status == CREATED, out
     rows = (await _history(sid))["rows"]

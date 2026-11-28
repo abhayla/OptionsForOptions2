@@ -172,7 +172,7 @@ _DB_DONE = text("UPDATE public.order_request_keys SET state = 'done', result = C
 DOORS = ("paper", "real")
 
 
-class Repeated(Exception):  # noqa: N818 - a signal, not a failure: the key was already used and committed
+class Repeated(Exception):  # a signal, not a failure: the key was already used and committed
     """The key is already recorded by a request that committed: ``result`` is what that request stored."""
 
     def __init__(self, result: Mapping[str, Any]) -> None:
@@ -202,13 +202,14 @@ def _judge(row: Any, strategy_id: int, body: Mapping[str, Any]) -> dict[str, Any
 async def lookup(db: Any, user_ref: str, key: uuid.UUID, strategy_id: int, body: Mapping[str, Any]
                  ) -> dict[str, Any] | None:
     """None: the key is not recorded (this request is the first). Else the stored result of the request that committed
-    (a repeat; place nothing). Refused by name for another strategy, other orders, a pending row, an unreadable table."""
+    (a repeat; place nothing). Refused by name for another strategy, other orders, a pending row, an unreadable table.
+    """
     row = await _read(db, user_ref, key)
     return None if row is None else _judge(row, strategy_id, body)
 
 
-async def claim_in_transaction(db: Any, user_ref: str, key: uuid.UUID, strategy_id: int, body: Mapping[str, Any],
-                               door: str) -> None:
+async def claim_in_transaction(db: Any, user_ref: str, key: uuid.UUID, strategy_id: int,  # noqa: PLR0913
+                               body: Mapping[str, Any], door: str) -> None:
     """Write the claim in the caller's transaction (it commits or rolls back with the orders). When another request
     committed the key first (this INSERT waits for it), raises ``Repeated`` with that request's result; the caller rolls
     back and answers it. A table that cannot be written refuses the request (nothing stored)."""

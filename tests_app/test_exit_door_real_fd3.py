@@ -56,10 +56,10 @@ async def test_i158_an_unknown_kind_is_refused_at_the_tracking_exit(db, monkeypa
 
 async def test_i158_place_checked_refuses_a_user_exit_on_a_held_strategy_but_not_a_server_stop(db):
     """The write itself (not the route) refuses; a server-written kind is never refused."""
+    import pytest  # noqa: PLC0415
     from ofo_app import paper_limit, paper_store  # noqa: PLC0415
     from ofo_app.strategy_refused import StrategyRefused  # noqa: PLC0415
-    import pytest  # noqa: PLC0415
-    app, stored, _ids = await _held_book(db)
+    _app, stored, _ids = await _held_book(db)
     rows = await paper_store.load(db, stored.id)
     cid = rows[0].order.contract_id
     new = paper_store.NewOrder(cid, "BUY", rows[0].order.quantity, rows[0].order.price, "exit",
